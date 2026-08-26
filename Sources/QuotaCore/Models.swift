@@ -23,15 +23,37 @@ public enum MenuBarStyle: String, Codable, CaseIterable, Identifiable, Sendable 
     case ring
     case columns
     case percent
+    /// Discrete styles: the gradations are countable, so the reading is exact
+    /// rather than estimated off a continuous fill.
+    case segments
+    case grid
+    case battery
+    case gauge
+    case ticks
 
     public var id: String { rawValue }
 
     public var displayName: String {
         switch self {
-        case .bar: L10n.t("Bar", "横向")
-        case .ring: L10n.t("Ring", "圆形")
+        case .bar: L10n.t("Bar", "横条")
+        case .ring: L10n.t("Ring", "圆环")
         case .columns: L10n.t("Columns", "柱形")
         case .percent: L10n.t("Percent", "数字")
+        case .segments: L10n.t("Segments", "分段")
+        case .grid: L10n.t("Grid", "九宫格")
+        case .battery: L10n.t("Battery", "电量")
+        case .gauge: L10n.t("Gauge", "仪表")
+        case .ticks: L10n.t("Scale", "刻度")
+        }
+    }
+
+    /// How many steps the glyph resolves. `nil` means continuous.
+    public var steps: Int? {
+        switch self {
+        case .segments: 5
+        case .grid: 9
+        case .columns: 4
+        case .bar, .ring, .percent, .battery, .gauge, .ticks: nil
         }
     }
 }

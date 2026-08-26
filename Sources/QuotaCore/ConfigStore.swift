@@ -22,7 +22,7 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
     public init(
         enabled: [ProviderID] = [.codex, .claude],
         refreshMinutes: Int = 5,
-        menuBarStyle: MenuBarStyle = .bar,
+        menuBarStyle: MenuBarStyle = .grid,
         meterMode: MeterMode = .remaining,
         presentation: Presentation = .menuBar,
         alerts: AlertSettings = AlertSettings(),
@@ -47,15 +47,45 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let defaults = QuotaConfig()
-        enabled = try container.decodeIfPresent([ProviderID].self, forKey: .enabled) ?? defaults.enabled
-        refreshMinutes = try container.decodeIfPresent(Int.self, forKey: .refreshMinutes) ?? defaults.refreshMinutes
-        menuBarStyle = try container.decodeIfPresent(MenuBarStyle.self, forKey: .menuBarStyle) ?? defaults.menuBarStyle
-        meterMode = try container.decodeIfPresent(MeterMode.self, forKey: .meterMode) ?? defaults.meterMode
-        presentation = try container.decodeIfPresent(Presentation.self, forKey: .presentation) ?? defaults.presentation
-        alerts = (try container.decodeIfPresent(AlertSettings.self, forKey: .alerts) ?? defaults.alerts).normalized()
-        language = try container.decodeIfPresent(L10n.Language.self, forKey: .language) ?? defaults.language
+        // Every field is decoded leniently. `decodeIfPresent` only tolerates a
+        // *missing* key — an unrecognised enum value throws, which would fail
+        // the whole file and silently reset every other preference. That can
+        // happen from a hand-edited config, or from running an older build
+        // after a newer one wrote a value it does not know.
+        enabled = QuotaConfig.decodeProviders(from: container) ?? defaults.enabled
+        refreshMinutes = (try? container.decodeIfPresent(Int.self, forKey: .refreshMinutes))
+            ?? defaults.refreshMinutes
+        menuBarStyle = QuotaConfig.decodeEnum(from: container, forKey: .menuBarStyle)
+            ?? defaults.menuBarStyle
+        meterMode = QuotaConfig.decodeEnum(from: container, forKey: .meterMode) ?? defaults.meterMode
+        presentation = QuotaConfig.decodeEnum(from: container, forKey: .presentation)
+            ?? defaults.presentation
+        alerts = ((try? container.decodeIfPresent(AlertSettings.self, forKey: .alerts))
+            ?? defaults.alerts).normalized()
+        language = QuotaConfig.decodeEnum(from: container, forKey: .language) ?? defaults.language
         legacyCredentials = QuotaConfig.decodeLegacyCredentials(from: container)
         hasLegacyCredentialKey = container.contains(.legacyCredentials)
+    }
+
+    /// Decodes a string-backed enum, returning nil for a missing key *or* an
+    /// unrecognised value, so the caller can fall back to its default.
+    private static func decodeEnum<T: RawRepresentable>(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys) -> T? where T.RawValue == String
+    {
+        guard let raw = try? container.decodeIfPresent(String.self, forKey: key) else { return nil }
+        return T(rawValue: raw)
+    }
+
+    /// Drops provider ids this build does not recognise instead of discarding
+    /// the whole list — a newer build's extra provider must not wipe the
+    /// user's other selections.
+    private static func decodeProviders(
+        from container: KeyedDecodingContainer<CodingKeys>) -> [ProviderID]?
+    {
+        guard let values = try? container.decodeIfPresent([String].self, forKey: .enabled)
+        else { return nil }
+        return values.compactMap(ProviderID.init(rawValue:))
     }
 
     /// Older files store the credential map two different ways: Swift's own

@@ -61,15 +61,15 @@ struct SettingsView: View {
                         Text(language.displayName).tag(language)
                     }
                 }
-                Picker(L10n.t("Icon style", "图标样式"), selection: Binding(
-                    get: { store.menuBarStyle },
-                    set: { store.setMenuBarStyle($0) }))
-                {
-                    ForEach(MenuBarStyle.allCases) { style in
-                        Text(style.displayName).tag(style)
-                    }
+                // A segmented control cannot hold nine options, and a style is
+                // easier to pick from its own glyph than from its name.
+                VStack(alignment: .leading, spacing: Design.space2) {
+                    Text(L10n.t("Icon style", "图标样式"))
+                    MenuBarStylePicker(
+                        selection: store.menuBarStyle,
+                        mode: store.meterMode,
+                        onSelect: { store.setMenuBarStyle($0) })
                 }
-                .pickerStyle(.segmented)
                 Picker(L10n.t("Meter fills with", "仪表填充"), selection: Binding(
                     get: { store.meterMode },
                     set: { store.setMeterMode($0) }))
@@ -84,17 +84,6 @@ struct SettingsView: View {
                     "只影响菜单栏图标。面板内的百分比始终表示已用量。"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                HStack {
-                    // 34% used → shows 66% remaining by default.
-                    Text(L10n.t("Preview", "预览"))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Image(nsImage: MenuBarIcon.render(
-                        percent: 34,
-                        style: store.menuBarStyle,
-                        mode: store.meterMode))
-                        .frame(height: 22)
-                }
                 Picker(L10n.t("Presentation", "展示方式"), selection: Binding(
                     get: { store.presentation },
                     set: { store.setPresentation($0) }))
@@ -193,6 +182,50 @@ struct SettingsView: View {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
         return "\(version) (\(build))"
+    }
+}
+
+// MARK: - Icon style picker
+
+/// Shows each style as its own glyph at a mid level, so the choice is made on
+/// what it will actually look like in the menu bar.
+struct MenuBarStylePicker: View {
+    let selection: MenuBarStyle
+    let mode: MeterMode
+    let onSelect: (MenuBarStyle) -> Void
+
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: Design.space2), count: 3)
+
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: Design.space2) {
+            ForEach(MenuBarStyle.allCases) { style in
+                Button {
+                    onSelect(style)
+                } label: {
+                    VStack(spacing: Design.space1) {
+                        // 34% used, so a stepped glyph shows a partial reading
+                        // rather than an all-or-nothing one.
+                        Image(nsImage: MenuBarIcon.render(percent: 34, style: style, mode: mode))
+                            .frame(height: 22)
+                        Text(style.displayName)
+                            .font(.caption2)
+                            .lineLimit(1)
+                        Text(style.steps.map { L10n.t("\($0) steps", "\($0) 格") }
+                            ?? L10n.t("continuous", "连续"))
+                            .font(.system(size: 9))
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, Design.space2)
+                    .background(
+                        RoundedRectangle(cornerRadius: Design.radiusTile, style: .continuous)
+                            .fill(style == selection ? Design.accent : Design.surfaceStrong))
+                    .foregroundStyle(style == selection ? Design.ink : Color.primary)
+                }
+                .buttonStyle(TileButtonStyle())
+                .help(style.displayName)
+            }
+        }
     }
 }
 

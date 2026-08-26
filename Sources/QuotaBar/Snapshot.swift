@@ -147,6 +147,69 @@ enum Snapshot {
         FileHandle.standardOutput.write(Data("Wrote theme previews to \(base.path)\n".utf8))
     }
 
+    /// Renders every menu-bar style across a range of levels, so a style can
+    /// be judged on whether its gradations are actually readable rather than
+    /// on how it sounds.
+    static func iconPreview(directory: String) {
+        let base = URL(fileURLWithPath: directory)
+        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        let levels: [Double] = [0, 12, 25, 40, 50, 63, 75, 88, 100]
+        L10n.override = .zhHans
+
+        let sheet = VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 0) {
+                Text("").frame(width: 74, alignment: .leading)
+                ForEach(levels, id: \.self) { level in
+                    Text("\(Int(level))%")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 40)
+                }
+            }
+            ForEach(MenuBarStyle.allCases) { style in
+                HStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(style.displayName)
+                            .font(.system(size: 11, weight: .semibold))
+                        if let steps = style.steps {
+                            Text("\(steps) 格")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("连续")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .frame(width: 74, alignment: .leading)
+                    ForEach(levels, id: \.self) { level in
+                        // `.used` so the fill matches the printed figure.
+                        Image(nsImage: MenuBarIcon.render(
+                            percent: level, style: style, mode: .used))
+                            .frame(width: 40, height: 22)
+                    }
+                }
+            }
+        }
+        .padding(16)
+
+        render(sheet, to: base, name: "icon-styles", backing: Color(hex: "F5F5F5"))
+
+        // The Settings picker itself. `SettingsView` as a whole cannot be
+        // rendered (it assigns @State from onAppear), but this component can.
+        let picker = MenuBarStylePicker(selection: .grid, mode: .remaining, onSelect: { _ in })
+            .frame(width: 420)
+            .padding(16)
+        render(picker, to: base, name: "icon-picker", backing: Color(hex: "F5F5F5"))
+        render(
+            picker.environment(\.colorScheme, .dark),
+            to: base,
+            name: "icon-picker-dark",
+            backing: Color(hex: "1E1E1E"))
+        L10n.override = ConfigStore.shared.language
+        FileHandle.standardOutput.write(Data("Wrote icon sheet to \(base.path)\n".utf8))
+    }
+
     static func run(directory: String) {
         let base = URL(fileURLWithPath: directory)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)

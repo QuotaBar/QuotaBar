@@ -312,3 +312,60 @@ final class UsageHistoryStoreTests: XCTestCase {
         XCTAssertTrue(UsageHistoryStore(fileURL: fileURL).readings(for: .codex).isEmpty)
     }
 }
+
+/// A single bad value must not take the rest of the file down with it.
+final class ConfigResilienceTests: XCTestCase {
+    private func decode(_ json: String) throws -> QuotaConfig {
+        try JSONDecoder().decode(QuotaConfig.self, from: Data(json.utf8))
+    }
+
+    func testAnUnknownStyleKeepsEveryOtherPreference() throws {
+        let config = try decode("""
+        {"enabled":["claude"],"refreshMinutes":15,"menuBarStyle":"hologram",
+         "presentation":"island","language":"zh-Hans",
+         "alerts":{"enabled":true,"warning":70,"critical":90}}
+        """)
+
+        XCTAssertEqual(config.menuBarStyle, QuotaConfig().menuBarStyle, "falls back")
+        // The point of the test: nothing else was reset.
+        XCTAssertEqual(config.enabled, [.claude])
+        XCTAssertEqual(config.refreshMinutes, 15)
+        XCTAssertEqual(config.presentation, .island)
+        XCTAssertEqual(config.language, .zhHans)
+        XCTAssertEqual(config.alerts.warning, 70)
+        XCTAssertEqual(config.alerts.critical, 90)
+    }
+
+    func testAnUnknownProviderIsDroppedNotTheWholeList() throws {
+        // What a downgrade looks like after a newer build added a provider.
+        let config = try decode("""
+        {"enabled":["codex","quantum-ai","claude"],"refreshMinutes":2}
+        """)
+
+        XCTAssertEqual(config.enabled, [.codex, .claude])
+        XCTAssertEqual(config.refreshMinutes, 2)
+    }
+
+    func testEveryEnumFieldToleratesGarbage() throws {
+        let config = try decode("""
+        {"menuBarStyle":"??","meterMode":"??","presentation":"??","language":"??"}
+        """)
+        let defaults = QuotaConfig()
+
+        XCTAssertEqual(config.menuBarStyle, defaults.menuBarStyle)
+        XCTAssertEqual(config.meterMode, defaults.meterMode)
+        XCTAssertEqual(config.presentation, defaults.presentation)
+        XCTAssertEqual(config.language, defaults.language)
+    }
+
+    func testWrongTypesFallBackPerField() throws {
+        let config = try decode("""
+        {"enabled":"not-an-array","refreshMinutes":"soon","menuBarStyle":42}
+        """)
+        let defaults = QuotaConfig()
+
+        XCTAssertEqual(config.enabled, defaults.enabled)
+        XCTAssertEqual(config.refreshMinutes, defaults.refreshMinutes)
+        XCTAssertEqual(config.menuBarStyle, defaults.menuBarStyle)
+    }
+}

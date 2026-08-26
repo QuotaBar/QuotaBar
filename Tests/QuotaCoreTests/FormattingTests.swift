@@ -227,3 +227,57 @@ final class MeterModeTests: XCTestCase {
         }
     }
 }
+
+final class MenuBarStyleTests: XCTestCase {
+    override func setUp() { L10n.override = .en }
+    override func tearDown() { L10n.override = .system }
+
+    func testEveryStyleIsNamedInBothLanguages() {
+        for style in MenuBarStyle.allCases {
+            L10n.override = .en
+            XCTAssertFalse(style.displayName.isEmpty, "\(style) has no English name")
+            L10n.override = .zhHans
+            XCTAssertFalse(style.displayName.isEmpty, "\(style) has no Chinese name")
+        }
+        L10n.override = .en
+    }
+
+    func testSteppedStylesDeclareTheirResolution() {
+        XCTAssertEqual(MenuBarStyle.grid.steps, 9)
+        XCTAssertEqual(MenuBarStyle.segments.steps, 5)
+        XCTAssertEqual(MenuBarStyle.columns.steps, 4)
+    }
+
+    func testContinuousStylesDeclareNoSteps() {
+        for style in [MenuBarStyle.bar, .ring, .percent, .battery, .gauge, .ticks] {
+            XCTAssertNil(style.steps, "\(style) should be continuous")
+        }
+    }
+
+    func testDefaultIsTheSteppedGrid() {
+        // A countable glyph gives an exact reading; a continuous fill has to
+        // be estimated.
+        XCTAssertEqual(QuotaConfig().menuBarStyle, .grid)
+    }
+
+    func testAllStylesRoundTripThroughConfig() throws {
+        for style in MenuBarStyle.allCases {
+            let encoded = try JSONEncoder().encode(QuotaConfig(menuBarStyle: style))
+            XCTAssertEqual(
+                try JSONDecoder().decode(QuotaConfig.self, from: encoded).menuBarStyle,
+                style)
+        }
+    }
+
+    func testAnExistingPreferenceIsNotOverriddenByTheNewDefault() throws {
+        // Someone who already picked "bar" keeps it; only fresh installs get
+        // the new default.
+        let existing = Data(#"{"enabled":["codex"],"menuBarStyle":"bar"}"#.utf8)
+        XCTAssertEqual(try JSONDecoder().decode(QuotaConfig.self, from: existing).menuBarStyle, .bar)
+    }
+
+    func testUnknownStyleFromAFutureVersionFallsBack() throws {
+        let future = Data(#"{"enabled":["codex"],"menuBarStyle":"hologram"}"#.utf8)
+        XCTAssertEqual(try JSONDecoder().decode(QuotaConfig.self, from: future).menuBarStyle, .grid)
+    }
+}
