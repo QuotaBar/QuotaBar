@@ -47,7 +47,7 @@ cask "quotabar" do
   desc "Menu-bar meter for AI coding provider quotas"
   homepage "https://github.com/${REPO}"
 
-  depends_on macos: ">= :sonoma"
+  depends_on macos: :sonoma
 
   app "QuotaBar.app"
 
@@ -73,4 +73,5 @@ echo "  2. Copy $DIST/quotabar.rb into your tap repo as Casks/quotabar.rb"
 echo "     (repo must be named homebrew-tap, e.g. github.com/${REPO%%/*}/homebrew-tap)"
 echo "  3. Users then run:"
 echo "       brew tap ${REPO%%/*}/tap"
+echo "       brew trust ${REPO%%/*}/tap   # Homebrew 6 gates third-party taps"
 echo "       brew install --cask quotabar"

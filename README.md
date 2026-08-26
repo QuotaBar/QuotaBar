@@ -6,6 +6,20 @@ Tiny macOS 14+ menu bar app that keeps AI coding-provider limits visible and sho
 window resets. A clean-room Swift refactor inspired by
 [steipete/CodexBar](https://github.com/steipete/CodexBar).
 
+## Install
+
+```bash
+brew tap gentpan/tap
+brew trust gentpan/tap      # Homebrew 6 requires this for third-party taps
+brew install --cask quotabar
+```
+
+Or grab the zip from [Releases](https://github.com/gentpan/quotabar/releases), unzip,
+and drag `QuotaBar.app` to `/Applications`. The build is signed with a Developer ID
+certificate and notarized by Apple, so it opens without a Gatekeeper detour.
+
+Requires macOS 14 (Sonoma) or later.
+
 ## Providers
 
 | Provider | Source | Credential |
@@ -117,6 +131,7 @@ Publish the zip as a GitHub release, drop the cask into
 
 ```bash
 brew tap gentpan/tap
+brew trust gentpan/tap      # Homebrew 6 requires this for third-party taps
 brew install --cask quotabar
 ```
 
