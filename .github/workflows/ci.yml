@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      # CommandLineTools alone cannot expand SwiftUI's @State / @Observable
+      # macros — the SwiftUIMacros plugin ships only with full Xcode. Use the
+      # runner's default Xcode rather than pinning a version that may not be
+      # installed on a future image.
+      - name: Select Xcode
+        run: |
+          ls -d /Applications/Xcode*.app
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          swift --version
+
+      - name: Build
+        run: swift build -c release
+
+      - name: Test
+        run: swift test
+
+      - name: Package app
+        run: ./Scripts/package_app.sh
+
+      - name: Verify bundle
+        run: |
+          test -x QuotaBar.app/Contents/MacOS/QuotaBar
+          test -f QuotaBar.app/Contents/Resources/AppIcon.icns
+          test -d QuotaBar.app/Contents/Resources/logos
+          codesign --verify --verbose QuotaBar.app
+
+      # Smoke test: the panel is a menu-bar popover with no window to drive in
+      # CI, so render it off-screen instead. A view that traps on layout fails
+      # here rather than the first time a user clicks the icon.
+      - name: Render UI snapshots
+        run: |
+          QuotaBar.app/Contents/MacOS/QuotaBar --snapshot "$PWD/snapshots"
+          test "$(ls snapshots/*.png | wc -l)" -ge 12
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-snapshots
+          path: snapshots/

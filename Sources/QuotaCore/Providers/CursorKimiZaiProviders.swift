@@ -1,0 +1,220 @@
+import Foundation
+
+// MARK: - Cursor (browser session cookie → cursor.com/api/usage-summary)
+
+public struct CursorProvider: QuotaProvider {
+    public let id = ProviderID.cursor
+
+    public func isConfigured(config: ConfigStore) -> Bool {
+        config.credential(for: .cursor) != nil
+    }
+
+    private func cookieHeader(_ config: ConfigStore) throws -> String {
+        guard let raw = config.credential(for: .cursor) else {
+            throw ProviderError.notConfigured(hint: ProviderID.cursor.setupHint)
+        }
+        if raw.lowercased().contains("workoscursorsessiontoken=") {
+            return raw
+        }
+        return "WorkosCursorSessionToken=\(raw)"
+    }
+
+    public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
+        let cookie = try cookieHeader(config)
+        let headers = ["Accept": "application/json", "Cookie": cookie]
+
+        struct Cents: Decodable {
+            let used: Int?
+            let limit: Int?
+            let remaining: Int?
+        }
+        struct Individual: Decodable {
+            let plan: Cents?
+            let onDemand: Cents?
+        }
+        struct Summary: Decodable {
+            let membershipType: String?
+            let billingCycleEnd: String?
+            let individualUsage: Individual?
+        }
+        struct Me: Decodable {
+            let email: String?
+        }
+
+        let summaryURL = URL(string: "https://cursor.com/api/usage-summary")!
+        let response = try await HTTP.get(summaryURL, headers: headers).requireOK()
+        let summary = try response.json(Summary.self)
+
+        let account = try? await HTTP.get(URL(string: "https://cursor.com/api/auth/me")!, headers: headers)
+            .requireOK().json(Me.self)
+
+        let cycleEnd = Dates.parseAny(summary.billingCycleEnd)
+        var windows: [UsageWindow] = []
+        if let plan = summary.individualUsage?.plan, let limit = plan.limit, limit > 0 {
+            let used = plan.used ?? 0
+            windows.append(UsageWindow(
+                title: L10n.t("Monthly plan", "月度套餐"),
+                usedPercent: Double(used) / Double(limit) * 100,
+                detail: "\(QuotaFormat.dollars(cents: used)) / \(QuotaFormat.dollars(cents: limit))",
+                resetsAt: cycleEnd))
+        }
+        if let onDemand = summary.individualUsage?.onDemand, let limit = onDemand.limit, limit > 0 {
+            let used = onDemand.used ?? 0
+            windows.append(UsageWindow(
+                title: L10n.t("On-demand", "按量付费"),
+                usedPercent: Double(used) / Double(limit) * 100,
+                detail: "\(QuotaFormat.dollars(cents: used)) / \(QuotaFormat.dollars(cents: limit))",
+                resetsAt: cycleEnd))
+        }
+        return UsageSnapshot(
+            planName: summary.membershipType?.capitalized,
+            account: account?.email,
+            windows: windows)
+    }
+}
+
+// MARK: - Kimi (kimi-auth cookie JWT → kimi.com gateway billing RPC)
+
+public struct KimiProvider: QuotaProvider {
+    public let id = ProviderID.kimi
+
+    public func isConfigured(config: ConfigStore) -> Bool {
+        config.credential(for: .kimi) != nil
+    }
+
+    public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
+        guard let token = config.credential(for: .kimi) else {
+            throw ProviderError.notConfigured(hint: ProviderID.kimi.setupHint)
+        }
+        let headers = [
+            "Authorization": "Bearer \(token)",
+            "Cookie": "kimi-auth=\(token)",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Origin": "https://www.kimi.com",
+            "Referer": "https://www.kimi.com/code/console",
+            "connect-protocol-version": "1",
+            "x-msh-platform": "web",
+        ]
+
+        struct Detail: Decodable {
+            let limit: String?
+            let used: String?
+            let remaining: String?
+            let resetTime: String?
+            let resetAt: String?
+        }
+        struct Usage: Decodable {
+            let scope: String?
+            let detail: Detail?
+        }
+        struct UsagesBody: Decodable {
+            let usages: [Usage]?
+        }
+        struct SubscriptionBalance: Decodable {
+            let amountUsedRatio: Double?
+            let expireTime: String?
+        }
+        struct RateLimit7d: Decodable {
+            let ratio: Double?
+            let resetTime: String?
+        }
+        struct StatsBody: Decodable {
+            let subscriptionBalance: SubscriptionBalance?
+            let ratelimitCode7d: RateLimit7d?
+        }
+
+        let usagesURL = URL(string: "https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages")!
+        let usages = try await HTTP.post(usagesURL, headers: headers).requireOK().json(UsagesBody.self)
+
+        var windows: [UsageWindow] = []
+        for usage in usages.usages ?? [] {
+            guard let detail = usage.detail else { continue }
+            let limit = Double(detail.limit ?? "") ?? 0
+            let used = Double(detail.used ?? "") ?? 0
+            let reset = Dates.parseAny(detail.resetTime) ?? Dates.parseAny(detail.resetAt)
+            let percent: Double? = limit > 0 ? used / limit * 100 : nil
+            windows.append(UsageWindow(
+                title: usage.scope ?? L10n.t("Usage", "用量"),
+                usedPercent: percent,
+                detail: limit > 0 ? "\(Int(used)) / \(Int(limit))" : nil,
+                resetsAt: reset))
+        }
+
+        let statsURL = URL(string: "https://www.kimi.com/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats")!
+        if let stats = try? await HTTP.post(statsURL, headers: headers).requireOK().json(StatsBody.self) {
+            if let balance = stats.subscriptionBalance, let ratio = balance.amountUsedRatio {
+                windows.append(UsageWindow(
+                    title: L10n.t("Subscription balance", "订阅余额"),
+                    usedPercent: ratio <= 1 ? ratio * 100 : ratio,
+                    resetsAt: Dates.parseAny(balance.expireTime)))
+            }
+            if let weekly = stats.ratelimitCode7d, let ratio = weekly.ratio {
+                windows.append(UsageWindow(
+                    title: WindowTitle.forSeconds(604_800),
+                    usedPercent: ratio <= 1 ? ratio * 100 : ratio,
+                    resetsAt: Dates.parseAny(weekly.resetTime)))
+            }
+        }
+        guard !windows.isEmpty else { throw ProviderError.badResponse }
+        return UsageSnapshot(windows: windows)
+    }
+}
+
+// MARK: - z.ai (API key → api.z.ai quota/limit)
+
+public struct ZaiProvider: QuotaProvider {
+    public let id = ProviderID.zai
+
+    public func isConfigured(config: ConfigStore) -> Bool {
+        config.credential(for: .zai) != nil
+    }
+
+    public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
+        guard let key = config.credential(for: .zai) else {
+            throw ProviderError.notConfigured(hint: ProviderID.zai.setupHint)
+        }
+        let url = URL(string: "https://api.z.ai/api/monitor/usage/quota/limit")!
+        let response = try await HTTP.get(url, headers: [
+            "Authorization": "Bearer \(key)",
+            "Accept": "application/json",
+        ]).requireOK()
+
+        struct Limit: Decodable {
+            let type: String?
+            let percentage: Double?
+            let usage: Int?
+            let remaining: Int?
+            let nextResetTime: Double?
+            let unit: Int?
+            let number: Int?
+        }
+        struct DataBody: Decodable {
+            let limits: [Limit]?
+        }
+        struct Body: Decodable {
+            let data: DataBody?
+        }
+
+        let body = try response.json(Body.self)
+        guard let limits = body.data?.limits else { throw ProviderError.badResponse }
+
+        // z.ai encodes the window as (unit, number); minutes per unit code.
+        let unitMinutes: [Int: Int] = [0: 1, 1: 60, 2: 1440, 3: 10_080, 4: 43_200, 5: 43_800]
+        var windows: [UsageWindow] = []
+        for limit in limits {
+            let minutes = (limit.number ?? 0) * (unitMinutes[limit.unit ?? -1] ?? 0)
+            let title = minutes > 0
+                ? WindowTitle.forMinutes(minutes)
+                : (limit.type ?? L10n.t("Quota", "额度"))
+            windows.append(UsageWindow(
+                title: title,
+                usedPercent: limit.percentage,
+                detail: limit.usage.flatMap { usage in
+                    limit.remaining.map { L10n.t("\($0) left of \(usage)", "剩余 \($0) / 共 \(usage)") }
+                },
+                resetsAt: Dates.parseEpoch(limit.nextResetTime)))
+        }
+        return UsageSnapshot(windows: windows)
+    }
+}

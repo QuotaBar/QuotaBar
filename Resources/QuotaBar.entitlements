@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Deliberately empty.
+
+	  QuotaBar runs unsandboxed (App Store sandboxing would block reading the
+	  CLI session files and other apps' keychain items that the whole app is
+	  built around), and under Hardened Runtime it needs no exceptions: no JIT,
+	  no unsigned memory, no DYLD interposing, no library validation opt-out.
+
+	  Reading ~/.codex, ~/.claude and the login keychain needs no entitlement in
+	  an unsandboxed app — keychain access is gated by the item's own ACL, which
+	  the user approves once per signing identity.
+	-->
+</dict>
+</plist>

@@ -1,0 +1,412 @@
+import SwiftUI
+import AppKit
+import Network
+@preconcurrency import UserNotifications
+import QuotaCore
+
+enum ProviderPhase: Sendable {
+    case loading
+    case loaded(UsageSnapshot)
+    /// Last refresh failed but we still have earlier numbers. Shown with a
+    /// staleness badge — silently serving old data is how a user ends up
+    /// trusting a figure from an expired session.
+    case stale(UsageSnapshot, error: String)
+    case failed(String)
+
+    var snapshot: UsageSnapshot? {
+        switch self {
+        case let .loaded(snapshot), let .stale(snapshot, _): snapshot
+        case .loading, .failed: nil
+        }
+    }
+
+    var errorMessage: String? {
+        switch self {
+        case let .stale(_, error), let .failed(error): error
+        case .loading, .loaded: nil
+        }
+    }
+}
+
+@MainActor
+final class UsageStore: ObservableObject {
+    @Published var enabled: [ProviderID]
+    @Published var states: [ProviderID: ProviderPhase] = [:]
+    @Published var selected: ProviderID?
+    @Published var refreshMinutes: Int
+    @Published var menuBarStyle: MenuBarStyle
+    @Published var meterMode: MeterMode
+    @Published var presentation: Presentation
+    @Published var alertSettings: AlertSettings
+    @Published var language: L10n.Language
+    @Published var cost: CostSummary = .empty
+    /// Recorded headline readings per provider, mirrored here so the detail
+    /// sparkline redraws when a refresh lands.
+    @Published var history: [ProviderID: [Double]] = [:]
+    /// Bumped whenever a refresh completes so relative timestamps re-render.
+    @Published var tick: Int = 0
+    /// Providers whose credentials currently resolve. Computed off the main
+    /// actor because `isConfigured` may reach into the keychain, which blocks
+    /// while macOS asks the user to authorize access — never do that in a
+    /// SwiftUI `body`.
+    @Published var configured: Set<ProviderID> = []
+
+    private var lastAlertLevel: AlertLevel = .none
+    private var notificationsReady = false
+
+    private let config = ConfigStore.shared
+    private var autoRefreshTask: Task<Void, Never>?
+    private var clockTask: Task<Void, Never>?
+    private var netMonitor: NWPathMonitor?
+    private var lastNetStatus: NWPath.Status?
+    private var systemObservers: [NSObjectProtocol] = []
+
+    /// Builds a store wired to the real config but with no timers, network
+    /// calls or notification prompts — used by `--snapshot` and previews.
+    static func preview(
+        enabled: [ProviderID],
+        states: [ProviderID: ProviderPhase],
+        cost: CostSummary = .empty,
+        history: [ProviderID: [Double]] = [:]) -> UsageStore
+    {
+        let store = UsageStore(inert: true)
+        store.enabled = enabled
+        store.states = states
+        store.cost = cost
+        store.history = history
+        store.selected = nil
+        return store
+    }
+
+    private init(inert: Bool) {
+        self.enabled = []
+        self.refreshMinutes = ConfigStore.shared.refreshMinutes
+        self.menuBarStyle = ConfigStore.shared.menuBarStyle
+        self.meterMode = ConfigStore.shared.meterMode
+        self.presentation = .menuBar
+        self.alertSettings = ConfigStore.shared.alerts
+        self.language = ConfigStore.shared.language
+        self.selected = nil
+    }
+
+    init() {
+        self.enabled = ConfigStore.shared.enabledProviders
+        self.refreshMinutes = ConfigStore.shared.refreshMinutes
+        self.menuBarStyle = ConfigStore.shared.menuBarStyle
+        self.meterMode = ConfigStore.shared.meterMode
+        self.presentation = ConfigStore.shared.presentation
+        self.alertSettings = ConfigStore.shared.alerts
+        self.language = ConfigStore.shared.language
+        self.selected = ConfigStore.shared.enabledProviders.first
+        for id in enabled {
+            history[id] = UsageHistoryStore.shared.readings(for: id).map(\.percent)
+        }
+        prepareNotifications()
+        refreshConfigured()
+        startAutoRefresh()
+        startClock()
+        startSystemObservers()
+        refreshAll()
+    }
+
+    deinit {
+        autoRefreshTask?.cancel()
+        clockTask?.cancel()
+        netMonitor?.cancel()
+    }
+
+    // MARK: Derived state
+
+    /// Highest headline percent across loaded providers — drives the menu-bar meter.
+    var headlinePercent: Double? {
+        var best: Double?
+        for id in enabled {
+            if let percent = states[id]?.snapshot?.headlinePercent {
+                best = max(best ?? 0, percent)
+            }
+        }
+        return best
+    }
+
+    var alertLevel: AlertLevel {
+        alertSettings.level(for: headlinePercent ?? 0)
+    }
+
+    /// The enabled provider currently closest to its limit (for alert captions).
+    var hottestProvider: (id: ProviderID, percent: Double)? {
+        var best: (ProviderID, Double)?
+        for id in enabled {
+            guard let percent = states[id]?.snapshot?.headlinePercent else { continue }
+            if best == nil || percent > best!.1 { best = (id, percent) }
+        }
+        return best
+    }
+
+    /// Providers whose most recent refresh failed — surfaced in the footer so a
+    /// dead credential is visible without opening every tile.
+    var failingProviders: [ProviderID] {
+        enabled.filter { states[$0]?.errorMessage != nil }
+    }
+
+    func isLoading(_ id: ProviderID) -> Bool {
+        if case .loading = states[id] { return true }
+        return false
+    }
+
+    func isEnabled(_ id: ProviderID) -> Bool {
+        enabled.contains(id)
+    }
+
+    // MARK: Refreshing
+
+    func refreshAll() {
+        refresh(enabled.filter { !isLoading($0) })
+        refreshCost()
+    }
+
+    func refresh(_ id: ProviderID) {
+        guard !isLoading(id) else { return }
+        refresh([id])
+    }
+
+    /// Fetches every provider concurrently and applies each result the moment
+    /// it lands. Waiting for the whole group would let one provider sitting on
+    /// its 20s timeout hold the entire panel hostage.
+    private func refresh(_ ids: [ProviderID]) {
+        guard !ids.isEmpty else { return }
+        for id in ids { markLoading(id) }
+        Task { [config] in
+            await withTaskGroup(of: (ProviderID, Result<UsageSnapshot, Error>).self) { group in
+                for id in ids {
+                    group.addTask {
+                        do {
+                            return (id, .success(try await ProviderRegistry.make(id).fetch(config: config)))
+                        } catch {
+                            return (id, .failure(error))
+                        }
+                    }
+                }
+                for await (id, result) in group {
+                    self.apply(id, result)
+                }
+            }
+            self.finishRefresh()
+            self.refreshConfigured()
+        }
+    }
+
+    private func markLoading(_ id: ProviderID) {
+        // Keep showing the previous numbers while a refresh is in flight; only
+        // a provider with nothing yet gets the spinner.
+        if states[id]?.snapshot == nil {
+            states[id] = .loading
+        }
+    }
+
+    private func apply(_ id: ProviderID, _ result: Result<UsageSnapshot, Error>) {
+        switch result {
+        case let .success(snapshot):
+            states[id] = .loaded(snapshot)
+            if let percent = snapshot.headlinePercent {
+                UsageHistoryStore.shared.record(id, percent: percent)
+                history[id] = UsageHistoryStore.shared.readings(for: id).map(\.percent)
+            }
+        case let .failure(error):
+            let message = error.localizedDescription
+            if let previous = states[id]?.snapshot {
+                states[id] = .stale(previous, error: message)
+            } else {
+                states[id] = .failed(message)
+            }
+        }
+    }
+
+    private func finishRefresh() {
+        tick &+= 1
+        evaluateAlerts()
+    }
+
+    /// Re-evaluates which providers have usable credentials.
+    func refreshConfigured() {
+        Task { [config] in
+            let ready = await Task.detached(priority: .utility) {
+                Set(ProviderID.allCases.filter { ProviderRegistry.make($0).isConfigured(config: config) })
+            }.value
+            self.configured = ready
+        }
+    }
+
+    func isConfigured(_ id: ProviderID) -> Bool {
+        configured.contains(id)
+    }
+
+    func refreshCost() {
+        Task {
+            // Pure local file IO over thousands of session logs; keep it off
+            // the main actor.
+            let summary = await Task.detached(priority: .utility) {
+                CostEstimator.summary()
+            }.value
+            self.cost = summary
+        }
+    }
+
+    // MARK: Alerts
+
+    func setAlertSettings(_ settings: AlertSettings) {
+        let normalized = settings.normalized()
+        alertSettings = normalized
+        config.alerts = normalized
+        evaluateAlerts()
+    }
+
+    /// Notifications need a bundle identifier; the dev loop runs the bare
+    /// binary, where `UNUserNotificationCenter.current()` would trap.
+    private var notificationsAvailable: Bool {
+        Bundle.main.bundleIdentifier != nil
+    }
+
+    private func prepareNotifications() {
+        guard notificationsAvailable else { return }
+        UNUserNotificationCenter.current()
+            .requestAuthorization(options: [.alert, .sound]) { [weak self] granted, _ in
+                Task { @MainActor in self?.notificationsReady = granted }
+            }
+    }
+
+    /// Edge-triggered: notify only when the level rises, so a steady 90%
+    /// doesn't spam the Notification Center.
+    private func evaluateAlerts() {
+        let level = alertLevel
+        defer { lastAlertLevel = level }
+        guard notificationsReady, level > lastAlertLevel, let hot = hottestProvider else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "QuotaBar"
+        let percent = Int(hot.percent.rounded())
+        content.body = L10n.t(
+            "\(hot.id.displayName) used \(percent)% — \(level.displayName.lowercased())",
+            "\(hot.id.displayName) 已用 \(percent)% —— \(level.displayName)")
+        UNUserNotificationCenter.current().add(UNNotificationRequest(
+            identifier: "bar.quota.alert.\(level.rawValue)",
+            content: content,
+            trigger: nil))
+    }
+
+    // MARK: Settings
+
+    func setEnabled(_ id: ProviderID, _ on: Bool) {
+        config.setEnabled(id, on)
+        if on {
+            if !enabled.contains(id) { enabled.append(id) }
+            history[id] = UsageHistoryStore.shared.readings(for: id).map(\.percent)
+            if selected == nil && enabled.count == 1 { selected = id }
+            refresh(id)
+        } else {
+            enabled.removeAll { $0 == id }
+            states[id] = nil
+            if selected == id { selected = enabled.first }
+        }
+    }
+
+    func setRefreshMinutes(_ minutes: Int) {
+        refreshMinutes = minutes
+        config.refreshMinutes = minutes
+        startAutoRefresh()
+    }
+
+    func setMenuBarStyle(_ style: MenuBarStyle) {
+        menuBarStyle = style
+        config.menuBarStyle = style
+    }
+
+    func setMeterMode(_ mode: MeterMode) {
+        meterMode = mode
+        config.meterMode = mode
+    }
+
+    func setPresentation(_ presentation: Presentation) {
+        self.presentation = presentation
+        config.presentation = presentation
+    }
+
+    func setLanguage(_ language: L10n.Language) {
+        self.language = language
+        config.language = language
+        // Every visible string is resolved through L10n at render time, so a
+        // redraw is all that is needed.
+        objectWillChange.send()
+        tick &+= 1
+    }
+
+    func setCredential(_ value: String, for id: ProviderID) {
+        config.setCredential(value, for: id)
+        // A replaced credential may be a different account entirely, which
+        // would splice two unrelated series into one trend line.
+        UsageHistoryStore.shared.clear(id)
+        history[id] = []
+        refreshConfigured()
+        if isEnabled(id) { refresh(id) }
+    }
+
+    /// Wipes every recorded trend line.
+    func resetHistory() {
+        UsageHistoryStore.shared.clearAll()
+        history = [:]
+        tick &+= 1
+    }
+
+    var credentialError: String? { config.lastCredentialError }
+
+    // MARK: Timers and system events
+
+    private func startAutoRefresh() {
+        autoRefreshTask?.cancel()
+        let minutes = max(1, refreshMinutes)
+        autoRefreshTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(Double(minutes) * 60))
+                guard let self, !Task.isCancelled else { return }
+                self.refreshAll()
+            }
+        }
+    }
+
+    /// Drives the "resets in …" / "updated … ago" labels between refreshes.
+    private func startClock() {
+        clockTask?.cancel()
+        clockTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                guard let self, !Task.isCancelled else { return }
+                self.tick &+= 1
+            }
+        }
+    }
+
+    /// Refresh shortly after wake and when the network recovers, mirroring
+    /// codex-island's resilience without probing into the post-wake burst.
+    private func startSystemObservers() {
+        let center = NSWorkspace.shared.notificationCenter
+        systemObservers.append(center.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(5))
+                self?.refreshAll()
+            }
+        })
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { [weak self] path in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let previous = self.lastNetStatus
+                self.lastNetStatus = path.status
+                guard path.status == .satisfied,
+                      let previous, previous != .satisfied else { return }
+                try? await Task.sleep(for: .seconds(3))
+                self.refreshAll()
+            }
+        }
+        monitor.start(queue: DispatchQueue(label: "bar.quota.network"))
+        netMonitor = monitor
+    }
+}

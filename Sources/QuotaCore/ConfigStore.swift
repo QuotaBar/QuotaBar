@@ -1,0 +1,316 @@
+import Foundation
+
+public struct QuotaConfig: Codable, Sendable, Equatable {
+    public var enabled: [ProviderID]
+    public var refreshMinutes: Int
+    public var menuBarStyle: MenuBarStyle
+    public var meterMode: MeterMode
+    public var presentation: Presentation
+    public var alerts: AlertSettings
+    public var language: L10n.Language
+
+    /// Only ever populated by decoding a pre-Keychain config file. `ConfigStore`
+    /// drains it into the keychain on load and rewrites the file without it;
+    /// it is never encoded, so the plaintext cannot come back.
+    public var legacyCredentials: [ProviderID: String]
+
+    /// True when the file carried a `credentials` key at all — including an
+    /// empty one. Set so the store rewrites the file once and the key stops
+    /// appearing next to a keychain-backed install.
+    var hasLegacyCredentialKey = false
+
+    public init(
+        enabled: [ProviderID] = [.codex, .claude],
+        refreshMinutes: Int = 5,
+        menuBarStyle: MenuBarStyle = .bar,
+        meterMode: MeterMode = .remaining,
+        presentation: Presentation = .menuBar,
+        alerts: AlertSettings = AlertSettings(),
+        language: L10n.Language = .system,
+        legacyCredentials: [ProviderID: String] = [:])
+    {
+        self.enabled = enabled
+        self.refreshMinutes = refreshMinutes
+        self.menuBarStyle = menuBarStyle
+        self.meterMode = meterMode
+        self.presentation = presentation
+        self.alerts = alerts
+        self.language = language
+        self.legacyCredentials = legacyCredentials
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case enabled, refreshMinutes, menuBarStyle, meterMode, presentation, alerts, language
+        case legacyCredentials = "credentials"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = QuotaConfig()
+        enabled = try container.decodeIfPresent([ProviderID].self, forKey: .enabled) ?? defaults.enabled
+        refreshMinutes = try container.decodeIfPresent(Int.self, forKey: .refreshMinutes) ?? defaults.refreshMinutes
+        menuBarStyle = try container.decodeIfPresent(MenuBarStyle.self, forKey: .menuBarStyle) ?? defaults.menuBarStyle
+        meterMode = try container.decodeIfPresent(MeterMode.self, forKey: .meterMode) ?? defaults.meterMode
+        presentation = try container.decodeIfPresent(Presentation.self, forKey: .presentation) ?? defaults.presentation
+        alerts = (try container.decodeIfPresent(AlertSettings.self, forKey: .alerts) ?? defaults.alerts).normalized()
+        language = try container.decodeIfPresent(L10n.Language.self, forKey: .language) ?? defaults.language
+        legacyCredentials = QuotaConfig.decodeLegacyCredentials(from: container)
+        hasLegacyCredentialKey = container.contains(.legacyCredentials)
+    }
+
+    /// Older files store the credential map two different ways: Swift's own
+    /// `Codable` output for a dictionary keyed by a `String`-raw-value enum is
+    /// a *flat array* (`["cursor", "secret", ...]`), while a hand-edited file
+    /// is normally a JSON object. Accept both — a credential that fails to
+    /// decode here is one that silently never reaches the keychain.
+    private static func decodeLegacyCredentials(
+        from container: KeyedDecodingContainer<CodingKeys>) -> [ProviderID: String]
+    {
+        if let object = try? container.decodeIfPresent(
+            [String: String].self, forKey: .legacyCredentials)
+        {
+            return object.reduce(into: [:]) { result, pair in
+                if let id = ProviderID(rawValue: pair.key) { result[id] = pair.value }
+            }
+        }
+        if let flat = try? container.decodeIfPresent([String].self, forKey: .legacyCredentials) {
+            var result: [ProviderID: String] = [:]
+            for index in stride(from: 0, to: flat.count - 1, by: 2) {
+                if let id = ProviderID(rawValue: flat[index]) { result[id] = flat[index + 1] }
+            }
+            return result
+        }
+        return [:]
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(enabled, forKey: .enabled)
+        try container.encode(refreshMinutes, forKey: .refreshMinutes)
+        try container.encode(menuBarStyle, forKey: .menuBarStyle)
+        try container.encode(meterMode, forKey: .meterMode)
+        try container.encode(presentation, forKey: .presentation)
+        try container.encode(alerts, forKey: .alerts)
+        try container.encode(language, forKey: .language)
+        // `legacyCredentials` intentionally omitted.
+    }
+}
+
+/// Preferences live in ~/.config/quotabar/config.json (0600); manually entered
+/// credentials live in the login keychain. Nothing secret is written to disk.
+public final class ConfigStore: @unchecked Sendable {
+    public static let shared = ConfigStore()
+
+    private let lock = NSLock()
+    private var config: QuotaConfig
+    private let credentials: CredentialStorage
+    /// Memoized keychain reads. `SecItemCopyMatching` blocks the calling thread
+    /// whenever macOS decides to ask the user to authorize access, so it must
+    /// not be hit once per refresh — let alone once per SwiftUI render.
+    private var credentialCache: [ProviderID: String?] = [:]
+    public let fileURL: URL
+
+    /// Set when the keychain rejects a write, so Settings can explain why a
+    /// credential did not stick instead of appearing to save it.
+    public private(set) var lastCredentialError: String?
+
+    public init(fileURL: URL? = nil, credentials: CredentialStorage = KeychainStorage()) {
+        let url = fileURL ?? FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/quotabar/config.json")
+        self.fileURL = url
+        self.credentials = credentials
+        if let data = try? Data(contentsOf: url),
+           let decoded = try? JSONDecoder().decode(QuotaConfig.self, from: data)
+        {
+            self.config = decoded
+        } else {
+            self.config = QuotaConfig()
+        }
+        L10n.override = config.language
+        migrateLegacyCredentials()
+    }
+
+    /// Moves any plaintext credentials from an older config file into the
+    /// keychain, then rewrites the file without them.
+    private func migrateLegacyCredentials() {
+        let pending = config.legacyCredentials.filter {
+            !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        guard !pending.isEmpty else {
+            // Nothing to move, but drop a leftover (possibly empty) key so the
+            // file matches what this version writes.
+            if config.hasLegacyCredentialKey {
+                config.hasLegacyCredentialKey = false
+                save(config)
+            }
+            return
+        }
+        var migrated: [ProviderID] = []
+        for (id, value) in pending where credentials.write(value, account: id.rawValue) {
+            migrated.append(id)
+            credentialCache[id] = value
+        }
+        for id in migrated {
+            config.legacyCredentials[id] = nil
+        }
+        if migrated.count < pending.count {
+            lastCredentialError = L10n.t(
+                "Some credentials could not be moved to the keychain and are still in config.json.",
+                "部分凭据无法写入钥匙串，仍留在 config.json 中。")
+        }
+        // Rewrite unconditionally: encoding drops `legacyCredentials` entirely,
+        // so this is what actually erases the plaintext from disk.
+        config.hasLegacyCredentialKey = false
+        save(config)
+    }
+
+    public var snapshot: QuotaConfig {
+        lock.lock(); defer { lock.unlock() }
+        return config
+    }
+
+    public var enabledProviders: [ProviderID] {
+        lock.lock(); defer { lock.unlock() }
+        return config.enabled
+    }
+
+    public func isEnabled(_ id: ProviderID) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return config.enabled.contains(id)
+    }
+
+    public func setEnabled(_ id: ProviderID, _ on: Bool) {
+        lock.lock()
+        if on, !config.enabled.contains(id) {
+            config.enabled.append(id)
+        } else if !on {
+            config.enabled.removeAll { $0 == id }
+        }
+        let snapshot = config
+        lock.unlock()
+        save(snapshot)
+    }
+
+    // MARK: Credentials (keychain-backed)
+
+    public func credential(for id: ProviderID) -> String? {
+        lock.lock()
+        if let cached = credentialCache[id] {
+            lock.unlock()
+            return cached
+        }
+        lock.unlock()
+
+        let read = credentials.read(account: id.rawValue)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = (read?.isEmpty == false) ? read : nil
+
+        lock.lock()
+        credentialCache[id] = value
+        lock.unlock()
+        return value
+    }
+
+    public func setCredential(_ value: String?, for id: ProviderID) {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if trimmed.isEmpty {
+            lastCredentialError = credentials.delete(account: id.rawValue)
+                ? nil
+                : L10n.t("Could not remove the credential from the keychain.", "无法从钥匙串中删除该凭据。")
+        } else {
+            lastCredentialError = credentials.write(trimmed, account: id.rawValue)
+                ? nil
+                : L10n.t("Could not save the credential to the keychain.", "无法将该凭据写入钥匙串。")
+        }
+        lock.lock()
+        credentialCache[id] = trimmed.isEmpty ? String?.none : trimmed
+        lock.unlock()
+    }
+
+    /// Drops the memoized reads so the next lookup goes back to the keychain.
+    public func invalidateCredentialCache() {
+        lock.lock()
+        credentialCache.removeAll()
+        lock.unlock()
+    }
+
+    // MARK: Preferences
+
+    public var refreshMinutes: Int {
+        get {
+            lock.lock(); defer { lock.unlock() }
+            return config.refreshMinutes
+        }
+        set { mutate { $0.refreshMinutes = max(1, newValue) } }
+    }
+
+    public var presentation: Presentation {
+        get {
+            lock.lock(); defer { lock.unlock() }
+            return config.presentation
+        }
+        set { mutate { $0.presentation = newValue } }
+    }
+
+    public var alerts: AlertSettings {
+        get {
+            lock.lock(); defer { lock.unlock() }
+            return config.alerts
+        }
+        set { mutate { $0.alerts = newValue.normalized() } }
+    }
+
+    public var menuBarStyle: MenuBarStyle {
+        get {
+            lock.lock(); defer { lock.unlock() }
+            return config.menuBarStyle
+        }
+        set { mutate { $0.menuBarStyle = newValue } }
+    }
+
+    public var meterMode: MeterMode {
+        get {
+            lock.lock(); defer { lock.unlock() }
+            return config.meterMode
+        }
+        set { mutate { $0.meterMode = newValue } }
+    }
+
+    public var language: L10n.Language {
+        get {
+            lock.lock(); defer { lock.unlock() }
+            return config.language
+        }
+        set {
+            mutate { $0.language = newValue }
+            L10n.override = newValue
+        }
+    }
+
+    private func mutate(_ body: (inout QuotaConfig) -> Void) {
+        lock.lock()
+        body(&config)
+        let snapshot = config
+        lock.unlock()
+        save(snapshot)
+    }
+
+    private func save(_ snapshot: QuotaConfig) {
+        do {
+            let directory = fileURL.deletingLastPathComponent()
+            try FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700])
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(snapshot)
+            try data.write(to: fileURL, options: [.atomic])
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o600],
+                ofItemAtPath: fileURL.path)
+        } catch {
+            FileHandle.standardError.write(Data("QuotaBar: failed to save config: \(error)\n".utf8))
+        }
+    }
+}
