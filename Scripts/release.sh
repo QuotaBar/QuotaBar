@@ -11,6 +11,11 @@ cd "$(dirname "$0")/.."
 
 REPO="${REPO:-gentpan/quotabar}"
 DIST="${DIST:-dist}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-QuotaBar}"
+# Resolved the same way package_app.sh does, so the disk image is signed with
+# the identity that just signed the app.
+SIGN_ID_USED="${SIGN_ID:-$(security find-identity -v -p codesigning 2>/dev/null \
+  | grep 'Developer ID Application' | head -1 | sed -E 's/.*"(.*)".*/\1/' || true)}"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
 APP=QuotaBar.app
 ZIP_NAME="QuotaBar-${VERSION}.zip"
@@ -36,6 +41,36 @@ mkdir -p "$DIST"
 # stapled notarization ticket intact.
 ditto -c -k --keepParent "$APP" "$DIST/$ZIP_NAME"
 SHA="$(shasum -a 256 "$DIST/$ZIP_NAME" | cut -d' ' -f1)"
+
+# ---- DMG --------------------------------------------------------------------
+# For people who download rather than `brew install`. The disk image is signed
+# and notarized in its own right: notarizing the app inside is not enough,
+# Gatekeeper checks the container the user actually opened.
+DMG_NAME="QuotaBar-${VERSION}.dmg"
+STAGE="$(mktemp -d)/QuotaBar"
+mkdir -p "$STAGE"
+cp -R "$APP" "$STAGE/"
+ln -s /Applications "$STAGE/Applications"
+hdiutil create -volname "QuotaBar" -srcfolder "$STAGE" -ov -format UDZO \
+  -quiet "$DIST/$DMG_NAME"
+rm -rf "$(dirname "$STAGE")"
+
+if [ -n "$SIGN_ID_USED" ]; then
+  codesign --force --timestamp --sign "$SIGN_ID_USED" "$DIST/$DMG_NAME"
+  if [ "${SKIP_NOTARIZE:-0}" != "1" ]; then
+    echo "Notarizing the disk image…"
+    xcrun notarytool submit "$DIST/$DMG_NAME" --keychain-profile "$NOTARY_PROFILE" --wait
+    xcrun stapler staple "$DIST/$DMG_NAME"
+    if ! spctl -a -t open --context context:primary-signature -v "$DIST/$DMG_NAME" 2>&1 \
+      | grep -q accepted
+    then
+      echo "error: Gatekeeper rejects the disk image — not releasing." >&2
+      spctl -a -t open --context context:primary-signature -v "$DIST/$DMG_NAME" || true
+      exit 1
+    fi
+  fi
+fi
+DMG_SHA="$(shasum -a 256 "$DIST/$DMG_NAME" | cut -d' ' -f1)"
 
 cat > "$DIST/quotabar.rb" <<CASK
 cask "quotabar" do
@@ -65,10 +100,12 @@ echo
 echo "── Release ${VERSION} ─────────────────────────────"
 echo "  zip     $DIST/$ZIP_NAME  ($(du -h "$DIST/$ZIP_NAME" | cut -f1))"
 echo "  sha256  $SHA"
+echo "  dmg     $DIST/$DMG_NAME  ($(du -h "$DIST/$DMG_NAME" | cut -f1))"
+echo "  sha256  $DMG_SHA"
 echo "  cask    $DIST/quotabar.rb"
 echo
 echo "Next:"
-echo "  1. gh release create v${VERSION} $DIST/$ZIP_NAME --title 'QuotaBar ${VERSION}'"
+echo "  1. gh release create v${VERSION} $DIST/$ZIP_NAME $DIST/$DMG_NAME --title 'QuotaBar ${VERSION}'"
 echo "  2. Copy $DIST/quotabar.rb into your tap repo as Casks/quotabar.rb"
 echo "     (repo must be named homebrew-tap, e.g. github.com/${REPO%%/*}/homebrew-tap)"
 echo "  3. Users then run:"
