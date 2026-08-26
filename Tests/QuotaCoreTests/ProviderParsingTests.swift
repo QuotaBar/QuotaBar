@@ -208,3 +208,140 @@ extension ProviderError: @retroactive Equatable {
         lhs.errorDescription == rhs.errorDescription
     }
 }
+
+// MARK: - Local credential readers
+
+final class CursorSessionTests: XCTestCase {
+    /// A JWT with `sub: "user_ABC"` and `aud: "https://cursor.com"`. Signature
+    /// is a placeholder — the reader never verifies it, it only decodes the
+    /// user's own already-trusted token.
+    private func jwt(sub: String) -> String {
+        func b64(_ json: String) -> String {
+            Data(json.utf8).base64EncodedString()
+                .replacingOccurrences(of: "+", with: "-")
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "=", with: "")
+        }
+        let header = b64(#"{"alg":"HS256","typ":"JWT"}"#)
+        let payload = b64("{\"sub\":\"\(sub)\",\"aud\":\"https://cursor.com\",\"type\":\"session\"}")
+        return "\(header).\(payload).c2ln"
+    }
+
+    func testComposesTheSessionCookieAsSubColonColonToken() throws {
+        let token = jwt(sub: "user_01ABC")
+        let session = try XCTUnwrap(
+            LocalCredentials.makeCursorSession(accessToken: token, email: "dev@example.com"))
+
+        // cursor.com rejects the bare JWT; it wants "sub::JWT".
+        XCTAssertEqual(session.sessionCookie, "user_01ABC::\(token)")
+        XCTAssertEqual(session.email, "dev@example.com")
+    }
+
+    func testBlankEmailBecomesNil() throws {
+        let session = try XCTUnwrap(
+            LocalCredentials.makeCursorSession(accessToken: jwt(sub: "u1"), email: "  "))
+        XCTAssertNil(session.email)
+    }
+
+    func testATokenWithoutASubIsRejected() {
+        // A JWT whose payload has no `sub` cannot form the cookie.
+        let noSub = "\(Data(#"{"alg":"HS256"}"#.utf8).base64EncodedString())."
+            + "\(Data(#"{"aud":"x"}"#.utf8).base64EncodedString()).sig"
+        XCTAssertNil(LocalCredentials.makeCursorSession(accessToken: noSub, email: nil))
+    }
+
+    func testGarbageTokenIsRejected() {
+        XCTAssertNil(LocalCredentials.makeCursorSession(accessToken: "not-a-jwt", email: nil))
+        XCTAssertNil(LocalCredentials.makeCursorSession(accessToken: "", email: nil))
+    }
+
+    func testJWTClaimDecoding() {
+        let token = jwt(sub: "user_XYZ")
+        XCTAssertEqual(LocalCredentials.jwtClaim(token, "sub"), "user_XYZ")
+        XCTAssertEqual(LocalCredentials.jwtClaim(token, "aud"), "https://cursor.com")
+        XCTAssertNil(LocalCredentials.jwtClaim(token, "missing"))
+    }
+}
+
+final class OpenCodeKeyTests: XCTestCase {
+    private var root: URL!
+
+    override func setUpWithError() throws {
+        root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("quotabar-oc-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: root)
+    }
+
+    /// The reader walks a fixed pair of home-relative paths, so this test
+    /// exercises the parse shape rather than the real location.
+    private func parse(_ json: String, slug: String) throws -> String? {
+        let url = root.appendingPathComponent("auth.json")
+        try json.write(to: url, atomically: true, encoding: .utf8)
+        let data = try Data(contentsOf: url)
+        guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let entry = obj[slug] as? [String: Any] else { return nil }
+        return entry["key"] as? String
+    }
+
+    func testReadsTheKeyForAProviderSlug() throws {
+        let json = """
+        {"opencode-go":{"type":"api","key":"sk-test-123"},
+         "kimi-for-coding":{"type":"api","key":"other"}}
+        """
+        XCTAssertEqual(try parse(json, slug: "opencode-go"), "sk-test-123")
+    }
+
+    func testMissingSlugYieldsNoKey() throws {
+        XCTAssertNil(try parse(#"{"other":{"key":"x"}}"#, slug: "opencode-go"))
+    }
+}
+
+final class OpenCodeGoParsingTests: XCTestCase {
+    /// The real response shape, recorded live: windows nested under `usage`,
+    /// resets as ISO timestamps.
+    private let response = """
+    {"usage":{
+      "rolling":{"status":"ok","percent":0,"resetsAt":"2026-08-27T02:10:27.918Z"},
+      "weekly":{"status":"ok","percent":0,"resetsAt":"2026-08-31T00:00:00.918Z"},
+      "monthly":{"status":"ok","percent":84,"resetsAt":"2026-08-31T20:52:39.918Z"}}}
+    """
+
+    func testParsesNestedUsageWindows() throws {
+        let snapshot = try OpenCodeGoProvider.parse(Data(response.utf8))
+
+        // Regression: the parser looked at the root, not under `usage`, and
+        // returned nothing on the live shape.
+        XCTAssertEqual(snapshot.windows.count, 3)
+        XCTAssertEqual(snapshot.windows.map(\.usedPercent), [0, 0, 84])
+        XCTAssertEqual(snapshot.headlinePercent, 84)
+    }
+
+    func testParsesISOResetTimestamps() throws {
+        let snapshot = try OpenCodeGoProvider.parse(Data(response.utf8))
+        XCTAssertEqual(snapshot.windows[2].resetsAt, Dates.parseISO("2026-08-31T20:52:39.918Z"))
+    }
+
+    func testZeroPercentIsAValueNotAbsence() throws {
+        // A window at 0% must still render — it means "nothing used yet",
+        // which is different from "no data".
+        let snapshot = try OpenCodeGoProvider.parse(Data(response.utf8))
+        XCTAssertEqual(snapshot.windows[0].usedPercent, 0)
+    }
+
+    func testStillReadsAFlatRootShape() throws {
+        // Defensive: an older/flatter response without the `usage` wrapper.
+        let flat = """
+        {"rolling":{"percent":12},"weekly":{"percent":34},"monthly":{"percent":56}}
+        """
+        let snapshot = try OpenCodeGoProvider.parse(Data(flat.utf8))
+        XCTAssertEqual(snapshot.windows.map(\.usedPercent), [12, 34, 56])
+    }
+
+    func testEmptyResponseThrows() {
+        XCTAssertThrowsError(try OpenCodeGoProvider.parse(Data("{}".utf8)))
+    }
+}

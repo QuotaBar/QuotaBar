@@ -199,8 +199,8 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
                 "可选覆盖；留空则读取 ~/.grok/auth.json（grok CLI 登录后生成）。")
         case .cursor:
             return L10n.t(
-                "WorkosCursorSessionToken cookie value (DevTools → Application → Cookies → cursor.com).",
-                "WorkosCursorSessionToken cookie 值（开发者工具 → 应用 → Cookie → cursor.com）。")
+                "Automatic if Cursor.app is signed in. Otherwise paste the WorkosCursorSessionToken cookie (DevTools → Application → Cookies → cursor.com).",
+                "已登录 Cursor.app 时自动读取；否则粘贴 WorkosCursorSessionToken cookie（开发者工具 → 应用 → Cookie → cursor.com）。")
         case .kimi:
             return L10n.t(
                 "kimi-auth cookie JWT (DevTools → Application → Cookies → kimi.com).",
@@ -209,8 +209,8 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
             return L10n.t("API key (z.ai → API Keys).", "API Key（z.ai → API Keys）。")
         case .opencodeGo:
             return L10n.t(
-                "Session token or full Cookie header from opencode.ai.",
-                "opencode.ai 的会话 token 或完整 Cookie 头。")
+                "Automatic if the opencode CLI is signed in. Otherwise paste a session token or Cookie header from opencode.ai.",
+                "已登录 opencode CLI 时自动读取；否则粘贴 opencode.ai 的会话 token 或 Cookie 头。")
         case .minimax:
             return L10n.t(
                 "API token or full Cookie header from platform.minimax.io.",

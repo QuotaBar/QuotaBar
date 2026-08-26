@@ -6,17 +6,29 @@ public struct CursorProvider: QuotaProvider {
     public let id = ProviderID.cursor
 
     public func isConfigured(config: ConfigStore) -> Bool {
-        config.credential(for: .cursor) != nil
+        // A manually pasted cookie wins so the user can override a stale local
+        // session; otherwise fall back to the session Cursor.app established.
+        config.credential(for: .cursor) != nil || LocalCredentials.cursorSession() != nil
     }
 
+    /// The value for the WorkosCursorSessionToken cookie. A pasted credential
+    /// is used verbatim; otherwise it is composed from Cursor.app's own
+    /// signed-in session, which stores the token as `sub::JWT`.
     private func cookieHeader(_ config: ConfigStore) throws -> String {
-        guard let raw = config.credential(for: .cursor) else {
-            throw ProviderError.notConfigured(hint: ProviderID.cursor.setupHint)
+        if let raw = config.credential(for: .cursor) {
+            if raw.lowercased().contains("workoscursorsessiontoken=") {
+                return raw
+            }
+            return "WorkosCursorSessionToken=\(raw)"
         }
-        if raw.lowercased().contains("workoscursorsessiontoken=") {
-            return raw
+        if let session = LocalCredentials.cursorSession() {
+            // The composite carries "::" and the JWT's own characters, which
+            // must be percent-encoded to survive the Cookie header.
+            let encoded = session.sessionCookie.addingPercentEncoding(
+                withAllowedCharacters: .alphanumerics) ?? session.sessionCookie
+            return "WorkosCursorSessionToken=\(encoded)"
         }
-        return "WorkosCursorSessionToken=\(raw)"
+        throw ProviderError.notConfigured(hint: ProviderID.cursor.setupHint)
     }
 
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {

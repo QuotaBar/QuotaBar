@@ -6,49 +6,65 @@ public struct OpenCodeGoProvider: QuotaProvider {
     public let id = ProviderID.opencodeGo
 
     public func isConfigured(config: ConfigStore) -> Bool {
-        config.credential(for: .opencodeGo) != nil
+        config.credential(for: .opencodeGo) != nil || LocalCredentials.openCodeGoKey() != nil
     }
 
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
-        guard let raw = config.credential(for: .opencodeGo) else {
-            throw ProviderError.notConfigured(hint: ProviderID.opencodeGo.setupHint)
-        }
         var headers = ["Accept": "application/json", "User-Agent": "QuotaBar"]
-        if raw.lowercased().contains("cookie") || raw.contains("=") {
-            headers["Cookie"] = raw
+        if let raw = config.credential(for: .opencodeGo) {
+            // A pasted credential may be a full Cookie header or a bare token.
+            if raw.lowercased().contains("cookie") || raw.contains("=") {
+                headers["Cookie"] = raw
+            } else {
+                headers["Authorization"] = "Bearer \(raw)"
+            }
+        } else if let key = LocalCredentials.openCodeGoKey() {
+            headers["Authorization"] = "Bearer \(key)"
         } else {
-            headers["Authorization"] = "Bearer \(raw)"
+            throw ProviderError.notConfigured(hint: ProviderID.opencodeGo.setupHint)
         }
         let url = URL(string: "https://opencode.ai/zen/go/v1/usage")!
         let response = try await HTTP.get(url, headers: headers).requireOK()
-        guard let root = try? JSONSerialization.jsonObject(with: response.data) as? [String: Any] else {
+        return try Self.parse(response.data)
+    }
+
+    /// Pure parse step. The live response nests the windows under a top-level
+    /// `usage` object and reports resets as ISO timestamps — both were missed
+    /// by the original guesses, so the provider silently returned nothing.
+    public static func parse(_ data: Data) throws -> UsageSnapshot {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw ProviderError.badResponse
         }
+        // Windows live under `usage` in the live API; fall back to the root for
+        // any older/flatter shape.
+        let container = (root["usage"] as? [String: Any]) ?? root
 
         func window(_ keys: [String], title: String) -> UsageWindow? {
             for key in keys {
-                guard let dict = root[key] as? [String: Any] else { continue }
-                let percent = (dict["percentUsed"] as? Double)
-                    ?? (dict["percent"] as? Double)
+                guard let dict = container[key] as? [String: Any] else { continue }
+                let percent = (dict["percent"] as? Double)
+                    ?? (dict["percentUsed"] as? Double)
                     ?? (dict["usage_percent"] as? Double)
                     ?? (dict["used_percent"] as? Double)
-                let resetSec = (dict["resetInSec"] as? Int)
-                    ?? (dict["reset_in_sec"] as? Int)
-                    ?? (dict["resetSeconds"] as? Int)
-                let resetsAt = resetSec.map { Date().addingTimeInterval(TimeInterval($0)) }
+                // Prefer the ISO reset the live API sends; keep the seconds
+                // form as a fallback.
+                let resetsAt = Dates.parseISO(dict["resetsAt"] as? String)
+                    ?? Dates.parseAny(dict["reset_at"] as? String)
+                    ?? (dict["resetInSec"] as? Int).map { Date().addingTimeInterval(TimeInterval($0)) }
+                    ?? (dict["reset_in_sec"] as? Int).map { Date().addingTimeInterval(TimeInterval($0)) }
                 return UsageWindow(title: title, usedPercent: percent, resetsAt: resetsAt)
             }
             return nil
         }
 
         var windows: [UsageWindow] = []
-        if let rolling = window(["rollingUsage", "rolling_usage", "rolling"], title: L10n.t("Rolling window", "滚动窗口")) {
+        if let rolling = window(["rolling", "rollingUsage", "rolling_usage"], title: L10n.t("Rolling window", "滚动窗口")) {
             windows.append(rolling)
         }
-        if let weekly = window(["weeklyUsage", "weekly_usage", "weekly"], title: WindowTitle.forSeconds(604_800)) {
+        if let weekly = window(["weekly", "weeklyUsage", "weekly_usage"], title: WindowTitle.forSeconds(604_800)) {
             windows.append(weekly)
         }
-        if let monthly = window(["monthlyUsage", "monthly_usage", "monthly"], title: WindowTitle.forSeconds(2_592_000)) {
+        if let monthly = window(["monthly", "monthlyUsage", "monthly_usage"], title: WindowTitle.forSeconds(2_592_000)) {
             windows.append(monthly)
         }
         guard !windows.isEmpty else { throw ProviderError.badResponse }
