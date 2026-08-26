@@ -15,13 +15,36 @@ public enum CostSource: String, Sendable, CaseIterable, Codable {
     }
 }
 
+/// One calendar day's spend. Days with no activity are still present with
+/// zeroes so a chart can render a continuous axis instead of collapsing gaps.
+public struct DailyCost: Sendable, Equatable, Identifiable {
+    public var day: Date
+    public var usd: Double
+    public var tokens: Int
+
+    public var id: TimeInterval { day.timeIntervalSince1970 }
+
+    public init(day: Date, usd: Double = 0, tokens: Int = 0) {
+        self.day = day
+        self.usd = usd
+        self.tokens = tokens
+    }
+}
+
 public struct CostSummary: Sendable, Equatable {
     public var todayUSD: Double = 0
-    public var monthUSD: Double = 0
     public var todayTokens: Int = 0
-    public var monthTokens: Int = 0
-    /// Month-to-date spend split by CLI, so the panel can attribute the total.
-    public var monthBySource: [CostSource: Double] = [:]
+    /// Spend split by CLI over the same rolling window as `windowUSD` — a
+    /// calendar-month split underneath a 30-day headline would not add up.
+    public var windowBySource: [CostSource: Double] = [:]
+    /// Rolling-window totals. A trailing 30 days says more about current
+    /// burn rate than a calendar month, which reads as near-zero on the 1st.
+    public var windowUSD: Double = 0
+    public var windowTokens: Int = 0
+    /// Per-day spend across the lookback window, oldest first, gaps filled.
+    public var daily: [DailyCost] = []
+    /// Model id the most money went to over the window.
+    public var topModel: String?
     /// Billable events that were dropped as duplicates — the same assistant
     /// turn is written to several session files when a conversation is
     /// resumed or branched into a sidechain.
@@ -31,21 +54,35 @@ public struct CostSummary: Sendable, Equatable {
 
     public init(
         todayUSD: Double = 0,
-        monthUSD: Double = 0,
         todayTokens: Int = 0,
-        monthTokens: Int = 0,
-        monthBySource: [CostSource: Double] = [:],
+        windowBySource: [CostSource: Double] = [:],
+        windowUSD: Double = 0,
+        windowTokens: Int = 0,
+        daily: [DailyCost] = [],
+        topModel: String? = nil,
         deduplicated: Int = 0)
     {
         self.todayUSD = todayUSD
-        self.monthUSD = monthUSD
         self.todayTokens = todayTokens
-        self.monthTokens = monthTokens
-        self.monthBySource = monthBySource
+        self.windowBySource = windowBySource
+        self.windowUSD = windowUSD
+        self.windowTokens = windowTokens
+        self.daily = daily
+        self.topModel = topModel
         self.deduplicated = deduplicated
     }
 
-    public var hasData: Bool { monthUSD > 0 || monthTokens > 0 }
+    public var hasData: Bool { windowUSD > 0 || windowTokens > 0 }
+
+    /// The busiest day in the window — used to label the chart's peak.
+    public var peakDay: DailyCost? {
+        daily.max { $0.usd < $1.usd }
+    }
+
+    /// Trailing `count` days, for a chart that shows less than the full window.
+    public func recentDays(_ count: Int) -> [DailyCost] {
+        Array(daily.suffix(count))
+    }
 }
 
 private struct TokenEvent {
@@ -147,6 +184,9 @@ public enum CostEstimator {
     private static let lock = NSLock()
     /// Lines bigger than this are base64/tool-output blobs — never usage rows.
     private static let maxLineBytes = 200_000
+    /// Read granularity. Larger blocks mean far fewer syscalls across tens of
+    /// gigabytes of logs.
+    private static let chunkSize = 4 << 20
 
     public static func summary(
         paths: CostPaths = .default,
@@ -159,13 +199,19 @@ public enum CostEstimator {
 
         let calendar = Calendar.current
         let dayStart = calendar.startOfDay(for: now)
-        let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: now)) ?? dayStart
 
         // The same assistant turn is logged into every session file that
         // replays it (resume, sidechain, branch). Without this the month total
         // roughly doubles.
+        // Oldest day the chart will show; also the rolling-window boundary.
+        let windowStart = calendar.date(byAdding: .day, value: -(lookbackDays - 1), to: dayStart)
+            ?? dayStart
+
         var seen = Set<String>()
         var summary = CostSummary()
+        var perDay: [Date: DailyCost] = [:]
+        var perModel: [String: Double] = [:]
+
         for event in events {
             if let key = event.dedupeKey {
                 guard seen.insert(key).inserted else {
@@ -173,17 +219,35 @@ public enum CostEstimator {
                     continue
                 }
             }
-            guard event.timestamp >= monthStart else { continue }
             let cost = cost(of: event)
             let count = tokens(of: event)
-            summary.monthUSD += cost
-            summary.monthTokens += count
-            summary.monthBySource[event.source, default: 0] += cost
+
+            guard event.timestamp >= windowStart else { continue }
+            summary.windowUSD += cost
+            summary.windowTokens += count
+            summary.windowBySource[event.source, default: 0] += cost
+            perModel[event.model, default: 0] += cost
+
+            let day = calendar.startOfDay(for: event.timestamp)
+            var bucket = perDay[day] ?? DailyCost(day: day)
+            bucket.usd += cost
+            bucket.tokens += count
+            perDay[day] = bucket
+
             if event.timestamp >= dayStart {
                 summary.todayUSD += cost
                 summary.todayTokens += count
             }
         }
+
+        // Fill the gaps: a day with no activity must still occupy a slot, or
+        // the chart silently compresses idle stretches and misreads as busy.
+        summary.daily = (0..<lookbackDays).compactMap { offset in
+            guard let day = calendar.date(byAdding: .day, value: offset, to: windowStart)
+            else { return nil }
+            return perDay[day] ?? DailyCost(day: day)
+        }
+        summary.topModel = perModel.max { $0.value < $1.value }?.key
         return summary
     }
 
@@ -200,9 +264,11 @@ public enum CostEstimator {
         return walk(root, cutoff: cutoff, filter: { $0.pathExtension == "jsonl" }) { url, formatter in
             var out: [TokenEvent] = []
             streamLines(url) { line in
-                guard line.contains("\"assistant\""), line.contains("\"usage\"") else { return }
-                guard let data = line.data(using: .utf8),
-                      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                // Claude puts `usage` after the message content, so the whole
+                // line has to be searched.
+                contains(line, Markers.assistant) && contains(line, Markers.usage)
+            } handle: { line in
+                guard let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
                       obj["type"] as? String == "assistant",
                       let message = obj["message"] as? [String: Any],
                       let usage = message["usage"] as? [String: Any]
@@ -245,9 +311,12 @@ public enum CostEstimator {
             var out: [TokenEvent] = []
             var currentModel = "gpt-5-codex"
             streamLines(url) { line in
-                guard line.contains("turn_context") || line.contains("token_count") else { return }
-                guard let data = line.data(using: .utf8),
-                      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                let head = line.count > Markers.codexHeadBytes
+                    ? UnsafeRawBufferPointer(rebasing: line[0..<Markers.codexHeadBytes])
+                    : line
+                return contains(head, Markers.turnContext) || contains(head, Markers.tokenCount)
+            } handle: { line in
+                guard let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any]
                 else { return }
                 let type = obj["type"] as? String ?? ""
                 let payload = obj["payload"] as? [String: Any] ?? [:]
@@ -289,7 +358,7 @@ public enum CostEstimator {
         _ root: URL,
         cutoff: Date,
         filter: @escaping (URL) -> Bool,
-        parse: (URL, ISO8601DateFormatter) -> [TokenEvent]) -> [TokenEvent]
+        parse: @escaping @Sendable (URL, ISO8601DateFormatter) -> [TokenEvent]) -> [TokenEvent]
     {
         let fm = FileManager.default
         guard let enumerator = fm.enumerator(
@@ -301,65 +370,158 @@ public enum CostEstimator {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
+        // Enumerate and stat first (cheap), then parse the misses in parallel:
+        // this is IO- and CPU-bound over gigabytes, and doing it on one thread
+        // left most of the machine idle.
         var out: [TokenEvent] = []
+        var pending: [(url: URL, key: String, size: Int)] = []
         for case let url as URL in enumerator {
             guard filter(url) else { continue }
             let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
             guard let mtime = values?.contentModificationDate, mtime >= cutoff else { continue }
             // Size is part of the key: an append within the same mtime second
             // would otherwise serve a stale parse.
-            let key = "\(url.path)|\(mtime.timeIntervalSince1970)|\(values?.fileSize ?? -1)"
+            let size = values?.fileSize ?? -1
+            let key = "\(url.path)|\(mtime.timeIntervalSince1970)|\(size)"
             lock.lock()
             let cached = cache[key]
             lock.unlock()
             if let cached {
                 out.append(contentsOf: cached)
             } else {
-                let parsed = parse(url, formatter)
-                lock.lock()
-                cache[key] = parsed
-                lock.unlock()
-                out.append(contentsOf: parsed)
+                pending.append((url, key, size))
             }
+        }
+        guard !pending.isEmpty else { return out }
+
+        // Longest-processing-time-first: session logs are wildly uneven (a real
+        // tree has 3GB files next to 40KB ones). In enumeration order a giant
+        // file picked up last leaves every other core idle waiting for it.
+        pending.sort { $0.size > $1.size }
+
+        var parsed = [[TokenEvent]](repeating: [], count: pending.count)
+        parsed.withUnsafeMutableBufferPointer { buffer in
+            let box = UncheckedBox(buffer)
+            DispatchQueue.concurrentPerform(iterations: pending.count) { index in
+                let localFormatter = ISO8601DateFormatter()
+                localFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                box.value[index] = parse(pending[index].url, localFormatter)
+            }
+        }
+        for (index, item) in pending.enumerated() {
+            lock.lock()
+            cache[item.key] = parsed[index]
+            lock.unlock()
+            out.append(contentsOf: parsed[index])
         }
         return out
     }
 
-    private static func streamLines(_ url: URL, _ handle: (String) -> Void) {
-        guard let handleFile = FileHandle(forReadingAtPath: url.path) else { return }
-        defer { try? handleFile.close() }
+    /// `concurrentPerform` writes disjoint indices, which the compiler cannot
+    /// prove; each worker touches only its own slot.
+    private final class UncheckedBox<T>: @unchecked Sendable {
+        let value: T
+        init(_ value: T) { self.value = value }
+    }
+
+    /// Byte patterns matched before any JSON parsing. Held as `Data` so the
+    /// hot path never builds a `String`: the Codex log tree alone is tens of
+    /// gigabytes, and converting every line to `String` just to test for a
+    /// substring dominated the scan.
+    private enum Markers {
+        static let assistant = Array("\"assistant\"".utf8)
+        static let usage = Array("\"usage\"".utf8)
+        static let turnContext = Array("turn_context".utf8)
+        static let tokenCount = Array("token_count".utf8)
+
+        /// Codex writes `"type"` near the start of every record, while the bulk
+        /// of the file is enormous tool-output lines. Measured over a real
+        /// tree: rows we care about are 0.2% of the bytes and the marker never
+        /// appeared past ~2.7KB, so scanning only the head of each line skips
+        /// almost all of the work. Claude puts `usage` *after* the message
+        /// content, so its lines must still be searched in full.
+        static let codexHeadBytes = 8192
+    }
+
+    /// Substring search straight over the mapped bytes. `Data.range(of:)` had
+    /// to materialise a slice per line first, and at hundreds of millions of
+    /// lines that allocation dominated the scan.
+    private static func contains(_ haystack: UnsafeRawBufferPointer, _ needle: [UInt8]) -> Bool {
+        guard let base = haystack.baseAddress, haystack.count >= needle.count else { return false }
+        return needle.withUnsafeBytes { pattern in
+            memmem(base, haystack.count, pattern.baseAddress!, needle.count) != nil
+        }
+    }
+
+    /// Splits the file into lines without allocating for the ones we discard.
+    ///
+    /// `matches` is offered the raw bytes; only lines it accepts are turned
+    /// into `Data` and handed to `handle`. On a real log tree that is under
+    /// 0.3% of the bytes read.
+    private static func streamLines(
+        _ url: URL,
+        matches: (UnsafeRawBufferPointer) -> Bool,
+        handle: (Data) -> Void)
+    {
+        guard let file = FileHandle(forReadingAtPath: url.path) else { return }
+        defer { try? file.close() }
+
+        // Carries the trailing partial line across a chunk boundary.
         var remainder = Data()
         // Set while discarding an oversized line so its tail isn't mistaken
         // for the start of the next one.
         var skipping = false
-        let chunkSize = 1 << 20
+
+        func emit(_ line: Data) {
+            guard line.count <= maxLineBytes else { return }
+            let accepted = line.withUnsafeBytes { matches($0) }
+            if accepted { handle(line) }
+        }
+
         while true {
-            let chunk = handleFile.readData(ofLength: chunkSize)
+            let chunk = file.readData(ofLength: chunkSize)
             if chunk.isEmpty { break }
-            var data = remainder
-            data.append(chunk)
-            var start = data.startIndex
-            while let newline = data[start...].firstIndex(of: 0x0A) {
-                let lineData = data[start..<newline]
-                if skipping {
-                    skipping = false
-                } else if lineData.count <= maxLineBytes,
-                          let line = String(data: lineData, encoding: .utf8)
-                {
-                    handle(line)
+            chunk.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
+                guard let base = raw.baseAddress else { return }
+                var cursor = 0
+                while cursor < raw.count {
+                    guard let newline = memchr(base + cursor, 0x0A, raw.count - cursor) else { break }
+                    let newlineOffset = UnsafeRawPointer(newline) - base
+                    let length = newlineOffset - cursor
+
+                    if skipping {
+                        skipping = false
+                    } else if remainder.isEmpty {
+                        let line = UnsafeRawBufferPointer(start: base + cursor, count: length)
+                        if length <= maxLineBytes, matches(line) {
+                            handle(Data(line))
+                        }
+                    } else {
+                        remainder.append(
+                            contentsOf: UnsafeRawBufferPointer(start: base + cursor, count: length))
+                        emit(remainder)
+                        remainder = Data()
+                    }
+                    cursor = newlineOffset + 1
                 }
-                start = data.index(after: newline)
+                if cursor < raw.count {
+                    let tail = UnsafeRawBufferPointer(start: base + cursor, count: raw.count - cursor)
+                    if skipping {
+                        // still inside the oversized line
+                    } else if remainder.isEmpty {
+                        remainder = Data(tail)
+                    } else {
+                        remainder.append(contentsOf: tail)
+                    }
+                }
             }
-            remainder = Data(data[start...])
             if remainder.count > maxLineBytes {
                 remainder = Data()
                 skipping = true
             }
         }
-        if !skipping, !remainder.isEmpty, remainder.count <= maxLineBytes,
-           let line = String(data: remainder, encoding: .utf8)
-        {
-            handle(line)
+        if !skipping, !remainder.isEmpty {
+            emit(remainder)
         }
     }
 

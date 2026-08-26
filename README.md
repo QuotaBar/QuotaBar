@@ -35,8 +35,10 @@ live in `~/.config/quotabar/config.json` (`0600`) and contain no secrets. No pas
 - **Stale data is labelled.** A failed refresh keeps the last good numbers but shows how old
   they are, the underlying error, and a retry button — rather than silently serving a
   reading from an expired session.
-- Local spend estimate for Claude Code and Codex CLI, read from their own session logs,
-  split per CLI. Duplicate turns are de-duplicated and cached input is not double-charged.
+- Local spend estimate for Claude Code and Codex CLI, read from their own session logs:
+  today and a trailing 30 days, a per-day bar chart with the peak called out, the model
+  most of the money went to, and a split per CLI. Duplicate turns are de-duplicated and
+  cached input is not double-charged.
 - Trend sparkline per provider, with a reset in Settings.
 - Auto refresh (1/2/5/15/30 min), plus refresh on wake and on network recovery.
 - Threshold notifications (edge-triggered, so a steady 90% does not spam).

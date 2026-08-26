@@ -24,7 +24,7 @@ enum Snapshot {
     /// Representative data: a healthy provider, one in the alert band, one
     /// serving stale numbers, and one that failed outright.
     private static func sampleStates() -> [ProviderID: ProviderPhase] {
-        let now = Date()
+        let now = referenceDate
         return [
             .codex: .loaded(UsageSnapshot(
                 planName: "Pro",
@@ -75,13 +75,32 @@ enum Snapshot {
     }
 
     private static func sampleCost() -> CostSummary {
-        CostSummary(
-            todayUSD: 4.82,
-            monthUSD: 96.40,
-            todayTokens: 1_240_000,
-            monthTokens: 28_400_000,
-            monthBySource: [.claudeCode: 71.15, .codexCLI: 25.25])
+        // A believable 30 days: quiet weekends, a ramp, one spike.
+        let shape: [Double] = [
+            12, 18, 4, 2, 22, 31, 27, 19, 6, 3,
+            24, 38, 44, 29, 15, 5, 2, 33, 41, 52,
+            47, 22, 8, 4, 36, 58, 214, 61, 33, 27,
+        ]
+        let today = Calendar.current.startOfDay(for: referenceDate)
+        let daily = shape.enumerated().compactMap { index, usd -> DailyCost? in
+            guard let day = Calendar.current.date(
+                byAdding: .day, value: index - (shape.count - 1), to: today) else { return nil }
+            return DailyCost(day: day, usd: usd, tokens: Int(usd * 260_000))
+        }
+        let total = shape.reduce(0, +)
+        return CostSummary(
+            todayUSD: shape.last ?? 0,
+            todayTokens: Int((shape.last ?? 0) * 260_000),
+            windowBySource: [.claudeCode: total * 0.62, .codexCLI: total * 0.38],
+            windowUSD: total,
+            windowTokens: Int(total * 260_000),
+            daily: daily,
+            topModel: "claude-opus-5")
     }
+
+    /// Snapshots must not shift with the wall clock, so every sample date is
+    /// derived from one fixed instant.
+    private static let referenceDate = Date(timeIntervalSince1970: 1_787_760_000)
 
     /// A fresh store per image: `ImageRenderer` runs outside a SwiftUI update
     /// transaction, so mutating a `@Published` between renders traps with

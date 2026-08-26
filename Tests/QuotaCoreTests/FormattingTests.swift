@@ -69,9 +69,17 @@ final class QuotaFormatTests: XCTestCase {
     func testMoneyAndCompactCounts() {
         XCTAssertEqual(QuotaFormat.dollars(cents: 1_234), "$12.34")
         XCTAssertEqual(QuotaFormat.usd(8.4), "$8.40")
+        XCTAssertEqual(QuotaFormat.usd(4557.331), "$4,557.33", "four figures need grouping")
+        XCTAssertEqual(QuotaFormat.usd(0), "$0.00")
+        XCTAssertEqual(QuotaFormat.usd(1_234_567.89), "$1,234,567.89")
         XCTAssertEqual(QuotaFormat.compact(999), "999")
         XCTAssertEqual(QuotaFormat.compact(12_400), "12k")
         XCTAssertEqual(QuotaFormat.compact(3_400_000), "3.4M")
+        // A month of token usage reaches the billions; stopping at M printed
+        // things like "51578.9M".
+        XCTAssertEqual(QuotaFormat.compact(51_578_900_000), "51.6B")
+        XCTAssertEqual(QuotaFormat.compact(1_000_000_000), "1.0B")
+        XCTAssertEqual(QuotaFormat.compact(2_500_000_000_000), "2.5T")
     }
 }
 

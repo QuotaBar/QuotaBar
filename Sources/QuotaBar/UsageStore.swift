@@ -40,6 +40,10 @@ final class UsageStore: ObservableObject {
     @Published var alertSettings: AlertSettings
     @Published var language: L10n.Language
     @Published var cost: CostSummary = .empty
+    /// True while the first scan is running. On a heavy log tree that is tens
+    /// of seconds, and a blank space for that long reads as "this feature is
+    /// broken" rather than "still working".
+    @Published var isComputingCost = false
     /// Recorded headline readings per provider, mirrored here so the detail
     /// sparkline redraws when a refresh lands.
     @Published var history: [ProviderID: [Double]] = [:]
@@ -241,6 +245,8 @@ final class UsageStore: ObservableObject {
     }
 
     func refreshCost() {
+        guard !isComputingCost else { return }
+        isComputingCost = true
         Task {
             // Pure local file IO over thousands of session logs; keep it off
             // the main actor.
@@ -248,6 +254,7 @@ final class UsageStore: ObservableObject {
                 CostEstimator.summary()
             }.value
             self.cost = summary
+            self.isComputingCost = false
         }
     }
 

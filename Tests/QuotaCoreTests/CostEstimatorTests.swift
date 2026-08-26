@@ -22,11 +22,6 @@ final class CostEstimatorTests: XCTestCase {
         return formatter.string(from: date)
     }
 
-    private var localMonthStart: Date {
-        let calendar = Calendar.current
-        return calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
-    }
-
     private var localDayStart: Date {
         Calendar.current.startOfDay(for: now)
     }
@@ -104,8 +99,8 @@ final class CostEstimatorTests: XCTestCase {
         let summary = CostEstimator.summary(paths: paths, now: now)
 
         // 1M output tokens on Opus = $25.00, counted exactly once.
-        XCTAssertEqual(summary.monthUSD, 25.0, accuracy: 0.0001)
-        XCTAssertEqual(summary.monthTokens, 1_000_000)
+        XCTAssertEqual(summary.windowUSD, 25.0, accuracy: 0.0001)
+        XCTAssertEqual(summary.windowTokens, 1_000_000)
         XCTAssertEqual(summary.deduplicated, 1)
     }
 
@@ -117,7 +112,7 @@ final class CostEstimatorTests: XCTestCase {
 
         let summary = CostEstimator.summary(paths: paths, now: now)
 
-        XCTAssertEqual(summary.monthUSD, 50.0, accuracy: 0.0001)
+        XCTAssertEqual(summary.windowUSD, 50.0, accuracy: 0.0001)
         XCTAssertEqual(summary.deduplicated, 0)
     }
 
@@ -127,13 +122,13 @@ final class CostEstimatorTests: XCTestCase {
         try writeClaude("a.jsonl", lines: [
             claudeLine(messageID: "m5", requestID: "r5", write5m: 1_000_000),
         ])
-        let fiveMinute = CostEstimator.summary(paths: paths, now: now).monthUSD
+        let fiveMinute = CostEstimator.summary(paths: paths, now: now).windowUSD
 
         CostEstimator.resetCache()
         try writeClaude("a.jsonl", lines: [
             claudeLine(messageID: "m1", requestID: "r1", write1h: 1_000_000),
         ])
-        let oneHour = CostEstimator.summary(paths: paths, now: now).monthUSD
+        let oneHour = CostEstimator.summary(paths: paths, now: now).windowUSD
 
         // Opus: 5m write = $6.25/M, 1h write = $10.00/M.
         XCTAssertEqual(fiveMinute, 6.25, accuracy: 0.0001)
@@ -150,7 +145,7 @@ final class CostEstimatorTests: XCTestCase {
         """
         try writeClaude("a.jsonl", lines: [line])
 
-        XCTAssertEqual(CostEstimator.summary(paths: paths, now: now).monthUSD, 6.25, accuracy: 0.0001)
+        XCTAssertEqual(CostEstimator.summary(paths: paths, now: now).windowUSD, 6.25, accuracy: 0.0001)
     }
 
     // MARK: Codex cached-input handling
@@ -164,7 +159,7 @@ final class CostEstimatorTests: XCTestCase {
         let summary = CostEstimator.summary(paths: paths, now: now)
 
         // gpt-5-codex cache read = $0.125/M. Billing the input again would give $1.375.
-        XCTAssertEqual(summary.monthUSD, 0.125, accuracy: 0.0001)
+        XCTAssertEqual(summary.windowUSD, 0.125, accuracy: 0.0001)
     }
 
     func testCodexFreshInputIsBilledAtInputRate() throws {
@@ -172,24 +167,24 @@ final class CostEstimatorTests: XCTestCase {
             codexLine(input: 1_000_000, cached: 0, output: 0),
         ])
 
-        XCTAssertEqual(CostEstimator.summary(paths: paths, now: now).monthUSD, 1.25, accuracy: 0.0001)
+        XCTAssertEqual(CostEstimator.summary(paths: paths, now: now).windowUSD, 1.25, accuracy: 0.0001)
     }
 
     // MARK: Time boundaries
 
-    func testEventsBeforeThisMonthAreExcluded() throws {
+    func testEventsOutsideTheLookbackWindowAreExcluded() throws {
         try writeClaude("a.jsonl", lines: [
             claudeLine(
                 messageID: "old", requestID: "old",
-                timestamp: iso(localMonthStart.addingTimeInterval(-1)), output: 1_000_000),
+                timestamp: iso(localDayStart.addingTimeInterval(-40 * 86_400)), output: 1_000_000),
             claudeLine(
                 messageID: "new", requestID: "new",
-                timestamp: iso(localMonthStart.addingTimeInterval(1)), output: 1_000_000),
+                timestamp: iso(localDayStart.addingTimeInterval(-2 * 86_400)), output: 1_000_000),
         ])
 
-        let summary = CostEstimator.summary(paths: paths, now: now)
+        let summary = CostEstimator.summary(paths: paths, lookbackDays: 31, now: now)
 
-        XCTAssertEqual(summary.monthUSD, 25.0, accuracy: 0.0001)
+        XCTAssertEqual(summary.windowUSD, 25.0, accuracy: 0.0001)
     }
 
     func testTodayIsASubsetOfTheMonth() throws {
@@ -204,7 +199,7 @@ final class CostEstimatorTests: XCTestCase {
 
         let summary = CostEstimator.summary(paths: paths, now: now)
 
-        XCTAssertEqual(summary.monthUSD, 50.0, accuracy: 0.0001)
+        XCTAssertEqual(summary.windowUSD, 50.0, accuracy: 0.0001)
         XCTAssertEqual(summary.todayUSD, 25.0, accuracy: 0.0001)
         XCTAssertEqual(summary.todayTokens, 1_000_000)
     }
@@ -221,15 +216,23 @@ final class CostEstimatorTests: XCTestCase {
 
         let summary = CostEstimator.summary(paths: paths, now: now)
 
-        XCTAssertEqual(summary.monthBySource[.claudeCode] ?? 0, 25.0, accuracy: 0.0001)
-        XCTAssertEqual(summary.monthBySource[.codexCLI] ?? 0, 1.25, accuracy: 0.0001)
-        XCTAssertEqual(summary.monthUSD, 26.25, accuracy: 0.0001)
+        XCTAssertEqual(summary.windowBySource[.claudeCode] ?? 0, 25.0, accuracy: 0.0001)
+        XCTAssertEqual(summary.windowBySource[.codexCLI] ?? 0, 1.25, accuracy: 0.0001)
+        XCTAssertEqual(summary.windowUSD, 26.25, accuracy: 0.0001)
     }
 
     func testEmptyTreeProducesNoData() {
-        let summary = CostEstimator.summary(paths: paths, now: now)
+        let summary = CostEstimator.summary(paths: paths, lookbackDays: 31, now: now)
+
         XCTAssertFalse(summary.hasData)
-        XCTAssertEqual(summary, .empty)
+        XCTAssertEqual(summary.windowUSD, 0)
+        XCTAssertEqual(summary.todayUSD, 0)
+        XCTAssertNil(summary.topModel)
+        XCTAssertTrue(summary.windowBySource.isEmpty)
+        // The day slots are still present and all zero — the chart needs a
+        // continuous axis, so "no data" is 31 empty days, not an empty array.
+        XCTAssertEqual(summary.daily.count, 31)
+        XCTAssertTrue(summary.daily.allSatisfy { $0.usd == 0 && $0.tokens == 0 })
     }
 }
 
@@ -271,5 +274,268 @@ final class PricingTests: XCTestCase {
 
     func testUnknownModelIsPricedNotFree() {
         XCTAssertGreaterThan(Pricing.perMillion(for: "some-future-model").0, 0)
+    }
+}
+
+// MARK: - Daily breakdown
+
+final class DailyCostTests: XCTestCase {
+    private var root: URL!
+    private var claudeRoot: URL!
+    private var paths: CostPaths!
+    private let now = ISO8601DateFormatter().date(from: "2026-08-26T12:00:00Z")!
+
+    override func setUpWithError() throws {
+        root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("quotabar-daily-\(UUID().uuidString)")
+        claudeRoot = root.appendingPathComponent("claude/projects")
+        let codexRoot = root.appendingPathComponent("codex/sessions")
+        try FileManager.default.createDirectory(at: claudeRoot, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: codexRoot, withIntermediateDirectories: true)
+        paths = CostPaths(claudeProjects: claudeRoot, codexSessions: codexRoot)
+        CostEstimator.resetCache()
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: root)
+        CostEstimator.resetCache()
+    }
+
+    private func iso(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter.string(from: date)
+    }
+
+    /// Noon on the local day `offset` days before today, so the event cannot
+    /// drift across a day boundary when converted to UTC.
+    private func localNoon(daysAgo offset: Int) -> Date {
+        let calendar = Calendar.current
+        let day = calendar.date(byAdding: .day, value: -offset, to: calendar.startOfDay(for: now))!
+        return calendar.date(byAdding: .hour, value: 12, to: day)!
+    }
+
+    private func write(_ lines: [String]) throws {
+        try lines.joined(separator: "\n")
+            .write(to: claudeRoot.appendingPathComponent("a.jsonl"), atomically: true, encoding: .utf8)
+    }
+
+    private func line(id: String, at date: Date, model: String = "claude-opus-5", output: Int) -> String {
+        """
+        {"type":"assistant","requestId":"\(id)","timestamp":"\(iso(date))",\
+        "message":{"id":"\(id)","model":"\(model)","usage":{\
+        "input_tokens":0,"output_tokens":\(output),"cache_creation_input_tokens":0,\
+        "cache_read_input_tokens":0}}}
+        """
+    }
+
+    func testIdleDaysStillOccupyASlot() throws {
+        try write([
+            line(id: "a", at: localNoon(daysAgo: 4), output: 1_000_000),
+            line(id: "b", at: localNoon(daysAgo: 0), output: 2_000_000),
+        ])
+
+        let summary = CostEstimator.summary(paths: paths, lookbackDays: 5, now: now)
+
+        // Five slots for five days — collapsing the three idle days would make
+        // an idle stretch read as continuous activity in the chart.
+        XCTAssertEqual(summary.daily.count, 5)
+        XCTAssertEqual(summary.daily.map(\.usd), [25, 0, 0, 0, 50])
+    }
+
+    func testDaysAreOldestFirstAndContiguous() throws {
+        try write([line(id: "a", at: localNoon(daysAgo: 0), output: 1_000_000)])
+
+        let days = CostEstimator.summary(paths: paths, lookbackDays: 7, now: now).daily
+
+        XCTAssertEqual(days.count, 7)
+        for (earlier, later) in zip(days, days.dropFirst()) {
+            XCTAssertEqual(
+                Calendar.current.dateComponents([.day], from: earlier.day, to: later.day).day, 1,
+                "days must be contiguous")
+        }
+        XCTAssertEqual(days.last?.day, Calendar.current.startOfDay(for: now))
+    }
+
+    func testTodayMatchesTheLastBucket() throws {
+        try write([
+            line(id: "a", at: localNoon(daysAgo: 2), output: 1_000_000),
+            line(id: "b", at: localNoon(daysAgo: 0), output: 4_000_000),
+        ])
+
+        let summary = CostEstimator.summary(paths: paths, lookbackDays: 5, now: now)
+
+        XCTAssertEqual(summary.daily.last?.usd ?? 0, summary.todayUSD, accuracy: 0.0001)
+        XCTAssertEqual(summary.daily.last?.tokens, summary.todayTokens)
+    }
+
+    func testWindowTotalIsTheSumOfDays() throws {
+        try write([
+            line(id: "a", at: localNoon(daysAgo: 3), output: 1_000_000),
+            line(id: "b", at: localNoon(daysAgo: 1), output: 2_000_000),
+            line(id: "c", at: localNoon(daysAgo: 0), output: 1_000_000),
+        ])
+
+        let summary = CostEstimator.summary(paths: paths, lookbackDays: 5, now: now)
+
+        XCTAssertEqual(summary.windowUSD, summary.daily.reduce(0) { $0 + $1.usd }, accuracy: 0.0001)
+        XCTAssertEqual(summary.windowUSD, 100, accuracy: 0.0001)
+    }
+
+    func testEventsOlderThanTheWindowAreExcluded() throws {
+        try write([
+            line(id: "old", at: localNoon(daysAgo: 9), output: 1_000_000),
+            line(id: "new", at: localNoon(daysAgo: 1), output: 1_000_000),
+        ])
+
+        let summary = CostEstimator.summary(paths: paths, lookbackDays: 5, now: now)
+
+        XCTAssertEqual(summary.windowUSD, 25, accuracy: 0.0001)
+        XCTAssertEqual(summary.daily.count, 5)
+    }
+
+    func testPeakDayIsTheBusiestOne() throws {
+        try write([
+            line(id: "a", at: localNoon(daysAgo: 3), output: 1_000_000),
+            line(id: "b", at: localNoon(daysAgo: 2), output: 8_000_000),
+            line(id: "c", at: localNoon(daysAgo: 0), output: 2_000_000),
+        ])
+
+        let peak = CostEstimator.summary(paths: paths, lookbackDays: 5, now: now).peakDay
+
+        XCTAssertEqual(peak?.usd ?? 0, 200, accuracy: 0.0001)
+        XCTAssertEqual(peak?.day, Calendar.current.startOfDay(for: localNoon(daysAgo: 2)))
+    }
+
+    func testTopModelIsRankedBySpendNotFrequency() throws {
+        try write([
+            // Three cheap Haiku turns versus one expensive Opus turn.
+            line(id: "h1", at: localNoon(daysAgo: 0), model: "claude-haiku-4-5", output: 1_000_000),
+            line(id: "h2", at: localNoon(daysAgo: 0), model: "claude-haiku-4-5", output: 1_000_000),
+            line(id: "h3", at: localNoon(daysAgo: 0), model: "claude-haiku-4-5", output: 1_000_000),
+            line(id: "o1", at: localNoon(daysAgo: 0), model: "claude-opus-5", output: 1_000_000),
+        ])
+
+        // Haiku: 3 × $5 = $15. Opus: 1 × $25.
+        XCTAssertEqual(
+            CostEstimator.summary(paths: paths, lookbackDays: 5, now: now).topModel,
+            "claude-opus-5")
+    }
+
+    func testRecentDaysTrimsFromTheEnd() throws {
+        try write([line(id: "a", at: localNoon(daysAgo: 0), output: 1_000_000)])
+
+        let summary = CostEstimator.summary(paths: paths, lookbackDays: 10, now: now)
+        let recent = summary.recentDays(3)
+
+        XCTAssertEqual(recent.count, 3)
+        XCTAssertEqual(recent.last?.day, Calendar.current.startOfDay(for: now))
+    }
+
+    func testEmptyTreeHasNoPeakAndNoModel() {
+        let summary = CostEstimator.summary(paths: paths, lookbackDays: 5, now: now)
+        XCTAssertNil(summary.topModel)
+        XCTAssertEqual(summary.peakDay?.usd ?? 0, 0)
+        XCTAssertFalse(summary.hasData)
+    }
+}
+
+// MARK: - Chunk boundaries
+
+/// The scanner reads in fixed blocks, so lines land across block boundaries in
+/// every real log. Fixture files elsewhere in this suite are a few hundred
+/// bytes and never exercise that path.
+final class ChunkBoundaryTests: XCTestCase {
+    private var root: URL!
+    private var claudeRoot: URL!
+    private var paths: CostPaths!
+    private let now = ISO8601DateFormatter().date(from: "2026-08-26T12:00:00Z")!
+
+    override func setUpWithError() throws {
+        root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("quotabar-chunk-\(UUID().uuidString)")
+        claudeRoot = root.appendingPathComponent("claude/projects")
+        let codexRoot = root.appendingPathComponent("codex/sessions")
+        try FileManager.default.createDirectory(at: claudeRoot, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: codexRoot, withIntermediateDirectories: true)
+        paths = CostPaths(claudeProjects: claudeRoot, codexSessions: codexRoot)
+        CostEstimator.resetCache()
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: root)
+        CostEstimator.resetCache()
+    }
+
+    /// One billable row worth exactly $25 on Opus (1M output tokens).
+    private func billableLine(_ id: String) -> String {
+        """
+        {"type":"assistant","requestId":"\(id)","timestamp":"2026-08-26T10:00:00.000Z",\
+        "message":{"id":"\(id)","model":"claude-opus-5","usage":{\
+        "input_tokens":0,"output_tokens":1000000,"cache_creation_input_tokens":0,\
+        "cache_read_input_tokens":0}}}
+        """
+    }
+
+    /// A big line the scanner must skip over without losing its place — this
+    /// is what tool output looks like in a real log.
+    private func filler(_ bytes: Int) -> String {
+        "{\"type\":\"user\",\"padding\":\"" + String(repeating: "x", count: bytes) + "\"}"
+    }
+
+    private func write(_ lines: [String]) throws {
+        try lines.joined(separator: "\n")
+            .write(to: claudeRoot.appendingPathComponent("big.jsonl"), atomically: true, encoding: .utf8)
+    }
+
+    func testBillableRowsSurviveAcrossManyChunks() throws {
+        // ~24MB of filler around 20 billable rows: several read blocks, with
+        // rows landing at unpredictable offsets inside them.
+        var lines: [String] = []
+        for index in 0..<20 {
+            lines.append(filler(1_200_000))
+            lines.append(billableLine("msg\(index)"))
+        }
+        try write(lines)
+
+        let summary = CostEstimator.summary(paths: paths, lookbackDays: 31, now: now)
+
+        XCTAssertEqual(summary.windowUSD, 20 * 25.0, accuracy: 0.0001,
+                       "every billable row must be found regardless of where blocks fall")
+        XCTAssertEqual(summary.windowTokens, 20 * 1_000_000)
+    }
+
+    func testRowSplitExactlyAcrossABoundary() throws {
+        // Pad so the next line starts a few bytes before a 4MB boundary and is
+        // therefore cut in half by the read.
+        let blockSize = 4 << 20
+        let padding = blockSize - 40
+        try write([filler(padding), billableLine("split"), billableLine("after")])
+
+        let summary = CostEstimator.summary(paths: paths, lookbackDays: 31, now: now)
+
+        XCTAssertEqual(summary.windowUSD, 50.0, accuracy: 0.0001,
+                       "a row straddling a block boundary must not be dropped")
+    }
+
+    func testOversizedLineIsSkippedWithoutLosingTheNextRow() throws {
+        // A single line larger than one read block: it must be discarded, and
+        // the scanner must resynchronise on the following newline.
+        try write([filler(9 << 20), billableLine("after-huge")])
+
+        let summary = CostEstimator.summary(paths: paths, lookbackDays: 31, now: now)
+
+        XCTAssertEqual(summary.windowUSD, 25.0, accuracy: 0.0001,
+                       "the row after an oversized line must still be counted")
+    }
+
+    func testFinalRowWithoutTrailingNewline() throws {
+        try write([filler(5 << 20), billableLine("last")])
+
+        XCTAssertEqual(
+            CostEstimator.summary(paths: paths, lookbackDays: 31, now: now).windowUSD,
+            25.0, accuracy: 0.0001,
+            "the last line has no newline terminator and must still be read")
     }
 }

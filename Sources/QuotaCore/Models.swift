@@ -398,13 +398,47 @@ public enum QuotaFormat {
         String(format: "$%.2f", Double(cents) / 100)
     }
 
+    /// Grouped so a four-figure total stays readable ("$4,557.33").
+    ///
+    /// Built from a decimal formatter with the "$" prefixed by hand rather than
+    /// `.currency`: the currency style inserts a space after the symbol in some
+    /// locales ("$ 8.40"), and the amount is in dollars regardless of where the
+    /// user is.
     public static func usd(_ value: Double) -> String {
-        String(format: "$%.2f", value)
+        let magnitude = usdFormatter.string(from: NSNumber(value: abs(value)))
+            ?? String(format: "%.2f", abs(value))
+        return value < 0 ? "-$\(magnitude)" : "$\(magnitude)"
     }
 
-    /// 1_234_567 → "1.2M"
+    private static let usdFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = true
+        formatter.groupingSeparator = ","
+        formatter.decimalSeparator = "."
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+        return formatter
+    }()
+
+    /// "8/26" — compact axis label for the daily chart.
+    public static func shortDay(_ date: Date) -> String {
+        shortDayFormatter.string(from: date)
+    }
+
+    private static let shortDayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M/d"
+        return formatter
+    }()
+
+    /// 1_234_567 → "1.2M", 51_578_900_000 → "51.6B".
+    /// Token counts reach the billions over a month, so stopping at M prints
+    /// unreadable figures like "51578.9M".
     public static func compact(_ count: Int) -> String {
         switch Double(count) {
+        case 1_000_000_000_000...: String(format: "%.1fT", Double(count) / 1_000_000_000_000)
+        case 1_000_000_000...: String(format: "%.1fB", Double(count) / 1_000_000_000)
         case 1_000_000...: String(format: "%.1fM", Double(count) / 1_000_000)
         case 1_000...: String(format: "%.0fk", Double(count) / 1_000)
         default: "\(count)"

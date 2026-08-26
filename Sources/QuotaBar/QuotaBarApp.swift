@@ -40,5 +40,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Snapshot.run(directory: directory)
             NSApp.terminate(nil)
         }
+        if arguments.contains("--cost") {
+            Diagnostics.printCost()
+            NSApp.terminate(nil)
+        }
     }
 }

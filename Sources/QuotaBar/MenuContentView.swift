@@ -131,6 +131,17 @@ struct MenuContentBody: View {
         VStack(spacing: Design.space2 + 2) {
             if store.cost.hasData {
                 CostCard(cost: store.cost)
+            } else if store.isComputingCost {
+                HStack(spacing: Design.space2) {
+                    ProgressView().controlSize(.small)
+                    Text(L10n.t(
+                        "Reading local session logs…",
+                        "正在读取本地会话日志…"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .quotaCard()
             }
             if store.enabled.isEmpty {
                 VStack(spacing: Design.space2) {
@@ -258,54 +269,173 @@ struct OverviewRow: View {
 
 struct CostCard: View {
     let cost: CostSummary
+    /// How many days the chart shows. 30 keeps each bar wide enough to read
+    /// inside a 380pt panel.
+    private let chartDays = 30
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Design.space1 + 2) {
-            HStack(spacing: Design.space2 + 2) {
-                Image(systemName: "dollarsign.circle")
-                    .foregroundStyle(Design.accent)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(L10n.t(
-                        "Today \(QuotaFormat.usd(cost.todayUSD)) · \(QuotaFormat.compact(cost.todayTokens)) tokens",
-                        "今日 \(QuotaFormat.usd(cost.todayUSD)) · \(QuotaFormat.compact(cost.todayTokens)) tokens"))
-                        .font(.callout.weight(.medium))
-                    Text(L10n.t(
-                        "Month \(QuotaFormat.usd(cost.monthUSD)) · \(QuotaFormat.compact(cost.monthTokens)) tokens",
-                        "本月 \(QuotaFormat.usd(cost.monthUSD)) · \(QuotaFormat.compact(cost.monthTokens)) tokens"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Text(L10n.t("local logs", "本地日志"))
-                    .font(.caption2)
-                    .padding(.horizontal, Design.space1 + 2)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(Design.surfaceStrong))
-                    .foregroundStyle(.secondary)
-                    .help(L10n.t(
-                        "Estimated from the CLIs' own session logs at list prices. Not a bill.",
-                        "根据各 CLI 的本地会话日志按官方标价估算，非实际账单。"))
+        VStack(alignment: .leading, spacing: Design.space3) {
+            totals
+            if days.contains(where: { $0.usd > 0 }) {
+                DailyBarChart(days: days, peak: cost.peakDay)
             }
-            if sources.count > 1 {
-                HStack(spacing: Design.space2) {
-                    ForEach(sources, id: \.0) { source, amount in
-                        Text("\(source.displayName) \(QuotaFormat.usd(amount))")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.leading, Design.space6)
-            }
+            footnote
         }
         .quotaCard()
     }
 
-    /// Month-to-date spend per CLI, largest first.
+    private var days: [DailyCost] {
+        cost.recentDays(chartDays)
+    }
+
+    // MARK: Totals
+
+    private var totals: some View {
+        HStack(alignment: .top, spacing: Design.space3) {
+            column(
+                label: L10n.t("Today", "今日"),
+                amount: cost.todayUSD,
+                tokens: cost.todayTokens)
+            Divider().frame(height: 34)
+            column(
+                label: L10n.t("\(chartDays) days", "\(chartDays) 天"),
+                amount: cost.windowUSD,
+                tokens: cost.windowTokens)
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func column(label: String, amount: Double, tokens: Int) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(QuotaFormat.usd(amount))
+                .font(.system(size: 17, weight: .semibold))
+                .monospacedDigit()
+            Text(L10n.t(
+                "\(QuotaFormat.compact(tokens)) tokens",
+                "\(QuotaFormat.compact(tokens)) tokens"))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        }
+        .frame(minWidth: 96, alignment: .leading)
+    }
+
+    // MARK: Footnote
+
+    private var footnote: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            // Own line: crammed onto the disclaimer these amounts truncated to
+            // "$580…", which is worse than not showing them.
+            if !sources.isEmpty {
+                Text(sources
+                    .map { "\($0.0.displayName) \(QuotaFormat.usd($0.1))" }
+                    .joined(separator: "  ·  "))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .lineLimit(1)
+            }
+            Text(disclaimer)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+    }
+
+    private var disclaimer: String {
+        let base = L10n.t("estimated from local logs, not a bill", "本地日志估算，非账单")
+        guard let model = cost.topModel else { return base }
+        return "\(model)  ·  \(base)"
+    }
+
+    /// Spend per CLI over the window, largest first; hidden when only one CLI
+    /// contributed, since it would just restate the total.
     private var sources: [(CostSource, Double)] {
-        cost.monthBySource
-            .filter { $0.value > 0 }
-            .sorted { $0.value > $1.value }
-            .map { ($0.key, $0.value) }
+        let contributing = cost.windowBySource.filter { $0.value > 0 }
+        guard contributing.count > 1 else { return [] }
+        return contributing.sorted { $0.value > $1.value }.map { ($0.key, $0.value) }
+    }
+}
+
+/// Per-day spend as bars on a shared scale, with the peak called out.
+///
+/// The scale is the window's own maximum rather than a fixed ceiling: unlike a
+/// quota percentage, spend has no natural upper bound to normalise against.
+struct DailyBarChart: View {
+    let days: [DailyCost]
+    var peak: DailyCost?
+    var height: CGFloat = 48
+
+    /// Chooses a ceiling that keeps ordinary days readable without lying about
+    /// the peak.
+    ///
+    /// Scaling to the maximum lets one runaway session flatten the other 29
+    /// days into 1pt stubs; scaling to the runner-up makes the spike and the
+    /// second-busiest day render identically. So: use the true maximum while
+    /// it is within 2x of the runner-up, and cap at 2x beyond that — the spike
+    /// still reads as clearly tallest, everything else keeps its height, and
+    /// the exact peak amount is printed above the chart either way.
+    private var scaleUSD: Double {
+        let sorted = days.map(\.usd).sorted(by: >)
+        guard let highest = sorted.first, highest > 0 else { return 0.0001 }
+        guard sorted.count > 1, sorted[1] > 0 else { return highest }
+        return min(highest, sorted[1] * 2)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Design.space1) {
+            if let peak, peak.usd > 0 {
+                HStack(spacing: Design.space1) {
+                    Spacer(minLength: 0)
+                    Text(L10n.t(
+                        "peak \(QuotaFormat.usd(peak.usd)) on \(QuotaFormat.shortDay(peak.day))",
+                        "峰值 \(QuotaFormat.usd(peak.usd)) · \(QuotaFormat.shortDay(peak.day))"))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+            }
+            GeometryReader { proxy in
+                HStack(alignment: .bottom, spacing: 2) {
+                    ForEach(days) { day in
+                        bar(for: day, in: proxy.size.height)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(height: height)
+            axis
+        }
+    }
+
+    private func bar(for day: DailyCost, in available: CGFloat) -> some View {
+        let ratio = day.usd / scaleUSD
+        let isPeak = day.day == peak?.day && day.usd > 0
+        return RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+            .fill(isPeak ? Design.accent : Design.accent.opacity(0.45))
+            // An idle day keeps a 1pt stub so the axis stays legible and the
+            // gap is visibly a gap, not a missing bar.
+            .frame(height: max(1, available * CGFloat(min(ratio, 1))))
+            .frame(maxWidth: .infinity)
+            .help("\(QuotaFormat.shortDay(day.day)) · \(QuotaFormat.usd(day.usd))")
+    }
+
+    @ViewBuilder
+    private var axis: some View {
+        if let first = days.first, let last = days.last {
+            HStack {
+                Text(QuotaFormat.shortDay(first.day))
+                Spacer()
+                Text(QuotaFormat.shortDay(last.day))
+            }
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
+            .monospacedDigit()
+        }
     }
 }
 
