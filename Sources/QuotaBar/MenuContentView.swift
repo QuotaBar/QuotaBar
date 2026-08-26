@@ -151,7 +151,10 @@ struct MenuContentBody: View {
                     Text(L10n.t("No providers enabled.", "尚未启用任何服务商。"))
                         .font(.callout)
                         .foregroundStyle(.secondary)
-                    Button(L10n.t("Open Settings", "打开设置")) { openSettings() }
+                    Button(L10n.t("Open Settings", "打开设置")) {
+                        openSettings()
+                        SettingsWindow.focus()
+                    }
                         .controlSize(.small)
                 }
                 .padding(.top, Design.space6)
@@ -191,6 +194,7 @@ struct MenuContentBody: View {
             .help(L10n.t("Refresh now", "立即刷新"))
             Button {
                 openSettings()
+                SettingsWindow.focus()
             } label: {
                 Image(systemName: "gearshape")
             }
@@ -581,7 +585,10 @@ struct FailureView: View {
             HStack(spacing: Design.space2) {
                 Button(L10n.t("Retry", "重试")) { store.refresh(id) }
                     .controlSize(.small)
-                Button(L10n.t("Settings", "设置")) { openSettings() }
+                Button(L10n.t("Settings", "设置")) {
+                    openSettings()
+                    SettingsWindow.focus()
+                }
                     .controlSize(.small)
                 if let url = id.dashboardURL {
                     Button(L10n.t("Console", "控制台")) { NSWorkspace.shared.open(url) }

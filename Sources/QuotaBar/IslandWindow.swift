@@ -160,6 +160,7 @@ struct IslandView: View {
                         .foregroundStyle(.white.opacity(0.7))
                 }
                 .buttonStyle(.plain)
+                .simultaneousGesture(TapGesture().onEnded { SettingsWindow.focus() })
             }
             .padding(.horizontal, Design.space4)
             .padding(.top, Design.space3)
