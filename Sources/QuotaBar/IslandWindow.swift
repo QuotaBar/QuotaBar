@@ -87,7 +87,7 @@ final class IslandCoordinator {
     }
 
     static func size(expanded: Bool) -> NSSize {
-        expanded ? NSSize(width: 388, height: 600) : NSSize(width: 220, height: 40)
+        expanded ? NSSize(width: 388, height: 760) : NSSize(width: 220, height: 40)
     }
 }
 
@@ -165,8 +165,11 @@ struct IslandView: View {
             .padding(.top, Design.space3)
             .padding(.bottom, Design.space1)
 
+            // The island lives in a fixed-size floating panel, so this is the
+            // one place that still needs to scroll when a lot of providers are
+            // enabled.
             ScrollView {
-                MenuContentBody(store: store)
+                MenuContentBody(store: store, scrollable: false)
                     .padding(.horizontal, Design.space3)
                     .padding(.bottom, Design.space3)
             }

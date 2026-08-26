@@ -65,11 +65,20 @@ public enum MeterMode: String, Codable, CaseIterable, Identifiable, Sendable {
 
 // MARK: - Brand theme
 
+/// Neutral accent, deliberately: the panel already carries eleven provider
+/// brand colours, and a twelfth competing hue makes none of them legible.
+///
+/// The pair inverts between appearances — a graphite selection block would
+/// disappear into a dark window, so dark mode gets a light block with dark
+/// ink instead.
 public enum QuotaTheme {
-    /// Lime green sampled from the brand reference design.
-    public static let accentHex = "69EA28"
-    /// Near-black ink used on top of the accent.
-    public static let inkHex = "101010"
+    public nonisolated(unsafe) static var accentHex = "3F3F46"
+    /// Text drawn on top of the accent. Kept in step with it, or the selected
+    /// tile becomes unreadable.
+    public nonisolated(unsafe) static var inkHex = "FFFFFF"
+
+    public nonisolated(unsafe) static var accentDarkHex = "E4E4E7"
+    public nonisolated(unsafe) static var inkDarkHex = "18181B"
 }
 
 // MARK: - Provider identity
@@ -374,6 +383,18 @@ public enum QuotaFormat {
         if hours > 0 { return L10n.t("\(hours)h \(minutes)m", "\(hours) 小时 \(minutes) 分") }
         if minutes > 0 { return L10n.t("\(minutes)m", "\(minutes) 分钟") }
         return L10n.t("\(total)s", "\(total) 秒")
+    }
+
+    /// Full phrase for a window's reset time, in both languages.
+    ///
+    /// Composing this at the call site produced "resets in now" / "已重置后重置"
+    /// once the reset moment had passed, because `countdown` already returns a
+    /// complete phrase in that case.
+    public static func resetLabel(to date: Date, from now: Date = .now) -> String {
+        guard date > now else { return L10n.t("reset due", "已到重置时间") }
+        return L10n.t(
+            "resets in \(countdown(to: date, from: now))",
+            "\(countdown(to: date, from: now))后重置")
     }
 
     /// "3 minutes ago" — how old a snapshot is.

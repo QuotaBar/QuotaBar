@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import QuotaCore
 
@@ -23,8 +24,22 @@ enum Design {
     static let surfaceStrong = Color.primary.opacity(0.08)
     static let track = Color.primary.opacity(0.15)
 
-    static var accent: Color { Color(hex: QuotaTheme.accentHex) }
-    static var ink: Color { Color(hex: QuotaTheme.inkHex) }
+    /// Resolves per appearance: graphite-on-white in light mode, and the
+    /// inverse in dark mode so the selection block never sinks into the window.
+    static var accent: Color {
+        adaptive(light: QuotaTheme.accentHex, dark: QuotaTheme.accentDarkHex)
+    }
+
+    static var ink: Color {
+        adaptive(light: QuotaTheme.inkHex, dark: QuotaTheme.inkDarkHex)
+    }
+
+    private static func adaptive(light: String, dark: String) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            return NSColor(hex: isDark ? dark : light)
+        })
+    }
 }
 
 extension View {
@@ -32,5 +47,18 @@ extension View {
     func quotaCard(radius: CGFloat = Design.radiusCard) -> some View {
         padding(Design.space3)
             .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(Design.surface))
+    }
+}
+
+
+extension NSColor {
+    convenience init(hex: String) {
+        var value: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&value)
+        self.init(
+            srgbRed: CGFloat((value >> 16) & 0xFF) / 255,
+            green: CGFloat((value >> 8) & 0xFF) / 255,
+            blue: CGFloat(value & 0xFF) / 255,
+            alpha: 1)
     }
 }

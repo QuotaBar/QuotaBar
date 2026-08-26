@@ -43,6 +43,23 @@ final class QuotaFormatTests: XCTestCase {
         XCTAssertEqual(QuotaFormat.countdown(to: now.addingTimeInterval(180_000), from: now), "2d 2h")
     }
 
+    func testResetLabelReadsAsOnePhrase() {
+        // Regression: composing "resets in" + countdown produced
+        // "resets in now" / "已重置后重置" once the moment had passed.
+        XCTAssertEqual(QuotaFormat.resetLabel(to: now.addingTimeInterval(600), from: now),
+                       "resets in 10m")
+        XCTAssertEqual(QuotaFormat.resetLabel(to: now.addingTimeInterval(-60), from: now),
+                       "reset due")
+        XCTAssertEqual(QuotaFormat.resetLabel(to: now, from: now), "reset due")
+
+        L10n.override = .zhHans
+        XCTAssertEqual(QuotaFormat.resetLabel(to: now.addingTimeInterval(600), from: now),
+                       "10 分钟后重置")
+        XCTAssertEqual(QuotaFormat.resetLabel(to: now.addingTimeInterval(-60), from: now),
+                       "已到重置时间")
+        L10n.override = .en
+    }
+
     func testCountdownInThePast() {
         XCTAssertEqual(QuotaFormat.countdown(to: now.addingTimeInterval(-10), from: now), "now")
         XCTAssertEqual(QuotaFormat.countdown(to: now, from: now), "now")

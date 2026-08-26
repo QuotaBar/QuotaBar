@@ -118,6 +118,35 @@ enum Snapshot {
         return store
     }
 
+    /// Renders the overview panel once per candidate accent, for picking a
+    /// theme against real content rather than against a colour swatch.
+    static func themePreview(directory: String) {
+        let base = URL(fileURLWithPath: directory)
+        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        let candidates: [(name: String, accent: String, ink: String)] = [
+            ("00-current-neon", "69EA28", "101010"),
+            ("01-emerald", "0E9F6E", "FFFFFF"),
+            ("02-indigo", "4F46E5", "FFFFFF"),
+            ("03-graphite", "3F3F46", "FFFFFF"),
+            ("04-slate-blue", "1D4ED8", "FFFFFF"),
+        ]
+        let savedAccent = QuotaTheme.accentHex
+        let savedInk = QuotaTheme.inkHex
+        L10n.override = .zhHans
+        for candidate in candidates {
+            QuotaTheme.accentHex = candidate.accent
+            QuotaTheme.inkHex = candidate.ink
+            write(
+                MenuContentView(store: makeStore(selected: nil), scrollable: false),
+                to: base,
+                name: "theme-\(candidate.name)")
+        }
+        QuotaTheme.accentHex = savedAccent
+        QuotaTheme.inkHex = savedInk
+        L10n.override = ConfigStore.shared.language
+        FileHandle.standardOutput.write(Data("Wrote theme previews to \(base.path)\n".utf8))
+    }
+
     static func run(directory: String) {
         let base = URL(fileURLWithPath: directory)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
@@ -138,6 +167,15 @@ enum Snapshot {
                     to: base,
                     name: "panel-\(name)-\(suffix)")
             }
+            // Dark mode has its own accent pair; render it so a selection block
+            // sinking into the window is visible here rather than in the wild.
+            for (name, selected) in panels {
+                write(
+                    MenuContentView(store: makeStore(selected: selected), scrollable: false),
+                    to: base,
+                    name: "panel-\(name)-\(suffix)-dark",
+                    dark: true)
+            }
         }
         L10n.override = ConfigStore.shared.language
 
@@ -145,8 +183,40 @@ enum Snapshot {
         FileHandle.standardOutput.write(Data("Wrote snapshots to \(base.path)\n".utf8))
     }
 
-    private static func write(_ view: some View, to directory: URL, name: String) {
-        let renderer = ImageRenderer(content: view.frame(alignment: .top))
+    private static func write(
+        _ view: some View,
+        to directory: URL,
+        name: String,
+        dark: Bool = false)
+    {
+        guard !dark else {
+            // Adaptive colours resolve against the drawing appearance, which
+            // ImageRenderer does not inherit from the SwiftUI environment.
+            NSAppearance(named: .darkAqua)?.performAsCurrentDrawingAppearance {
+                render(
+                    view.environment(\.colorScheme, .dark),
+                    to: directory,
+                    name: name,
+                    backing: Color(hex: "1E1E1E"))
+            }
+            return
+        }
+        render(view, to: directory, name: name, backing: Color(hex: "ECECEC"))
+    }
+
+    private static func render(
+        _ view: some View,
+        to directory: URL,
+        name: String,
+        backing: Color)
+    {
+        // The panel normally sits on the menu-bar window's material. The
+        // backing is passed in rather than read from `.windowBackgroundColor`,
+        // which resolves outside the dark drawing scope and comes out light.
+        let framed = view
+            .frame(alignment: .top)
+            .background(backing)
+        let renderer = ImageRenderer(content: framed)
         renderer.scale = 2
         guard let image = renderer.nsImage,
               let tiff = image.tiffRepresentation,

@@ -3,9 +3,9 @@ import QuotaCore
 
 struct MenuContentView: View {
     @ObservedObject var store: UsageStore
-    /// `ImageRenderer` does not lay out `ScrollView` contents, so the snapshot
-    /// tool renders the detail section unscrolled.
-    var scrollable: Bool = true
+    /// Retained for the snapshot tool, which cannot lay out a `ScrollView`.
+    /// The panel itself no longer scrolls.
+    var scrollable: Bool = false
 
     var body: some View {
         MenuContentBody(store: store, scrollable: scrollable)
@@ -18,7 +18,9 @@ struct MenuContentView: View {
 /// Shared panel content, reused by the menu-bar popover and the notch island.
 struct MenuContentBody: View {
     @ObservedObject var store: UsageStore
-    var scrollable: Bool = true
+    /// The menu-bar panel sizes itself to its content. Only the notch island,
+    /// which lives in a fixed-size floating panel, scrolls.
+    var scrollable: Bool = false
     @Environment(\.openSettings) private var openSettings
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: Design.space2), count: 4)
@@ -31,8 +33,9 @@ struct MenuContentBody: View {
                 ScrollView {
                     detailSection
                 }
-                .frame(minHeight: 180, maxHeight: 320)
             } else {
+                // No cap: a clipped panel with a scrollbar hides the numbers
+                // the app exists to show.
                 detailSection
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -736,9 +739,7 @@ struct WindowRow: View {
                 }
                 Spacer()
                 if let resetsAt = window.resetsAt {
-                    Text(L10n.t(
-                        "resets in \(QuotaFormat.countdown(to: resetsAt))",
-                        "\(QuotaFormat.countdown(to: resetsAt))后重置"))
+                    Text(QuotaFormat.resetLabel(to: resetsAt))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
