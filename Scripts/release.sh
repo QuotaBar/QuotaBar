@@ -1,7 +1,7 @@
 #!/bin/bash
 # Cuts a distributable release: notarized .app -> zip -> Homebrew cask formula.
 #
-#   REPO=giantaccel/quotabar ./Scripts/release.sh
+#   ./Scripts/release.sh
 #
 # Requires a notarytool keychain profile (see package_app.sh header). Set
 # SKIP_NOTARIZE=1 to produce an unnotarized zip for local testing only — do not
@@ -9,7 +9,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-REPO="${REPO:-OWNER/REPO}"
+REPO="${REPO:-gentpan/quotabar}"
 DIST="${DIST:-dist}"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
 APP=QuotaBar.app

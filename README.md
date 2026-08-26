@@ -1,5 +1,7 @@
 # QuotaBar 🎚️ — Every AI coding limit, in your menu bar.
 
+[![CI](https://github.com/gentpan/quotabar/actions/workflows/ci.yml/badge.svg)](https://github.com/gentpan/quotabar/actions/workflows/ci.yml)
+
 Tiny macOS 14+ menu bar app that keeps AI coding-provider limits visible and shows when each
 window resets. A clean-room Swift refactor inspired by
 [steipete/CodexBar](https://github.com/steipete/CodexBar).
@@ -99,7 +101,7 @@ to open the app.
 ### Cutting a release
 
 ```bash
-REPO=<owner>/<repo> ./Scripts/release.sh
+./Scripts/release.sh
 ```
 
 Notarizes, zips with `ditto` (which preserves the stapled ticket), computes the
@@ -107,11 +109,12 @@ SHA-256, and writes a ready-to-commit Homebrew cask to `dist/quotabar.rb`. It
 refuses to produce a release if Gatekeeper still rejects the bundle, so a
 half-signed build cannot reach users by accident.
 
-Publish the zip as a GitHub release, drop the cask into a `homebrew-tap` repo as
+Publish the zip as a GitHub release, drop the cask into
+[gentpan/homebrew-tap](https://github.com/gentpan/homebrew-tap) as
 `Casks/quotabar.rb`, and users install with:
 
 ```bash
-brew tap <owner>/tap
+brew tap gentpan/tap
 brew install --cask quotabar
 ```
 
