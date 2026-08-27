@@ -52,10 +52,12 @@ final class UsageStore: ObservableObject {
     /// of seconds, and a blank space for that long reads as "this feature is
     /// broken" rather than "still working".
     @Published var isComputingCost = false
-    /// A newer release, when one exists. Checked once per launch — often
-    /// enough for a tool people leave running, and it avoids hammering an
-    /// unauthenticated API that rate-limits by IP.
-    @Published var availableUpdate: AvailableUpdate?
+    /// How far an update has got. Checked once per launch — often enough for
+    /// a tool people leave running, and it avoids hammering an unauthenticated
+    /// API that rate-limits by IP.
+    @Published var updateStage: Updater.Stage = .idle
+    /// Staged bundle, verified and waiting for the user to restart.
+    private var stagedUpdate: URL?
     /// Recorded headline readings per provider, mirrored here so the detail
     /// sparkline redraws when a refresh lands.
     @Published var history: [ProviderID: [Double]] = [:]
@@ -267,13 +269,72 @@ final class UsageStore: ObservableObject {
     }
 
     /// Only meaningful for a packaged build: the dev binary has no version.
-    private func checkForUpdate() {
-        guard let current = Bundle.main
-            .object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-        else { return }
+    private var currentVersion: String? {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+    }
+
+    func checkForUpdate() {
+        guard config.checksForUpdates, let current = currentVersion else { return }
+        let feed = config.updateFeed
+        updateStage = .checking
         Task {
-            self.availableUpdate = await UpdateCheck.latest(currentVersion: current)
+            if let release = await Updater.check(feed: feed, currentVersion: current) {
+                self.updateStage = .available(release)
+            } else {
+                self.updateStage = .idle
+            }
         }
+    }
+
+    /// Downloads and verifies, leaving the bundle staged for a restart.
+    func downloadUpdate() {
+        guard case let .available(release) = updateStage else { return }
+        updateStage = .downloading(release)
+        Task {
+            do {
+                let staged = try await Updater.stage(release)
+                self.stagedUpdate = staged
+                self.updateStage = .readyToInstall(release)
+            } catch {
+                self.updateStage = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    /// Swaps the bundle and relaunches. Only reachable once a download has
+    /// passed verification.
+    func installUpdate() {
+        guard let staged = stagedUpdate else { return }
+        do {
+            try Updater.install(staged: staged)
+            NSApplication.shared.terminate(nil)
+        } catch {
+            updateStage = .failed(error.localizedDescription)
+        }
+    }
+
+    /// Homebrew owns the install; replacing the bundle behind its back would
+    /// desync its metadata.
+    var updateIsManagedByHomebrew: Bool { Updater.isManagedByHomebrew() }
+
+    var checksForUpdates: Bool { config.checksForUpdates }
+    var updateFeedValue: String { config.updateFeed.configValue }
+
+    func setChecksForUpdates(_ on: Bool) {
+        config.checksForUpdates = on
+        objectWillChange.send()
+        if on { checkForUpdate() } else { updateStage = .idle }
+    }
+
+    /// Returns false when the value is not a usable source, so the field can
+    /// say so instead of silently storing something that never resolves.
+    @discardableResult
+    func setUpdateFeed(_ value: String) -> Bool {
+        guard let feed = UpdateFeed(configValue: value) else { return false }
+        config.updateFeed = feed
+        objectWillChange.send()
+        checkForUpdate()
+        return true
     }
 
     func refreshCost() {

@@ -11,6 +11,10 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
     /// Which provider the panel — and therefore the menu-bar glyph — is
     /// focused on. nil means the overview, where the glyph aggregates.
     public var selected: ProviderID?
+    /// Where to look for updates: `owner/repo` for GitHub, or a URL for a
+    /// JSON endpoint you host.
+    public var updateFeed: String
+    public var checksForUpdates: Bool
 
     /// Only ever populated by decoding a pre-Keychain config file. `ConfigStore`
     /// drains it into the keychain on load and rewrites the file without it;
@@ -31,6 +35,8 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
         alerts: AlertSettings = AlertSettings(),
         language: L10n.Language = .system,
         selected: ProviderID? = nil,
+        updateFeed: String = UpdateFeed.default.configValue,
+        checksForUpdates: Bool = true,
         legacyCredentials: [ProviderID: String] = [:])
     {
         self.enabled = enabled
@@ -41,12 +47,14 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
         self.alerts = alerts
         self.language = language
         self.selected = selected
+        self.updateFeed = updateFeed
+        self.checksForUpdates = checksForUpdates
         self.legacyCredentials = legacyCredentials
     }
 
     private enum CodingKeys: String, CodingKey {
         case enabled, refreshMinutes, menuBarStyle, meterMode, presentation, alerts, language
-        case selected
+        case selected, updateFeed, checksForUpdates
         case legacyCredentials = "credentials"
     }
 
@@ -72,6 +80,10 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
         // nil is meaningful here (the overview), so an absent or unreadable
         // value simply means "no provider focused".
         selected = QuotaConfig.decodeEnum(from: container, forKey: .selected)
+        updateFeed = (try? container.decodeIfPresent(String.self, forKey: .updateFeed))
+            ?? defaults.updateFeed
+        checksForUpdates = (try? container.decodeIfPresent(Bool.self, forKey: .checksForUpdates))
+            ?? defaults.checksForUpdates
         legacyCredentials = QuotaConfig.decodeLegacyCredentials(from: container)
         hasLegacyCredentialKey = container.contains(.legacyCredentials)
     }
@@ -132,6 +144,8 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
         try container.encode(alerts, forKey: .alerts)
         try container.encode(language, forKey: .language)
         try container.encodeIfPresent(selected, forKey: .selected)
+        try container.encode(updateFeed, forKey: .updateFeed)
+        try container.encode(checksForUpdates, forKey: .checksForUpdates)
         // `legacyCredentials` intentionally omitted.
     }
 }
@@ -314,6 +328,24 @@ public final class ConfigStore: @unchecked Sendable {
             return config.meterMode
         }
         set { mutate { $0.meterMode = newValue } }
+    }
+
+    /// Falls back to the default feed when the stored value is malformed, so
+    /// a bad edit disables nothing.
+    public var updateFeed: UpdateFeed {
+        get {
+            lock.lock(); defer { lock.unlock() }
+            return UpdateFeed(configValue: config.updateFeed) ?? .default
+        }
+        set { mutate { $0.updateFeed = newValue.configValue } }
+    }
+
+    public var checksForUpdates: Bool {
+        get {
+            lock.lock(); defer { lock.unlock() }
+            return config.checksForUpdates
+        }
+        set { mutate { $0.checksForUpdates = newValue } }
     }
 
     public var language: L10n.Language {

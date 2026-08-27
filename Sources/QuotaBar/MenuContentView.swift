@@ -177,30 +177,95 @@ struct MenuContentBody: View {
 
     @ViewBuilder
     private var updateBanner: some View {
-        if let update = store.availableUpdate {
-            Button {
-                NSWorkspace.shared.open(update.url)
-            } label: {
-                HStack(spacing: Design.space2) {
-                    Image(systemName: "arrow.down.circle.fill")
-                    Text(L10n.t(
-                        "Version \(update.version) is available",
-                        "有新版本 \(update.version)"))
-                        .font(.caption.weight(.medium))
-                    Spacer()
-                    Image(systemName: "arrow.up.right")
-                        .font(.caption2)
-                }
-                .foregroundStyle(Design.accent)
-                .padding(.horizontal, Design.space2 + 2)
-                .padding(.vertical, Design.space2)
-                .background(
-                    RoundedRectangle(cornerRadius: Design.radiusTile, style: .continuous)
-                        .fill(Design.surfaceStrong))
+        switch store.updateStage {
+        case .idle, .checking:
+            EmptyView()
+        case let .available(release):
+            if store.updateIsManagedByHomebrew {
+                // Replacing the bundle would desync Homebrew's metadata and
+                // the next `brew upgrade` would fight us.
+                banner(
+                    icon: "arrow.down.circle",
+                    text: L10n.t(
+                        "Version \(release.version) is available — run brew upgrade",
+                        "有新版本 \(release.version) —— 请运行 brew upgrade"),
+                    action: { NSWorkspace.shared.open(release.pageURL) },
+                    trailing: nil)
+            } else {
+                banner(
+                    icon: "arrow.down.circle.fill",
+                    text: L10n.t(
+                        "Version \(release.version) is available",
+                        "有新版本 \(release.version)"),
+                    action: { store.downloadUpdate() },
+                    trailing: L10n.t("Download", "下载"))
             }
-            .buttonStyle(.plain)
-            .help(update.url.absoluteString)
+        case .downloading:
+            HStack(spacing: Design.space2) {
+                ProgressView().controlSize(.small)
+                Text(L10n.t("Downloading and verifying…", "正在下载并校验…"))
+                    .font(.caption)
+                Spacer()
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, Design.space2 + 2)
+            .padding(.vertical, Design.space2)
+            .background(
+                RoundedRectangle(cornerRadius: Design.radiusTile, style: .continuous)
+                    .fill(Design.surfaceStrong))
+        case let .readyToInstall(release):
+            banner(
+                icon: "checkmark.circle.fill",
+                text: L10n.t(
+                    "\(release.version) verified — restart to install",
+                    "\(release.version) 已校验 —— 重启以安装"),
+                action: { store.installUpdate() },
+                trailing: L10n.t("Restart", "重启"))
+        case let .failed(message):
+            HStack(alignment: .top, spacing: Design.space2) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                Text(message)
+                    .font(.caption)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+            }
+            .foregroundStyle(.orange)
+            .padding(.horizontal, Design.space2 + 2)
+            .padding(.vertical, Design.space2)
+            .background(
+                RoundedRectangle(cornerRadius: Design.radiusTile, style: .continuous)
+                    .fill(Color.orange.opacity(0.12)))
         }
+    }
+
+    private func banner(
+        icon: String,
+        text: String,
+        action: @escaping () -> Void,
+        trailing: String?) -> some View
+    {
+        Button(action: action) {
+            HStack(spacing: Design.space2) {
+                Image(systemName: icon)
+                Text(text)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+                Spacer(minLength: Design.space2)
+                if let trailing {
+                    Text(trailing)
+                        .font(.caption.weight(.semibold))
+                } else {
+                    Image(systemName: "arrow.up.right").font(.caption2)
+                }
+            }
+            .foregroundStyle(Design.accent)
+            .padding(.horizontal, Design.space2 + 2)
+            .padding(.vertical, Design.space2)
+            .background(
+                RoundedRectangle(cornerRadius: Design.radiusTile, style: .continuous)
+                    .fill(Design.surfaceStrong))
+        }
+        .buttonStyle(.plain)
     }
 
     private var footer: some View {

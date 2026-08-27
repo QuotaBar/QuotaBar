@@ -148,6 +148,10 @@ struct SettingsView: View {
                     "清除趋势折线所依赖的历史读数。"))
             }
 
+            Section(L10n.t("Updates", "更新")) {
+                UpdateSettings(store: store)
+            }
+
             Section(L10n.t("About", "关于")) {
                 HStack(spacing: Design.space3) {
                     if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
@@ -187,6 +191,66 @@ struct SettingsView: View {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
         return "\(version) (\(build))"
+    }
+}
+
+// MARK: - Updates
+
+struct UpdateSettings: View {
+    @ObservedObject var store: UsageStore
+    @State private var feed: String = ""
+    @State private var invalid = false
+
+    var body: some View {
+        Toggle(L10n.t("Check for updates", "检查更新"), isOn: Binding(
+            get: { store.checksForUpdates },
+            set: { store.setChecksForUpdates($0) }))
+
+        VStack(alignment: .leading, spacing: Design.space1) {
+            TextField(L10n.t("Update source", "更新源"), text: $feed)
+                .textFieldStyle(.roundedBorder)
+                .disabled(!store.checksForUpdates)
+                .onSubmit(save)
+            Text(L10n.t(
+                "A GitHub repository as owner/repo, or the URL of a JSON endpoint you host: {\"version\":\"0.3.0\",\"url\":\"…/QuotaBar-0.3.0.zip\"}",
+                "填 GitHub 仓库（owner/repo），或你自建的 JSON 接口地址：{\"version\":\"0.3.0\",\"url\":\"…/QuotaBar-0.3.0.zip\"}"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if invalid {
+                Text(L10n.t("Not a valid source — reverted.", "不是有效的更新源，已还原。"))
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            Text(L10n.t(
+                "Downloads are installed only if signed by this app's developer and notarized by Apple.",
+                "只有经本应用开发者签名并通过 Apple 公证的下载才会被安装。"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
+        HStack {
+            Button(L10n.t("Check now", "立即检查")) { store.checkForUpdate() }
+                .controlSize(.small)
+                .disabled(!store.checksForUpdates)
+            Spacer()
+            if store.updateIsManagedByHomebrew {
+                Text(L10n.t("Installed via Homebrew", "通过 Homebrew 安装"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .onAppear { feed = store.updateFeedValue }
+    }
+
+    private func save() {
+        if store.setUpdateFeed(feed) {
+            invalid = false
+        } else {
+            invalid = true
+            feed = store.updateFeedValue
+        }
     }
 }
 
