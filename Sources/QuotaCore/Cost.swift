@@ -6,11 +6,37 @@ import Foundation
 public enum CostSource: String, Sendable, CaseIterable, Codable {
     case claudeCode
     case codexCLI
+    case openCode
 
     public var displayName: String {
         switch self {
         case .claudeCode: "Claude Code"
         case .codexCLI: "Codex CLI"
+        case .openCode: "OpenCode"
+        }
+    }
+
+    /// Whether the figure is our own estimate from token counts, or a cost the
+    /// tool itself recorded. Worth distinguishing in the UI: the estimates
+    /// price tokens at list rates and cannot see plan-included usage.
+    public var isEstimated: Bool {
+        switch self {
+        case .claudeCode, .codexCLI: true
+        case .openCode: false
+        }
+    }
+
+    /// Chart colour.
+    ///
+    /// Chosen for mutual separation rather than taken from `ProviderID`:
+    /// brand accents are picked to work on their own, and Codex (#0A84FF) and
+    /// OpenCode (#5B8DEF) differ by 0.11 in luminance — indistinguishable as
+    /// neighbouring slices of one ring.
+    public var accentHex: String {
+        switch self {
+        case .claudeCode: "D97757"  // terracotta, matching Claude's accent
+        case .codexCLI: "2563EB"    // deep blue
+        case .openCode: "0D9488"    // teal, well clear of the blue
         }
     }
 }
@@ -31,6 +57,59 @@ public struct DailyCost: Sendable, Equatable, Identifiable {
     }
 }
 
+/// Spend over one period, and where it went.
+public struct SpendBreakdown: Sendable, Equatable {
+    public var usd: Double = 0
+    public var tokens: Int = 0
+    public var bySource: [CostSource: Double] = [:]
+
+    public init(usd: Double = 0, tokens: Int = 0, bySource: [CostSource: Double] = [:]) {
+        self.usd = usd
+        self.tokens = tokens
+        self.bySource = bySource
+    }
+
+    public var hasData: Bool { usd > 0 || tokens > 0 }
+
+    /// Sources that actually contributed, largest first — what a chart and its
+    /// legend iterate over.
+    public var contributions: [(source: CostSource, usd: Double)] {
+        bySource
+            .filter { $0.value > 0 }
+            .sorted { $0.value > $1.value }
+            .map { (source: $0.key, usd: $0.value) }
+    }
+
+    /// True when any contributing source is a token estimate rather than a
+    /// figure the tool recorded itself.
+    public var containsEstimates: Bool {
+        contributions.contains { $0.source.isEstimated }
+    }
+
+    mutating func add(_ usd: Double, tokens: Int, from source: CostSource) {
+        self.usd += usd
+        self.tokens += tokens
+        bySource[source, default: 0] += usd
+    }
+}
+
+/// Which stretch of time a spend figure covers.
+public enum SpendPeriod: String, Sendable, CaseIterable, Identifiable {
+    case today
+    case yesterday
+    case window
+
+    public var id: String { rawValue }
+
+    public func displayName(windowDays: Int) -> String {
+        switch self {
+        case .today: L10n.t("Today", "今日")
+        case .yesterday: L10n.t("Yesterday", "昨日")
+        case .window: L10n.t("\(windowDays) days", "\(windowDays) 天")
+        }
+    }
+}
+
 public struct CostSummary: Sendable, Equatable {
     public var todayUSD: Double = 0
     public var todayTokens: Int = 0
@@ -43,6 +122,10 @@ public struct CostSummary: Sendable, Equatable {
     public var windowTokens: Int = 0
     /// Per-day spend across the lookback window, oldest first, gaps filled.
     public var daily: [DailyCost] = []
+    /// Spend and its per-source split, for each selectable period.
+    public var periods: [SpendPeriod: SpendBreakdown] = [:]
+    /// How many days `window` covers, for labelling.
+    public var windowDays: Int = 30
     /// Model id the most money went to over the window.
     public var topModel: String?
     /// Billable events that were dropped as duplicates — the same assistant
@@ -74,6 +157,10 @@ public struct CostSummary: Sendable, Equatable {
 
     public var hasData: Bool { windowUSD > 0 || windowTokens > 0 }
 
+    public func spend(_ period: SpendPeriod) -> SpendBreakdown {
+        periods[period] ?? SpendBreakdown()
+    }
+
     /// The busiest day in the window — used to label the chart's peak.
     public var peakDay: DailyCost? {
         daily.max { $0.usd < $1.usd }
@@ -98,6 +185,10 @@ private struct TokenEvent {
     /// Stable identity of the billable API call; nil when the log gives us
     /// nothing to key on and the event has to be trusted as unique.
     let dedupeKey: String?
+    /// Cost the tool recorded itself. When set, it is used verbatim instead of
+    /// pricing the token counts — the tool knows its own rates better than a
+    /// list-price table does.
+    var presetCost: Double?
 }
 
 /// USD per million tokens; `marker` is substring-matched against the logged
@@ -129,14 +220,33 @@ private let pricingTable: [(marker: String, rates: Rates)] = [
 
 /// Exposed for the test suite so the price table stays pinned to real numbers.
 public enum Pricing {
-    /// (input, output, cacheWrite5m, cacheWrite1h, cacheRead) USD per million tokens.
-    public static func perMillion(for model: String) -> (Double, Double, Double, Double, Double) {
-        let r = rates(for: model)
+    /// (input, output, cacheWrite5m, cacheWrite1h, cacheRead) USD per million
+    /// tokens. `catalog` is injectable so tests can pin the built-in fallback
+    /// without depending on whatever prices this machine has fetched.
+    public static func perMillion(
+        for model: String,
+        catalog: PricingCatalog = .shared) -> (Double, Double, Double, Double, Double)
+    {
+        let r = rates(for: model, catalog: catalog)
         return (r.input, r.output, r.cacheWrite5m, r.cacheWrite1h, r.cacheRead)
     }
 }
 
-private func rates(for model: String) -> Rates {
+/// Exact rates from the catalog when it knows the model, otherwise the
+/// built-in prefix table.
+///
+/// Prefix matching is the fallback, not the primary path, because it is
+/// actively wrong for models it has never seen: `gpt-5.6-sol` matched the
+/// `gpt-5` prefix at $1.25/$10 against a real $4/$20.
+private func rates(for model: String, catalog: PricingCatalog = .shared) -> Rates {
+    if let published = catalog.rates(for: model) {
+        return Rates(
+            input: published.input,
+            output: published.output,
+            cacheWrite5m: published.cacheWrite,
+            cacheWrite1h: published.cacheWriteLong,
+            cacheRead: published.cacheRead)
+    }
     let lowered = model.lowercased()
     for entry in pricingTable where lowered.contains(entry.marker) {
         return entry.rates
@@ -146,6 +256,7 @@ private func rates(for model: String) -> Rates {
 }
 
 private func cost(of event: TokenEvent) -> Double {
+    if let preset = event.presetCost { return preset }
     let r = rates(for: event.model)
     return (Double(event.input) * r.input
         + Double(event.output) * r.output
@@ -163,17 +274,27 @@ private func tokens(of event: TokenEvent) -> Int {
 public struct CostPaths: Sendable {
     public var claudeProjects: URL
     public var codexSessions: URL
+    /// opencode's own SQLite store, which records a cost per session.
+    public var openCodeDatabase: URL
 
-    public init(claudeProjects: URL, codexSessions: URL) {
+    /// `openCodeDatabase` defaults to a path that does not exist, so callers
+    /// that only care about the log-based sources need not name it.
+    public init(
+        claudeProjects: URL,
+        codexSessions: URL,
+        openCodeDatabase: URL = URL(fileURLWithPath: "/nonexistent/opencode.db"))
+    {
         self.claudeProjects = claudeProjects
         self.codexSessions = codexSessions
+        self.openCodeDatabase = openCodeDatabase
     }
 
     public static var `default`: CostPaths {
         let home = FileManager.default.homeDirectoryForCurrentUser
         return CostPaths(
             claudeProjects: home.appendingPathComponent(".claude/projects"),
-            codexSessions: home.appendingPathComponent(".codex/sessions"))
+            codexSessions: home.appendingPathComponent(".codex/sessions"),
+            openCodeDatabase: home.appendingPathComponent(".local/share/opencode/opencode.db"))
     }
 }
 
@@ -196,6 +317,7 @@ public enum CostEstimator {
         let cutoff = now.addingTimeInterval(-Double(lookbackDays) * 86400)
         var events = scanClaude(root: paths.claudeProjects, cutoff: cutoff)
         events.append(contentsOf: scanCodex(root: paths.codexSessions, cutoff: cutoff))
+        events.append(contentsOf: scanOpenCode(database: paths.openCodeDatabase, cutoff: cutoff))
 
         let calendar = Calendar.current
         let dayStart = calendar.startOfDay(for: now)
@@ -207,8 +329,14 @@ public enum CostEstimator {
         let windowStart = calendar.date(byAdding: .day, value: -(lookbackDays - 1), to: dayStart)
             ?? dayStart
 
+        let yesterdayStart = calendar.date(byAdding: .day, value: -1, to: dayStart) ?? dayStart
+
         var seen = Set<String>()
         var summary = CostSummary()
+        summary.windowDays = lookbackDays
+        var periods: [SpendPeriod: SpendBreakdown] = [
+            .today: SpendBreakdown(), .yesterday: SpendBreakdown(), .window: SpendBreakdown(),
+        ]
         var perDay: [Date: DailyCost] = [:]
         var perModel: [String: Double] = [:]
 
@@ -234,11 +362,16 @@ public enum CostEstimator {
             bucket.tokens += count
             perDay[day] = bucket
 
+            periods[.window]?.add(cost, tokens: count, from: event.source)
             if event.timestamp >= dayStart {
                 summary.todayUSD += cost
                 summary.todayTokens += count
+                periods[.today]?.add(cost, tokens: count, from: event.source)
+            } else if event.timestamp >= yesterdayStart {
+                periods[.yesterday]?.add(cost, tokens: count, from: event.source)
             }
         }
+        summary.periods = periods
 
         // Fill the gaps: a day with no activity must still occupy a slot, or
         // the chart silently compresses idle stretches and misreads as busy.
@@ -298,7 +431,8 @@ public enum CostEstimator {
                     cacheWrite5m: write5m,
                     cacheWrite1h: write1h,
                     cacheRead: usage["cache_read_input_tokens"] as? Int ?? 0,
-                    dedupeKey: dedupeKey))
+                    dedupeKey: dedupeKey,
+                    presetCost: nil))
             }
             return out
         }
@@ -346,9 +480,51 @@ public enum CostEstimator {
                     cacheWrite5m: last["cache_write_input_tokens"] as? Int ?? 0,
                     cacheWrite1h: 0,
                     cacheRead: cached,
-                    dedupeKey: "codex|\(obj["timestamp"] as? String ?? "")|\(rawInput)|\(output)"))
+                    dedupeKey: "codex|\(obj["timestamp"] as? String ?? "")|\(rawInput)|\(output)",
+                    presetCost: nil))
             }
             return out
+        }
+    }
+
+    // MARK: OpenCode (~/.local/share/opencode/opencode.db)
+
+    /// opencode records a cost per session in its own database, so there is
+    /// nothing to price here — the figure is taken as reported rather than
+    /// re-derived from token counts.
+    ///
+    /// Cost is attributed to the session's last-updated time. A session spanning
+    /// midnight therefore lands entirely on the later day; splitting it would
+    /// need per-message costs, which the table does not carry.
+    private static func scanOpenCode(database: URL, cutoff: Date) -> [TokenEvent] {
+        let cutoffMillis = Int(cutoff.timeIntervalSince1970 * 1000)
+        let rows = SQLiteRead.rows(
+            inFile: database.path,
+            query: """
+            SELECT time_updated, cost, tokens_input, tokens_output,
+                   tokens_cache_read, tokens_cache_write, id
+            FROM session
+            WHERE cost > 0 AND time_updated >= \(cutoffMillis)
+            """)
+        return rows.compactMap { row in
+            guard row.count >= 7,
+                  let millis = row[0].flatMap(Double.init),
+                  let cost = row[1].flatMap(Double.init)
+            else { return nil }
+            func count(_ index: Int) -> Int {
+                row[index].flatMap(Int.init) ?? 0
+            }
+            return TokenEvent(
+                timestamp: Date(timeIntervalSince1970: millis / 1000),
+                source: .openCode,
+                model: "opencode",
+                input: count(2),
+                output: count(3),
+                cacheWrite5m: count(5),
+                cacheWrite1h: 0,
+                cacheRead: count(4),
+                dedupeKey: row[6].map { "opencode|\($0)" },
+                presetCost: cost)
         }
     }
 

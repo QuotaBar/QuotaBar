@@ -56,7 +56,9 @@ enum Snapshot {
                     UsageWindow(
                         title: WindowTitle.forSeconds(604_800),
                         usedPercent: 88,
-                        resetsAt: now.addingTimeInterval(320_000),
+                        // Well ahead of pace with most of the window left —
+                        // the case the pace line exists for.
+                        resetsAt: now.addingTimeInterval(400_000),
                         windowSeconds: 604_800),
                     UsageWindow(
                         title: "\(WindowTitle.forSeconds(604_800)) · Fable",
@@ -96,14 +98,30 @@ enum Snapshot {
             return DailyCost(day: day, usd: usd, tokens: Int(usd * 260_000))
         }
         let total = shape.reduce(0, +)
-        return CostSummary(
-            todayUSD: shape.last ?? 0,
-            todayTokens: Int((shape.last ?? 0) * 260_000),
-            windowBySource: [.claudeCode: total * 0.62, .codexCLI: total * 0.38],
+        let todayUSD = shape.last ?? 0
+        let yesterdayUSD = shape.dropLast().last ?? 0
+        func split(_ amount: Double) -> [CostSource: Double] {
+            [.claudeCode: amount * 0.63, .codexCLI: amount * 0.35, .openCode: amount * 0.02]
+        }
+        var summary = CostSummary(
+            todayUSD: todayUSD,
+            todayTokens: Int(todayUSD * 260_000),
+            windowBySource: split(total),
             windowUSD: total,
             windowTokens: Int(total * 260_000),
             daily: daily,
             topModel: "claude-opus-5")
+        summary.windowDays = shape.count
+        summary.periods = [
+            .today: SpendBreakdown(
+                usd: todayUSD, tokens: Int(todayUSD * 260_000), bySource: split(todayUSD)),
+            .yesterday: SpendBreakdown(
+                usd: yesterdayUSD, tokens: Int(yesterdayUSD * 260_000),
+                bySource: split(yesterdayUSD)),
+            .window: SpendBreakdown(
+                usd: total, tokens: Int(total * 260_000), bySource: split(total)),
+        ]
+        return summary
     }
 
     /// Snapshots must not shift with the wall clock, so every sample date is
@@ -279,15 +297,15 @@ enum Snapshot {
         let dualSheet = VStack(alignment: .leading, spacing: 12) {
             Text("双层：上＝短窗口(5h/滚动)　下＝长窗口(7d/30d/账单周期)")
                 .font(.system(size: 11, weight: .semibold))
-            ForEach([MeterMode.used, .remaining], id: \.rawValue) { mode in
+            ForEach([MenuBarStyle.dualBar, .dual], id: \.rawValue) { style in
                 HStack(spacing: 0) {
-                    Text(mode.displayName)
+                    Text(style.displayName)
                         .font(.system(size: 11, weight: .semibold))
-                        .frame(width: 44, alignment: .leading)
+                        .frame(width: 72, alignment: .leading)
                     ForEach(cases, id: \.0) { label, reading in
                         VStack(spacing: 3) {
                             Image(nsImage: MenuBarIcon.render(
-                                reading: reading, style: .dual, mode: mode))
+                                reading: reading, style: style, mode: .used))
                                 .frame(width: 52, height: 24)
                             Text(label)
                                 .font(.system(size: 8))
@@ -296,7 +314,7 @@ enum Snapshot {
                     }
                 }
             }
-            Text("只有一个窗口时收敛成单行居中，而不是画一行空的")
+            Text("已用口径 · 只有一个窗口时收敛成单行居中，而不是画一行空的")
                 .font(.system(size: 9))
                 .foregroundStyle(.secondary)
         }

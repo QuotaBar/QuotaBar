@@ -31,8 +31,10 @@ enum MenuBarIcon {
         let ink: NSColor = level.hex.map(nsColor) ?? .black
         let trackInk = ink.withAlphaComponent(0.35)
 
-        if style == .dual {
-            let image = renderDual(reading, ink: ink, track: trackInk, mode: mode)
+        if style.showsBothHorizons {
+            let image = style == .dualBar
+                ? renderDualBar(reading, ink: ink, track: trackInk, mode: mode)
+                : renderDual(reading, ink: ink, track: trackInk, mode: mode)
             image.isTemplate = level == .none
             return image
         }
@@ -44,6 +46,7 @@ enum MenuBarIcon {
         let image: NSImage
         switch style {
         case .dual: image = renderDual(reading, ink: ink, track: trackInk, mode: mode)
+        case .dualBar: image = renderDualBar(reading, ink: ink, track: trackInk, mode: mode)
         case .bar: image = renderBar(shown, ink: ink, track: trackInk)
         case .ring: image = renderRing(shown, ink: ink, track: trackInk)
         case .columns: image = renderColumns(shown, ink: ink, track: trackInk)
@@ -213,6 +216,51 @@ enum MenuBarIcon {
                                                 xRadius: 0.9, yRadius: 0.9), ink)
                     }
                     x += cellWidth + gap
+                }
+                y -= rowHeight + rowGap
+            }
+            return true
+        }
+    }
+
+    /// Two stacked continuous bars — the same split as `dual`, without the
+    /// gradations. Reads as a proportion rather than a count; preferred when
+    /// the exact figure matters less than the shape.
+    private static func renderDualBar(
+        _ reading: MeterReading,
+        ink: NSColor,
+        track: NSColor,
+        mode: MeterMode) -> NSImage
+    {
+        let width: CGFloat = 17
+        let size = NSSize(width: width + 5, height: 22)
+        let rows: [Double?] = reading.hasBothHorizons
+            ? [reading.short, reading.long]
+            : [reading.headline]
+
+        return NSImage(size: size, flipped: false) { _ in
+            let rowHeight: CGFloat = rows.count > 1 ? 5.5 : 7
+            let rowGap: CGFloat = 3
+            let block = rowHeight * CGFloat(rows.count) + rowGap * CGFloat(rows.count - 1)
+            var y = (22 - block) / 2 + block - rowHeight
+            let x = (size.width - width) / 2
+            let radius = rowHeight / 2
+
+            for value in rows {
+                let full = NSRect(x: x, y: y, width: width, height: rowHeight)
+                track.setFill()
+                NSBezierPath(roundedRect: full, xRadius: radius, yRadius: radius).fill()
+
+                if let value {
+                    let shown = mode.shownPercent(fromUsed: value)
+                    let filled = width * CGFloat(min(max(shown, 0), 100) / 100)
+                    // Below a full cap width the rounded rect degenerates, so
+                    // anything non-zero draws at least a dot.
+                    if filled > 0.5 {
+                        let rect = NSRect(x: x, y: y, width: max(filled, rowHeight), height: rowHeight)
+                        ink.setFill()
+                        NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+                    }
                 }
                 y -= rowHeight + rowGap
             }

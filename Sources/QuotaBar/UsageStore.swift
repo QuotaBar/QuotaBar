@@ -52,6 +52,10 @@ final class UsageStore: ObservableObject {
     /// of seconds, and a blank space for that long reads as "this feature is
     /// broken" rather than "still working".
     @Published var isComputingCost = false
+    /// A newer release, when one exists. Checked once per launch — often
+    /// enough for a tool people leave running, and it avoids hammering an
+    /// unauthenticated API that rate-limits by IP.
+    @Published var availableUpdate: AvailableUpdate?
     /// Recorded headline readings per provider, mirrored here so the detail
     /// sparkline redraws when a refresh lands.
     @Published var history: [ProviderID: [Double]] = [:]
@@ -119,6 +123,7 @@ final class UsageStore: ObservableObject {
         }
         prepareNotifications()
         refreshConfigured()
+        checkForUpdate()
         startAutoRefresh()
         startClock()
         startSystemObservers()
@@ -261,10 +266,23 @@ final class UsageStore: ObservableObject {
         configured.contains(id)
     }
 
+    /// Only meaningful for a packaged build: the dev binary has no version.
+    private func checkForUpdate() {
+        guard let current = Bundle.main
+            .object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        else { return }
+        Task {
+            self.availableUpdate = await UpdateCheck.latest(currentVersion: current)
+        }
+    }
+
     func refreshCost() {
         guard !isComputingCost else { return }
         isComputingCost = true
         Task {
+            // Refresh published model prices before scanning, so a newly
+            // released model is not priced through a stale prefix guess.
+            await PricingCatalog.shared.refreshIfNeeded()
             // Pure local file IO over thousands of session logs; keep it off
             // the main actor.
             let summary = await Task.detached(priority: .utility) {

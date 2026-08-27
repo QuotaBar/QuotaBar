@@ -26,6 +26,7 @@ public enum MenuBarStyle: String, Codable, CaseIterable, Identifiable, Sendable 
     /// Discrete styles: the gradations are countable, so the reading is exact
     /// rather than estimated off a continuous fill.
     case dual
+    case dualBar
     case segments
     case grid
     case battery
@@ -40,7 +41,8 @@ public enum MenuBarStyle: String, Codable, CaseIterable, Identifiable, Sendable 
         case .ring: L10n.t("Ring", "圆环")
         case .columns: L10n.t("Columns", "柱形")
         case .percent: L10n.t("Percent", "数字")
-        case .dual: L10n.t("Dual", "双层")
+        case .dual: L10n.t("Dual cells", "双层分段")
+        case .dualBar: L10n.t("Dual bars", "双层横条")
         case .segments: L10n.t("Segments", "分段")
         case .grid: L10n.t("Grid", "九宫格")
         case .battery: L10n.t("Battery", "电量")
@@ -51,7 +53,7 @@ public enum MenuBarStyle: String, Codable, CaseIterable, Identifiable, Sendable 
 
     /// True when the glyph draws the short and long horizons as separate
     /// meters rather than collapsing them into one figure.
-    public var showsBothHorizons: Bool { self == .dual }
+    public var showsBothHorizons: Bool { self == .dual || self == .dualBar }
 
     /// How many steps the glyph resolves. `nil` means continuous.
     public var steps: Int? {
@@ -59,7 +61,7 @@ public enum MenuBarStyle: String, Codable, CaseIterable, Identifiable, Sendable 
         case .dual, .segments: 5
         case .grid: 9
         case .columns: 4
-        case .bar, .ring, .percent, .battery, .gauge, .ticks: nil
+        case .dualBar, .bar, .ring, .percent, .battery, .gauge, .ticks: nil
         }
     }
 }
@@ -334,6 +336,36 @@ public struct UsageWindow: Sendable, Identifiable {
         windowSeconds.flatMap(WindowTitle.short)
     }
 
+    /// How consumption compares with the pace that would exactly exhaust the
+    /// window as it resets.
+    ///
+    /// Derived from the window's own length, its reset time and the current
+    /// figure — no usage history needed, so it works on the first refresh
+    /// after launch.
+    public func pace(now: Date = .now) -> WindowPace? {
+        guard let usedPercent,
+              let windowSeconds, windowSeconds > 0,
+              let resetsAt
+        else { return nil }
+        let remaining = resetsAt.timeIntervalSince(now)
+        // Outside the window: either it has reset, or the provider reported a
+        // reset further out than the window is long.
+        guard remaining > 0, remaining <= Double(windowSeconds) else { return nil }
+
+        let elapsed = Double(windowSeconds) - remaining
+        guard elapsed > 60 else { return nil }  // too early to say anything
+
+        let expected = elapsed / Double(windowSeconds) * 100
+        let rate = usedPercent / elapsed  // percent per second
+        let exhaustsIn = rate > 0 ? (100 - usedPercent) / rate : .infinity
+
+        return WindowPace(
+            expectedPercent: expected,
+            actualPercent: usedPercent,
+            secondsToExhaustion: exhaustsIn.isFinite ? exhaustsIn : nil,
+            secondsToReset: remaining)
+    }
+
     /// Which question this window answers.
     public var horizon: WindowHorizon {
         guard let seconds = windowSeconds else {
@@ -343,6 +375,47 @@ public struct UsageWindow: Sendable, Identifiable {
         }
         return seconds < 86_400 ? .short : .long
     }
+}
+
+/// Whether usage is ahead of, behind, or on the pace that would exhaust a
+/// window exactly as it resets.
+public struct WindowPace: Sendable, Equatable {
+    /// What the figure would be at this point if consumption were even.
+    public var expectedPercent: Double
+    public var actualPercent: Double
+    /// Projected time to 100% at the current rate; nil when nothing has been
+    /// used and the projection is meaningless.
+    public var secondsToExhaustion: Double?
+    public var secondsToReset: Double
+
+    public init(
+        expectedPercent: Double,
+        actualPercent: Double,
+        secondsToExhaustion: Double?,
+        secondsToReset: Double)
+    {
+        self.expectedPercent = expectedPercent
+        self.actualPercent = actualPercent
+        self.secondsToExhaustion = secondsToExhaustion
+        self.secondsToReset = secondsToReset
+    }
+
+    /// Positive means ahead of pace — burning faster than the window refills.
+    public var deltaPercent: Double { actualPercent - expectedPercent }
+
+    /// True when linear extrapolation runs the window out before it resets.
+    ///
+    /// Under a linear projection this is *equivalent* to being ahead of pace
+    /// at all — the algebra reduces to `actualPercent > expectedPercent`. It
+    /// is kept because it is the phrasing that means something to a reader,
+    /// not because it is a stricter test than `deltaPercent > 0`.
+    public var willExhaustBeforeReset: Bool {
+        guard let secondsToExhaustion else { return false }
+        return secondsToExhaustion < secondsToReset
+    }
+
+    /// Ignore noise: a few points either side of even is not worth flagging.
+    public var isNotable: Bool { abs(deltaPercent) >= 8 }
 }
 
 /// Quota windows split into two questions a glance should answer separately:
@@ -528,6 +601,17 @@ public enum QuotaFormat {
             "\(countdown(to: date, from: now))后重置")
     }
 
+    /// "预计 1 天 15 小时后耗尽" / "on pace" — what a window's rate implies.
+    public static func paceLabel(_ pace: WindowPace, now: Date = .now) -> String? {
+        guard pace.isNotable else { return nil }
+        if pace.willExhaustBeforeReset, let seconds = pace.secondsToExhaustion {
+            let when = countdown(to: now.addingTimeInterval(seconds), from: now)
+            return L10n.t("runs out in \(when)", "预计 \(when)后耗尽")
+        }
+        let spare = QuotaFormat.percent(abs(pace.deltaPercent))
+        return L10n.t("\(spare) under pace", "比匀速少用 \(spare)")
+    }
+
     /// "3 minutes ago" — how old a snapshot is.
     public static func age(of date: Date, now: Date = .now) -> String {
         let seconds = Int(max(0, now.timeIntervalSince(date)))
@@ -572,6 +656,17 @@ public enum QuotaFormat {
         formatter.maximumFractionDigits = 2
         return formatter
     }()
+
+    /// "$13.4K" — fits a figure into the middle of a ring, where the full
+    /// grouped form would not.
+    public static func usdCompact(_ value: Double) -> String {
+        switch abs(value) {
+        case 1_000_000...: String(format: "$%.1fM", value / 1_000_000)
+        case 10_000...: String(format: "$%.1fK", value / 1_000)
+        case 1_000...: String(format: "$%.2fK", value / 1_000)
+        default: usd(value)
+        }
+    }
 
     /// "8/26" — compact axis label for the daily chart.
     public static func shortDay(_ date: Date) -> String {

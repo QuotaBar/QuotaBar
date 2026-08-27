@@ -25,7 +25,7 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
     public init(
         enabled: [ProviderID] = [.codex, .claude],
         refreshMinutes: Int = 5,
-        menuBarStyle: MenuBarStyle = .dual,
+        menuBarStyle: MenuBarStyle = .dualBar,
         meterMode: MeterMode = .remaining,
         presentation: Presentation = .menuBar,
         alerts: AlertSettings = AlertSettings(),

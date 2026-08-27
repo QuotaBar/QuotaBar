@@ -45,6 +45,7 @@ struct MenuContentBody: View {
                 detailSection
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+            updateBanner
             Divider()
             footer
         }
@@ -174,6 +175,34 @@ struct MenuContentBody: View {
 
     // MARK: Footer
 
+    @ViewBuilder
+    private var updateBanner: some View {
+        if let update = store.availableUpdate {
+            Button {
+                NSWorkspace.shared.open(update.url)
+            } label: {
+                HStack(spacing: Design.space2) {
+                    Image(systemName: "arrow.down.circle.fill")
+                    Text(L10n.t(
+                        "Version \(update.version) is available",
+                        "有新版本 \(update.version)"))
+                        .font(.caption.weight(.medium))
+                    Spacer()
+                    Image(systemName: "arrow.up.right")
+                        .font(.caption2)
+                }
+                .foregroundStyle(Design.accent)
+                .padding(.horizontal, Design.space2 + 2)
+                .padding(.vertical, Design.space2)
+                .background(
+                    RoundedRectangle(cornerRadius: Design.radiusTile, style: .continuous)
+                        .fill(Design.surfaceStrong))
+            }
+            .buttonStyle(.plain)
+            .help(update.url.absoluteString)
+        }
+    }
+
     private var footer: some View {
         HStack(spacing: Design.space3) {
             VStack(alignment: .leading, spacing: 1) {
@@ -282,14 +311,30 @@ struct OverviewRow: View {
 
 struct CostCard: View {
     let cost: CostSummary
+    /// Which period the donut and legend describe. Local to the card — the
+    /// panel is transient, and a remembered tab would be one more thing whose
+    /// state the user has to notice.
+    @State private var period: SpendPeriod = .window
     /// How many days the chart shows. 30 keeps each bar wide enough to read
     /// inside a 380pt panel.
     private let chartDays = 30
 
+    private var spend: SpendBreakdown { cost.spend(period) }
+
     var body: some View {
         VStack(alignment: .leading, spacing: Design.space3) {
-            totals
-            if days.contains(where: { $0.usd > 0 }) {
+            header
+            periodPicker
+            if spend.contributions.isEmpty {
+                Text(L10n.t("Nothing recorded for this period.", "该时段没有记录。"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, Design.space2)
+            } else {
+                SpendDonut(spend: spend)
+            }
+            if period == .window, days.contains(where: { $0.usd > 0 }) {
                 DailyBarChart(days: days, peak: cost.peakDay)
             }
             footnote
@@ -301,76 +346,128 @@ struct CostCard: View {
         cost.recentDays(chartDays)
     }
 
-    // MARK: Totals
-
-    private var totals: some View {
-        HStack(alignment: .top, spacing: Design.space3) {
-            column(
-                label: L10n.t("Today", "今日"),
-                amount: cost.todayUSD,
-                tokens: cost.todayTokens)
-            Divider().frame(height: 34)
-            column(
-                label: L10n.t("\(chartDays) days", "\(chartDays) 天"),
-                amount: cost.windowUSD,
-                tokens: cost.windowTokens)
-            Spacer(minLength: 0)
+    private var header: some View {
+        HStack(spacing: Design.space2) {
+            Text(L10n.t("Total spend", "总用量"))
+                .font(.callout.weight(.semibold))
+            Spacer()
+            Text(L10n.t(
+                "\(QuotaFormat.compact(spend.tokens)) tokens",
+                "\(QuotaFormat.compact(spend.tokens)) tokens"))
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
         }
     }
 
-    private func column(label: String, amount: Double, tokens: Int) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            Text(QuotaFormat.usd(amount))
-                .font(.system(size: 17, weight: .semibold))
-                .monospacedDigit()
-            Text(L10n.t(
-                "\(QuotaFormat.compact(tokens)) tokens",
-                "\(QuotaFormat.compact(tokens)) tokens"))
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
+    private var periodPicker: some View {
+        Picker("", selection: $period) {
+            ForEach(SpendPeriod.allCases) { option in
+                Text(option.displayName(windowDays: cost.windowDays)).tag(option)
+            }
         }
-        .frame(minWidth: 96, alignment: .leading)
+        .pickerStyle(.segmented)
+        .labelsHidden()
     }
 
     // MARK: Footnote
 
     private var footnote: some View {
         VStack(alignment: .leading, spacing: 2) {
-            // Own line: crammed onto the disclaimer these amounts truncated to
-            // "$580…", which is worse than not showing them.
-            if !sources.isEmpty {
-                Text(sources
-                    .map { "\($0.0.displayName) \(QuotaFormat.usd($0.1))" }
-                    .joined(separator: "  ·  "))
+            if let model = cost.topModel {
+                Text(L10n.t("Most spend on \(model)", "花费最多的模型：\(model)"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                    .monospacedDigit()
                     .lineLimit(1)
+                    .truncationMode(.middle)
             }
             Text(disclaimer)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
-                .lineLimit(1)
-                .truncationMode(.middle)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
+    /// Says plainly which figures are ours and which the tool reported, since
+    /// the donut mixes both.
     private var disclaimer: String {
-        let base = L10n.t("estimated from local logs, not a bill", "本地日志估算，非账单")
-        guard let model = cost.topModel else { return base }
-        return "\(model)  ·  \(base)"
+        guard spend.containsEstimates else {
+            return L10n.t("Reported by each tool", "由各工具自行记录")
+        }
+        return L10n.t(
+            "Estimated from local logs at list prices — not a bill",
+            "按官方标价从本地日志估算，非账单")
+    }
+}
+
+/// Spend split by source, as a ring with the total in the middle.
+///
+/// A ring rather than a stacked bar: with three or four sources the parts are
+/// easier to compare as angles than as segments of a thin bar, and the middle
+/// is free space for the total.
+struct SpendDonut: View {
+    let spend: SpendBreakdown
+    var size: CGFloat = 74
+
+    private var slices: [(source: CostSource, usd: Double, start: Double, end: Double)] {
+        let total = spend.usd
+        guard total > 0 else { return [] }
+        var cursor = 0.0
+        return spend.contributions.map { item in
+            let fraction = item.usd / total
+            let slice = (item.source, item.usd, cursor, cursor + fraction)
+            cursor += fraction
+            return slice
+        }
     }
 
-    /// Spend per CLI over the window, largest first; hidden when only one CLI
-    /// contributed, since it would just restate the total.
-    private var sources: [(CostSource, Double)] {
-        let contributing = cost.windowBySource.filter { $0.value > 0 }
-        guard contributing.count > 1 else { return [] }
-        return contributing.sorted { $0.value > $1.value }.map { ($0.key, $0.value) }
+    var body: some View {
+        HStack(alignment: .center, spacing: Design.space3) {
+            ring
+            legend
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var ring: some View {
+        ZStack {
+            ForEach(slices, id: \.source) { slice in
+                Circle()
+                    .trim(from: slice.start, to: slice.end)
+                    .stroke(
+                        Color(hex: slice.source.accentHex),
+                        style: StrokeStyle(lineWidth: 10, lineCap: .butt))
+                    .rotationEffect(.degrees(-90))
+            }
+            VStack(spacing: 0) {
+                Text(QuotaFormat.usdCompact(spend.usd))
+                    .font(.system(size: 13, weight: .semibold))
+                    .monospacedDigit()
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 10)
+        }
+        .frame(width: size, height: size)
+    }
+
+    private var legend: some View {
+        VStack(alignment: .leading, spacing: Design.space1 + 2) {
+            ForEach(spend.contributions, id: \.source) { item in
+                HStack(spacing: Design.space2) {
+                    Circle()
+                        .fill(Color(hex: item.source.accentHex))
+                        .frame(width: 8, height: 8)
+                    Text(item.source.displayName)
+                        .font(.caption)
+                        .lineLimit(1)
+                    Spacer(minLength: Design.space3)
+                    Text(QuotaFormat.usd(item.usd))
+                        .font(.caption.weight(.medium))
+                        .monospacedDigit()
+                }
+            }
+        }
     }
 }
 
@@ -381,17 +478,15 @@ struct CostCard: View {
 struct DailyBarChart: View {
     let days: [DailyCost]
     var peak: DailyCost?
-    var height: CGFloat = 48
+    var height: CGFloat = 44
 
     /// Chooses a ceiling that keeps ordinary days readable without lying about
     /// the peak.
     ///
-    /// Scaling to the maximum lets one runaway session flatten the other 29
-    /// days into 1pt stubs; scaling to the runner-up makes the spike and the
+    /// Scaling to the maximum lets one runaway session flatten the other days
+    /// into 1pt stubs; scaling to the runner-up makes the spike and the
     /// second-busiest day render identically. So: use the true maximum while
-    /// it is within 2x of the runner-up, and cap at 2x beyond that — the spike
-    /// still reads as clearly tallest, everything else keeps its height, and
-    /// the exact peak amount is printed above the chart either way.
+    /// it is within 2x of the runner-up, and cap at 2x beyond that.
     private var scaleUSD: Double {
         let sorted = days.map(\.usd).sorted(by: >)
         guard let highest = sorted.first, highest > 0 else { return 0.0001 }
@@ -821,6 +916,17 @@ struct WindowRow: View {
                         .foregroundStyle(.secondary)
                 }
             }
+        }
+        // Only when the rate says something the percentage does not: a window
+        // at 60% is fine three days in and alarming three hours in.
+        if let pace = window.pace(), let label = QuotaFormat.paceLabel(pace) {
+            HStack(spacing: Design.space1) {
+                Image(systemName: pace.willExhaustBeforeReset
+                    ? "exclamationmark.triangle.fill" : "checkmark.circle")
+                Text(label)
+            }
+            .font(.caption2)
+            .foregroundStyle(pace.willExhaustBeforeReset ? Color.orange : .secondary)
         }
     }
 }

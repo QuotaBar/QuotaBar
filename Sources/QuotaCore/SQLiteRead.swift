@@ -11,6 +11,39 @@ enum SQLiteRead {
     /// SQLite wants this sentinel to mark a transient string it must copy.
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
+    /// Runs a query and returns every row as an array of column strings.
+    /// Numeric columns come back as their text form; callers parse.
+    static func rows(inFile path: String, query: String) -> [[String?]] {
+        guard FileManager.default.fileExists(atPath: path) else { return [] }
+        var db: OpaquePointer?
+        let uri = "file:\(path)?immutable=1"
+        guard sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK
+        else {
+            sqlite3_close(db)
+            return []
+        }
+        defer { sqlite3_close(db) }
+
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(statement) }
+
+        var out: [[String?]] = []
+        let columns = Int(sqlite3_column_count(statement))
+        while sqlite3_step(statement) == SQLITE_ROW {
+            var row: [String?] = []
+            for index in 0..<columns {
+                if let raw = sqlite3_column_text(statement, Int32(index)) {
+                    row.append(String(cString: raw))
+                } else {
+                    row.append(nil)
+                }
+            }
+            out.append(row)
+        }
+        return out
+    }
+
     /// Opens `path` read-only and returns the first column of the first row,
     /// for a query bound with a single text parameter. nil on any failure —
     /// a locked or absent database must degrade, never throw.

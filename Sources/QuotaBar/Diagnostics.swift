@@ -44,15 +44,34 @@ enum Diagnostics {
     }
 
     static func printCost() {
+        // The panel refreshes this on its own cycle; the CLI has to ask.
+        let semaphore = DispatchSemaphore(value: 0)
+        Task.detached {
+            await PricingCatalog.shared.refreshIfNeeded()
+            semaphore.signal()
+        }
+        _ = semaphore.wait(timeout: .now() + 30)
+
         let started = Date()
         let cost = CostEstimator.summary()
         let elapsed = Date().timeIntervalSince(started)
 
         var out = ""
+        let catalog = PricingCatalog.shared
+        out += "Pricing: \(catalog.isLoaded ? "\(catalog.modelCount) models from catalog" : "built-in table only")\n"
         out += "Scanned in \(String(format: "%.2f", elapsed))s\n"
         out += "Today    \(QuotaFormat.usd(cost.todayUSD))  ·  \(QuotaFormat.compact(cost.todayTokens)) tokens\n"
         out += "30 days  \(QuotaFormat.usd(cost.windowUSD))  ·  \(QuotaFormat.compact(cost.windowTokens)) tokens\n"
         out += "Top model: \(cost.topModel ?? "—")\n"
+        for period in SpendPeriod.allCases {
+            let spend = cost.spend(period)
+            out += "\n[\(period.displayName(windowDays: cost.windowDays))] "
+            out += "\(QuotaFormat.usd(spend.usd))  \(QuotaFormat.compact(spend.tokens)) tokens\n"
+            for item in spend.contributions {
+                let kind = item.source.isEstimated ? "估算" : "自报"
+                out += "    \(item.source.displayName) (\(kind)): \(QuotaFormat.usd(item.usd))\n"
+            }
+        }
         out += "Duplicate rows discarded: \(cost.deduplicated)\n"
         for (source, amount) in cost.windowBySource.sorted(by: { $0.value > $1.value }) {
             out += "  \(source.displayName): \(QuotaFormat.usd(amount))\n"

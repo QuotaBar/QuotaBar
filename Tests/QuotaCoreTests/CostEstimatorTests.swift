@@ -239,8 +239,12 @@ final class CostEstimatorTests: XCTestCase {
 // MARK: - Pricing table
 
 final class PricingTests: XCTestCase {
-    func testModelIDsMapToTheirListPrices() {
-        // (model, input, output) per million tokens.
+    /// These pin the *built-in fallback* table, which is only consulted when
+    /// the published catalog has no entry. They therefore assert against a
+    /// catalog that is deliberately empty — reading the real one would make
+    /// the result depend on whatever prices were fetched on this machine, and
+    /// on prices that legitimately change.
+    func testBuiltInTableIsUsedWhenTheCatalogHasNothing() {
         let expectations: [(String, Double, Double)] = [
             ("claude-fable-5", 10, 50),
             ("claude-opus-5", 5, 25),
@@ -248,32 +252,67 @@ final class PricingTests: XCTestCase {
             ("claude-sonnet-5", 2, 10),
             ("claude-sonnet-4-6", 3, 15),
             ("claude-haiku-4-5", 1, 5),
-            ("gpt-5-codex", 1.25, 10),
-            ("gpt-5.3-codex", 1.25, 10),
         ]
         for (model, input, output) in expectations {
-            let rates = Pricing.perMillion(for: model)
+            let rates = Pricing.perMillion(for: model, catalog: Self.emptyCatalog)
             XCTAssertEqual(rates.0, input, accuracy: 0.001, "input rate for \(model)")
             XCTAssertEqual(rates.1, output, accuracy: 0.001, "output rate for \(model)")
         }
     }
 
+    /// Why the catalog exists. The fallback prefix-matches, and a model it has
+    /// never seen resolves to whatever prefix happens to hit — `gpt-5.6-sol`
+    /// lands on `gpt-5` at $1.25/$10 against a real $4/$20.
+    func testTheFallbackIsWrongForUnknownModelsWhichIsWhyTheCatalogWins() {
+        let guessed = Pricing.perMillion(for: "gpt-5.6-sol", catalog: Self.emptyCatalog)
+        XCTAssertEqual(guessed.0, 1.25, accuracy: 0.001, "prefix-matched onto gpt-5")
+
+        let published = PricingCatalog(cacheURL: Self.seededCatalogURL)
+        let exact = Pricing.perMillion(for: "gpt-5.6-sol", catalog: published)
+        XCTAssertEqual(exact.0, 4, accuracy: 0.001)
+        XCTAssertEqual(exact.1, 20, accuracy: 0.001)
+    }
+
+    private static let emptyCatalog = PricingCatalog(
+        cacheURL: URL(fileURLWithPath: "/nonexistent/quotabar-tests/pricing.json"))
+
+    private static let seededCatalogURL: URL = {
+        let url = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("quotabar-seeded-\(UUID().uuidString)")
+            .appendingPathComponent("pricing.json")
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let payload = """
+        {"gpt-5.6-sol": {"input_cost_per_token": 0.000004, "output_cost_per_token": 0.00002}}
+        """
+        if let table = PricingCatalog.parse(Data(payload.utf8)),
+           let encoded = try? JSONEncoder().encode(table) {
+            try? encoded.write(to: url)
+        }
+        return url
+    }()
+
     func testSonnet5IsMatchedBeforeGenericSonnet() {
         // Ordering bug guard: "claude-sonnet-5" contains "sonnet" too.
-        XCTAssertEqual(Pricing.perMillion(for: "claude-sonnet-5").0, 2, accuracy: 0.001)
-        XCTAssertEqual(Pricing.perMillion(for: "claude-sonnet-4-6").0, 3, accuracy: 0.001)
+        XCTAssertEqual(
+            Pricing.perMillion(for: "claude-sonnet-5", catalog: Self.emptyCatalog).0,
+            2, accuracy: 0.001)
+        XCTAssertEqual(
+            Pricing.perMillion(for: "claude-sonnet-4-6", catalog: Self.emptyCatalog).0,
+            3, accuracy: 0.001)
     }
 
     func testAnthropicCacheWriteTiers() {
         // 5-minute = 1.25x input, 1-hour = 2x input.
-        let opus = Pricing.perMillion(for: "claude-opus-5")
+        let opus = Pricing.perMillion(for: "claude-opus-5", catalog: Self.emptyCatalog)
         XCTAssertEqual(opus.2, opus.0 * 1.25, accuracy: 0.001)
         XCTAssertEqual(opus.3, opus.0 * 2.0, accuracy: 0.001)
         XCTAssertEqual(opus.4, opus.0 * 0.1, accuracy: 0.001)
     }
 
     func testUnknownModelIsPricedNotFree() {
-        XCTAssertGreaterThan(Pricing.perMillion(for: "some-future-model").0, 0)
+        XCTAssertGreaterThan(
+            Pricing.perMillion(for: "some-future-model", catalog: Self.emptyCatalog).0, 0)
     }
 }
 

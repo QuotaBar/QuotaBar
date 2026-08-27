@@ -254,20 +254,26 @@ final class MenuBarStyleTests: XCTestCase {
         }
     }
 
-    func testDefaultShowsBothHorizonsAndIsCountable() {
-        // Asserted by property, not by name: the default is allowed to change,
-        // but it must stay stepped (so the reading is exact rather than
-        // estimated) and must separate the two horizons.
-        let style = QuotaConfig().menuBarStyle
-        XCTAssertNotNil(style.steps, "the default must be countable")
-        XCTAssertTrue(style.showsBothHorizons, "the default must not collapse the horizons")
+    func testDefaultSeparatesTheHorizons() {
+        // Asserted by property, not by name: the default may change, but it
+        // must not collapse the two horizons into one figure.
+        XCTAssertTrue(
+            QuotaConfig().menuBarStyle.showsBothHorizons,
+            "the default must not collapse the horizons")
     }
 
-    func testOnlyDualSeparatesTheHorizons() {
-        for style in MenuBarStyle.allCases where style != .dual {
-            XCTAssertFalse(style.showsBothHorizons, "\(style) draws a single figure")
+    func testExactlyTheTwoDualStylesSeparateTheHorizons() {
+        let dualStyles: Set<MenuBarStyle> = [.dual, .dualBar]
+        for style in MenuBarStyle.allCases {
+            XCTAssertEqual(
+                style.showsBothHorizons, dualStyles.contains(style),
+                "\(style) horizon handling")
         }
-        XCTAssertTrue(MenuBarStyle.dual.showsBothHorizons)
+    }
+
+    func testDualBarIsContinuousAndDualCellsIsStepped() {
+        XCTAssertNil(MenuBarStyle.dualBar.steps, "bars read as a proportion")
+        XCTAssertEqual(MenuBarStyle.dual.steps, 5, "cells are countable")
     }
 
     func testAllStylesRoundTripThroughConfig() throws {
@@ -404,5 +410,130 @@ final class MeterReadingTests: XCTestCase {
         let reading = MeterReading.across([])
         XCTAssertNil(reading.headline)
         XCTAssertFalse(reading.hasBothHorizons)
+    }
+}
+
+final class WindowPaceTests: XCTestCase {
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    /// A 7-day window that resets `hoursLeft` from now, sitting at `used`%.
+    private func window(used: Double, hoursLeft: Double, lengthDays: Double = 7) -> UsageWindow {
+        UsageWindow(
+            title: "w",
+            usedPercent: used,
+            resetsAt: now.addingTimeInterval(hoursLeft * 3600),
+            windowSeconds: Int(lengthDays * 86_400))
+    }
+
+    func testEvenConsumptionIsOnPace() throws {
+        // Half the window elapsed, half consumed.
+        let pace = try XCTUnwrap(window(used: 50, hoursLeft: 84).pace(now: now))
+
+        XCTAssertEqual(pace.expectedPercent, 50, accuracy: 0.5)
+        XCTAssertEqual(pace.deltaPercent, 0, accuracy: 0.5)
+        XCTAssertFalse(pace.isNotable)
+        XCTAssertFalse(pace.willExhaustBeforeReset)
+    }
+
+    func testBurningFasterThanTheWindowRefills() throws {
+        // A quarter elapsed, three quarters spent.
+        let pace = try XCTUnwrap(window(used: 75, hoursLeft: 126).pace(now: now))
+
+        XCTAssertEqual(pace.expectedPercent, 25, accuracy: 0.5)
+        XCTAssertGreaterThan(pace.deltaPercent, 45)
+        XCTAssertTrue(pace.isNotable)
+        XCTAssertTrue(pace.willExhaustBeforeReset, "at this rate it runs out first")
+    }
+
+    func testExhaustionIsEquivalentToBeingAheadOfPace() throws {
+        // Under a linear projection the two reduce to the same predicate:
+        //   (100-used)·elapsed/used < L-elapsed  ⟺  used > 100·elapsed/L
+        // Pinned so nobody later treats "will exhaust" as a stricter signal.
+        for used in stride(from: 5.0, through: 95.0, by: 5.0) {
+            let pace = try XCTUnwrap(window(used: used, hoursLeft: 84).pace(now: now))
+            XCTAssertEqual(
+                pace.willExhaustBeforeReset, pace.deltaPercent > 0,
+                "at \(used)% the two signals disagree")
+        }
+    }
+
+    func testBehindPaceDoesNotProjectExhaustion() throws {
+        // Half the window gone, a quarter spent.
+        let pace = try XCTUnwrap(window(used: 25, hoursLeft: 84).pace(now: now))
+
+        XCTAssertLessThan(pace.deltaPercent, 0)
+        XCTAssertFalse(pace.willExhaustBeforeReset)
+    }
+
+    func testProjectsTheExhaustionMoment() throws {
+        // 50% used with half the window left: the other 50% takes as long again.
+        let pace = try XCTUnwrap(window(used: 50, hoursLeft: 84).pace(now: now))
+        let hours = try XCTUnwrap(pace.secondsToExhaustion) / 3600
+
+        XCTAssertEqual(hours, 84, accuracy: 2)
+    }
+
+    func testNothingUsedYieldsNoProjection() throws {
+        let pace = try XCTUnwrap(window(used: 0, hoursLeft: 84).pace(now: now))
+        XCTAssertNil(pace.secondsToExhaustion)
+        XCTAssertFalse(pace.willExhaustBeforeReset)
+    }
+
+    func testNoPaceWithoutTheInputsItNeeds() {
+        // No length reported (a billing cycle).
+        XCTAssertNil(UsageWindow(title: "w", usedPercent: 50,
+                                 resetsAt: now.addingTimeInterval(3600)).pace(now: now))
+        // No reset time.
+        XCTAssertNil(UsageWindow(title: "w", usedPercent: 50,
+                                 windowSeconds: 604_800).pace(now: now))
+        // No figure.
+        XCTAssertNil(UsageWindow(title: "w", resetsAt: now.addingTimeInterval(3600),
+                                 windowSeconds: 604_800).pace(now: now))
+    }
+
+    func testTooEarlyInTheWindowToJudge() {
+        // Thirty seconds in, any rate extrapolates to nonsense.
+        XCTAssertNil(window(used: 1, hoursLeft: 7 * 24 - 0.008).pace(now: now))
+    }
+
+    func testAResetFurtherOutThanTheWindowIsIgnored() {
+        // Provider reported something inconsistent; do not invent a pace.
+        XCTAssertNil(window(used: 50, hoursLeft: 200).pace(now: now))
+    }
+
+    func testAnAlreadyResetWindowHasNoPace() {
+        XCTAssertNil(window(used: 50, hoursLeft: -1).pace(now: now))
+    }
+}
+
+final class UpdateCheckTests: XCTestCase {
+    func testComparesNumerically() {
+        XCTAssertTrue(UpdateCheck.compare("0.2.5", isNewerThan: "0.2.4"))
+        XCTAssertTrue(UpdateCheck.compare("0.3.0", isNewerThan: "0.2.9"))
+        XCTAssertTrue(UpdateCheck.compare("1.0.0", isNewerThan: "0.9.9"))
+    }
+
+    func testDoubleDigitComponentsSortAbove() {
+        // A string comparison puts "0.2.10" below "0.2.9"; this must not.
+        XCTAssertTrue(UpdateCheck.compare("0.2.10", isNewerThan: "0.2.9"))
+        XCTAssertFalse(UpdateCheck.compare("0.2.9", isNewerThan: "0.2.10"))
+    }
+
+    func testSameVersionIsNotNewer() {
+        XCTAssertFalse(UpdateCheck.compare("0.2.4", isNewerThan: "0.2.4"))
+    }
+
+    func testOlderIsNotNewer() {
+        XCTAssertFalse(UpdateCheck.compare("0.2.3", isNewerThan: "0.2.4"))
+    }
+
+    func testMissingComponentsCountAsZero() {
+        XCTAssertTrue(UpdateCheck.compare("0.3", isNewerThan: "0.2.9"))
+        XCTAssertFalse(UpdateCheck.compare("0.2", isNewerThan: "0.2.0"))
+    }
+
+    func testToleratesATagPrefixAndJunk() {
+        XCTAssertTrue(UpdateCheck.compare("v0.2.5", isNewerThan: "0.2.4"))
+        XCTAssertFalse(UpdateCheck.compare("", isNewerThan: "0.2.4"))
     }
 }
