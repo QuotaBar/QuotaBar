@@ -12,6 +12,12 @@ struct MenuContentView: View {
             .padding(Design.space3)
             .frame(width: 380)
             .tint(Design.accent)
+            // An opaque backing, resolved in the same appearance as the text
+            // on top of it. Without one the panel sits directly on the menu
+            // bar window's vibrancy material, whose appearance does not always
+            // match the one the content resolves in — light material under
+            // dark-mode content renders the whole panel washed-out grey.
+            .background(Design.panelBackground)
     }
 }
 
@@ -624,10 +630,13 @@ struct MiniMeter: View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
                 Capsule().fill(Design.track)
-                Capsule()
-                    .fill(accent)
-                    .frame(width: max(4, proxy.size.width * CGFloat((percent ?? 0) / 100)))
-                    .opacity(percent == nil ? 0 : 1)
+                if let percent, percent > 0 {
+                    // No minimum stub at zero: a 4pt dot next to "0%" reads as
+                    // a stray mark, and the track alone already says "empty".
+                    Capsule()
+                        .fill(accent)
+                        .frame(width: max(3, proxy.size.width * CGFloat(percent / 100)))
+                }
             }
         }
         .frame(height: 3)

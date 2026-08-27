@@ -19,6 +19,12 @@ enum Design {
     static let radiusCard: CGFloat = 10
     static let radiusPanel: CGFloat = 14
 
+    /// Opaque panel backing. Explicit rather than a material: the panel must
+    /// carry its own contrast, since it cannot rely on what sits behind it.
+    static var panelBackground: Color {
+        adaptive(light: "F2F2F2", dark: "1E1E1E")
+    }
+
     /// Low-contrast fill used for cards and tiles.
     static let surface = Color.primary.opacity(0.05)
     static let surfaceStrong = Color.primary.opacity(0.08)

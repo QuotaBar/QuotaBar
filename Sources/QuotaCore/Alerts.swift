@@ -11,12 +11,14 @@ public enum AlertLevel: Int, Comparable, Sendable, Codable {
         lhs.rawValue < rhs.rawValue
     }
 
-    /// Brand-consistent hex tints used to color the menu-bar icon.
+    /// Tints for the menu-bar glyph. Deeper than the system alert colours on
+    /// purpose: a 22pt glyph is mostly antialiased edges, and a light red
+    /// washes out to pink against the menu bar.
     public var hex: String? {
         switch self {
         case .none: nil
-        case .warning: "FF9F0A"
-        case .critical: "FF375F"
+        case .warning: "D97706"
+        case .critical: "DC2626"
         }
     }
 

@@ -25,6 +25,7 @@ public enum MenuBarStyle: String, Codable, CaseIterable, Identifiable, Sendable 
     case percent
     /// Discrete styles: the gradations are countable, so the reading is exact
     /// rather than estimated off a continuous fill.
+    case dual
     case segments
     case grid
     case battery
@@ -39,6 +40,7 @@ public enum MenuBarStyle: String, Codable, CaseIterable, Identifiable, Sendable 
         case .ring: L10n.t("Ring", "圆环")
         case .columns: L10n.t("Columns", "柱形")
         case .percent: L10n.t("Percent", "数字")
+        case .dual: L10n.t("Dual", "双层")
         case .segments: L10n.t("Segments", "分段")
         case .grid: L10n.t("Grid", "九宫格")
         case .battery: L10n.t("Battery", "电量")
@@ -47,10 +49,14 @@ public enum MenuBarStyle: String, Codable, CaseIterable, Identifiable, Sendable 
         }
     }
 
+    /// True when the glyph draws the short and long horizons as separate
+    /// meters rather than collapsing them into one figure.
+    public var showsBothHorizons: Bool { self == .dual }
+
     /// How many steps the glyph resolves. `nil` means continuous.
     public var steps: Int? {
         switch self {
-        case .segments: 5
+        case .dual, .segments: 5
         case .grid: 9
         case .columns: 4
         case .bar, .ring, .percent, .battery, .gauge, .ticks: nil
@@ -326,6 +332,64 @@ public struct UsageWindow: Sendable, Identifiable {
     /// Badge text, when the provider reported a window length.
     public var shortLabel: String? {
         windowSeconds.flatMap(WindowTitle.short)
+    }
+
+    /// Which question this window answers.
+    public var horizon: WindowHorizon {
+        guard let seconds = windowSeconds else {
+            // Billing cycles and balances have no fixed length; they are about
+            // running out over a period, not about being throttled right now.
+            return .long
+        }
+        return seconds < 86_400 ? .short : .long
+    }
+}
+
+/// Quota windows split into two questions a glance should answer separately:
+/// "am I about to be throttled" and "will I run out this period".
+public enum WindowHorizon: Sendable, CaseIterable {
+    /// Under a day — 5-hour and rolling windows.
+    case short
+    /// A day or more, plus billing cycles with no fixed length.
+    case long
+}
+
+/// What the menu-bar glyph draws. Kept separate from any one provider: the
+/// icon answers for the account as a whole, so each horizon takes the highest
+/// reading across everything enabled.
+public struct MeterReading: Sendable, Equatable {
+    public var short: Double?
+    public var long: Double?
+
+    public init(short: Double? = nil, long: Double? = nil) {
+        self.short = short
+        self.long = long
+    }
+
+    /// What a single-meter style shows — whichever horizon is closest to its
+    /// limit, since that is the one that will bite first.
+    public var headline: Double? {
+        switch (short, long) {
+        case let (s?, l?): return max(s, l)
+        case let (s?, nil): return s
+        case let (nil, l?): return l
+        case (nil, nil): return nil
+        }
+    }
+
+    public var hasBothHorizons: Bool { short != nil && long != nil }
+
+    /// Highest reading per horizon across a set of snapshots.
+    public static func across(_ snapshots: [UsageSnapshot]) -> MeterReading {
+        var reading = MeterReading()
+        for window in snapshots.flatMap(\.windows) {
+            guard let percent = window.usedPercent else { continue }
+            switch window.horizon {
+            case .short: reading.short = max(reading.short ?? 0, percent)
+            case .long: reading.long = max(reading.long ?? 0, percent)
+            }
+        }
+        return reading
     }
 }
 

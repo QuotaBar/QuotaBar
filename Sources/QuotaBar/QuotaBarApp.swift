@@ -13,7 +13,7 @@ struct QuotaBarApp: App {
             MenuContentView(store: store)
         } label: {
             Image(nsImage: MenuBarIcon.render(
-                percent: store.headlinePercent,
+                reading: store.meterReading,
                 style: store.menuBarStyle,
                 level: store.alertLevel,
                 mode: store.meterMode))
@@ -49,6 +49,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let directory = index + 1 < arguments.count ? arguments[index + 1] : "./themes"
             Snapshot.themePreview(directory: directory)
             NSApp.terminate(nil)
+        }
+        if arguments.contains("--windows") {
+            Diagnostics.printWindows()
+            return
         }
         if arguments.contains("--cost") {
             Diagnostics.printCost()

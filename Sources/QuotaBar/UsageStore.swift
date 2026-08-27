@@ -121,15 +121,15 @@ final class UsageStore: ObservableObject {
 
     // MARK: Derived state
 
-    /// Highest headline percent across loaded providers — drives the menu-bar meter.
+    /// Per-horizon readings across every enabled provider — drives the
+    /// menu-bar glyph, including the two-row form.
+    var meterReading: MeterReading {
+        MeterReading.across(enabled.compactMap { states[$0]?.snapshot })
+    }
+
+    /// Highest reading overall, for anything that shows a single figure.
     var headlinePercent: Double? {
-        var best: Double?
-        for id in enabled {
-            if let percent = states[id]?.snapshot?.headlinePercent {
-                best = max(best ?? 0, percent)
-            }
-        }
-        return best
+        meterReading.headline
     }
 
     var alertLevel: AlertLevel {

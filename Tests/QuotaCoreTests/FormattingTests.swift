@@ -254,10 +254,20 @@ final class MenuBarStyleTests: XCTestCase {
         }
     }
 
-    func testDefaultIsTheSteppedGrid() {
-        // A countable glyph gives an exact reading; a continuous fill has to
-        // be estimated.
-        XCTAssertEqual(QuotaConfig().menuBarStyle, .grid)
+    func testDefaultShowsBothHorizonsAndIsCountable() {
+        // Asserted by property, not by name: the default is allowed to change,
+        // but it must stay stepped (so the reading is exact rather than
+        // estimated) and must separate the two horizons.
+        let style = QuotaConfig().menuBarStyle
+        XCTAssertNotNil(style.steps, "the default must be countable")
+        XCTAssertTrue(style.showsBothHorizons, "the default must not collapse the horizons")
+    }
+
+    func testOnlyDualSeparatesTheHorizons() {
+        for style in MenuBarStyle.allCases where style != .dual {
+            XCTAssertFalse(style.showsBothHorizons, "\(style) draws a single figure")
+        }
+        XCTAssertTrue(MenuBarStyle.dual.showsBothHorizons)
     }
 
     func testAllStylesRoundTripThroughConfig() throws {
@@ -278,7 +288,9 @@ final class MenuBarStyleTests: XCTestCase {
 
     func testUnknownStyleFromAFutureVersionFallsBack() throws {
         let future = Data(#"{"enabled":["codex"],"menuBarStyle":"hologram"}"#.utf8)
-        XCTAssertEqual(try JSONDecoder().decode(QuotaConfig.self, from: future).menuBarStyle, .grid)
+        XCTAssertEqual(
+            try JSONDecoder().decode(QuotaConfig.self, from: future).menuBarStyle,
+            QuotaConfig().menuBarStyle)
     }
 }
 
@@ -324,5 +336,73 @@ final class ResetCreditsTests: XCTestCase {
 
     func testApplicableIsOptional() {
         XCTAssertNil(ResetCredits(available: 2).applicable)
+    }
+}
+
+final class MeterReadingTests: XCTestCase {
+    private func window(_ percent: Double, seconds: Int?) -> UsageWindow {
+        UsageWindow(title: "w", usedPercent: percent, windowSeconds: seconds)
+    }
+
+    func testWindowsUnderADayAreShortHorizon() {
+        XCTAssertEqual(window(1, seconds: 18_000).horizon, .short)   // 5h
+        XCTAssertEqual(window(1, seconds: 3_600).horizon, .short)    // 1h
+        XCTAssertEqual(window(1, seconds: 86_399).horizon, .short)
+    }
+
+    func testADayOrMoreIsLongHorizon() {
+        XCTAssertEqual(window(1, seconds: 86_400).horizon, .long)
+        XCTAssertEqual(window(1, seconds: 604_800).horizon, .long)   // 7d
+        XCTAssertEqual(window(1, seconds: 2_592_000).horizon, .long) // 30d
+    }
+
+    func testWindowsWithoutALengthCountAsLong() {
+        // Billing cycles and balances are about running out over a period,
+        // not about being throttled in the next few minutes.
+        XCTAssertEqual(window(1, seconds: nil).horizon, .long)
+    }
+
+    func testTakesTheHighestPerHorizonAcrossProviders() {
+        let a = UsageSnapshot(windows: [window(25, seconds: 18_000), window(39, seconds: 604_800)])
+        let b = UsageSnapshot(windows: [window(4, seconds: 18_000), window(84, seconds: 2_592_000)])
+
+        let reading = MeterReading.across([a, b])
+
+        XCTAssertEqual(reading.short, 25)
+        XCTAssertEqual(reading.long, 84)
+    }
+
+    func testHeadlineIsWhicheverHorizonIsCloserToItsLimit() {
+        XCTAssertEqual(MeterReading(short: 25, long: 84).headline, 84)
+        XCTAssertEqual(MeterReading(short: 90, long: 12).headline, 90)
+    }
+
+    func testAPlanWithOnlyOneHorizon() {
+        // A Codex Pro account reports a 7-day window and no 5-hour one; the
+        // glyph must fall back to a single meter rather than draw an empty row.
+        let snapshot = UsageSnapshot(windows: [window(36, seconds: 604_800)])
+        let reading = MeterReading.across([snapshot])
+
+        XCTAssertNil(reading.short)
+        XCTAssertEqual(reading.long, 36)
+        XCTAssertFalse(reading.hasBothHorizons)
+        XCTAssertEqual(reading.headline, 36)
+    }
+
+    func testWindowsWithoutAPercentAreIgnored() {
+        let snapshot = UsageSnapshot(windows: [
+            UsageWindow(title: "balance", detail: "$3.00"),
+            window(42, seconds: 604_800),
+        ])
+        let reading = MeterReading.across([snapshot])
+
+        XCTAssertNil(reading.short)
+        XCTAssertEqual(reading.long, 42)
+    }
+
+    func testNoDataAtAll() {
+        let reading = MeterReading.across([])
+        XCTAssertNil(reading.headline)
+        XCTAssertFalse(reading.hasBothHorizons)
     }
 }

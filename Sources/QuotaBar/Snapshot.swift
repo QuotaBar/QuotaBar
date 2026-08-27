@@ -203,6 +203,106 @@ enum Snapshot {
 
         render(sheet, to: base, name: "icon-styles", backing: Color(hex: "F5F5F5"))
 
+        // Alert states across levels — this is where an empty meter and a full
+        // one can end up looking the same.
+        let alertSheet = VStack(alignment: .leading, spacing: 10) {
+            ForEach([AlertLevel.none, .warning, .critical], id: \.rawValue) { level in
+                HStack(spacing: 0) {
+                    Text(level.displayName)
+                        .font(.system(size: 11, weight: .semibold))
+                        .frame(width: 60, alignment: .leading)
+                    ForEach([0.0, 25.0, 50.0, 75.0, 100.0], id: \.self) { used in
+                        VStack(spacing: 2) {
+                            Image(nsImage: MenuBarIcon.render(
+                                percent: used, style: .grid, level: level, mode: .remaining))
+                                .frame(width: 44, height: 22)
+                            Text("用\(Int(used))%")
+                                .font(.system(size: 8))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            Text("mode=remaining：用 100% ⇒ 剩 0% ⇒ 应该 0 格亮")
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        render(alertSheet, to: base, name: "icon-alerts", backing: Color(hex: "F5F5F5"))
+
+        // Glanceability comparison: can you read the proportion without
+        // consciously counting?
+        let compareLevels: [Double] = [0, 20, 40, 60, 80, 100]
+        let compare = VStack(alignment: .leading, spacing: 14) {
+            Text("同一组「已用」百分比，两种样式对比")
+                .font(.system(size: 11, weight: .semibold))
+            ForEach([MenuBarStyle.grid, .segments, .ticks, .bar], id: \.rawValue) { style in
+                HStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(style.displayName)
+                            .font(.system(size: 11, weight: .semibold))
+                        Text(style.steps.map { "\($0) 格" } ?? "连续")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(width: 70, alignment: .leading)
+                    ForEach(compareLevels, id: \.self) { used in
+                        VStack(spacing: 3) {
+                            Image(nsImage: MenuBarIcon.render(
+                                percent: used, style: style, mode: .used))
+                                .frame(width: 46, height: 22)
+                            Text("\(Int(used))%")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            Text("mode=used：填充越多＝用得越多")
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        render(compare, to: base, name: "icon-compare", backing: Color(hex: "F5F5F5"))
+
+        // Dual glyph: both horizons, and the single-horizon fallback.
+        let cases: [(String, MeterReading)] = [
+            ("短5 长39", MeterReading(short: 5, long: 39)),
+            ("短25 长39", MeterReading(short: 25, long: 39)),
+            ("短80 长20", MeterReading(short: 80, long: 20)),
+            ("短10 长95", MeterReading(short: 10, long: 95)),
+            ("短100 长100", MeterReading(short: 100, long: 100)),
+            ("仅长39 (Pro)", MeterReading(long: 39)),
+            ("仅长100", MeterReading(long: 100)),
+            ("无数据", MeterReading()),
+        ]
+        let dualSheet = VStack(alignment: .leading, spacing: 12) {
+            Text("双层：上＝短窗口(5h/滚动)　下＝长窗口(7d/30d/账单周期)")
+                .font(.system(size: 11, weight: .semibold))
+            ForEach([MeterMode.used, .remaining], id: \.rawValue) { mode in
+                HStack(spacing: 0) {
+                    Text(mode.displayName)
+                        .font(.system(size: 11, weight: .semibold))
+                        .frame(width: 44, alignment: .leading)
+                    ForEach(cases, id: \.0) { label, reading in
+                        VStack(spacing: 3) {
+                            Image(nsImage: MenuBarIcon.render(
+                                reading: reading, style: .dual, mode: mode))
+                                .frame(width: 52, height: 24)
+                            Text(label)
+                                .font(.system(size: 8))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            Text("只有一个窗口时收敛成单行居中，而不是画一行空的")
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        render(dualSheet, to: base, name: "icon-dual", backing: Color(hex: "F5F5F5"))
+
         // The Settings picker itself. `SettingsView` as a whole cannot be
         // rendered (it assigns @State from onAppear), but this component can.
         let picker = MenuBarStylePicker(selection: .grid, mode: .remaining, onSelect: { _ in })

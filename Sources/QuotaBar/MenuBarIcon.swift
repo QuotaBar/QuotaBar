@@ -8,19 +8,42 @@ enum MenuBarIcon {
     /// `percent` is always the *used* figure — the alert level is derived from
     /// it upstream. `mode` decides whether the glyph fills with that or with
     /// what is left; the tint is unaffected either way.
+    /// Convenience for callers with a single figure (previews, settings).
     static func render(
         percent: Double?,
         style: MenuBarStyle,
         level: AlertLevel = .none,
         mode: MeterMode = .remaining) -> NSImage
     {
+        render(
+            reading: MeterReading(long: percent),
+            style: style,
+            level: level,
+            mode: mode)
+    }
+
+    static func render(
+        reading: MeterReading,
+        style: MenuBarStyle,
+        level: AlertLevel = .none,
+        mode: MeterMode = .remaining) -> NSImage
+    {
         let ink: NSColor = level.hex.map(nsColor) ?? .black
         let trackInk = ink.withAlphaComponent(0.35)
+
+        if style == .dual {
+            let image = renderDual(reading, ink: ink, track: trackInk, mode: mode)
+            image.isTemplate = level == .none
+            return image
+        }
+
+        let percent = reading.headline
         // No reading at all stays empty in both modes: a full bar would claim
         // the quota is untouched when we simply do not know.
         let shown = percent.map { mode.shownPercent(fromUsed: $0) }
         let image: NSImage
         switch style {
+        case .dual: image = renderDual(reading, ink: ink, track: trackInk, mode: mode)
         case .bar: image = renderBar(shown, ink: ink, track: trackInk)
         case .ring: image = renderRing(shown, ink: ink, track: trackInk)
         case .columns: image = renderColumns(shown, ink: ink, track: trackInk)
@@ -43,6 +66,20 @@ enum MenuBarIcon {
             green: CGFloat((value >> 8) & 0xFF) / 255,
             blue: CGFloat(value & 0xFF) / 255,
             alpha: 1)
+    }
+
+    /// Draws an unlit cell as an outline instead of a faint fill.
+    ///
+    /// A faint fill is only distinguishable from a lit one by its alpha, and
+    /// once the glyph is tinted for an alert both read as "a coloured block":
+    /// an exhausted quota (nothing lit) looked identical to a full one. An
+    /// outline is unambiguous at any colour or size.
+    private static func strokeCell(_ path: NSBezierPath, _ ink: NSColor) {
+        // Heavy enough to survive antialiasing at 22pt; any lighter and an
+        // empty meter reads as a blank menu bar.
+        ink.withAlphaComponent(0.75).setStroke()
+        path.lineWidth = 1.4
+        path.stroke()
     }
 
     private static func fraction(_ percent: Double?) -> CGFloat {
@@ -117,12 +154,67 @@ enum MenuBarIcon {
             }
 
             for (index, height) in heights.enumerated() {
-                let bar = NSBezierPath(
-                    roundedRect: NSRect(x: x, y: 3, width: barWidth, height: height),
-                    xRadius: 1.6, yRadius: 1.6)
-                (index < lit ? ink : track).setFill()
-                bar.fill()
+                let rect = NSRect(x: x, y: 3, width: barWidth, height: height)
+                if index < lit {
+                    ink.setFill()
+                    NSBezierPath(roundedRect: rect, xRadius: 1.6, yRadius: 1.6).fill()
+                } else {
+                    strokeCell(NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5),
+                                            xRadius: 1.3, yRadius: 1.3), ink)
+                }
                 x += barWidth + spacing
+            }
+            return true
+        }
+    }
+
+    // MARK: 双层 — short horizon over long horizon
+
+    /// Two stacked five-cell meters: the top row is the short window (5h,
+    /// rolling), the bottom the long one (7d, 30d, billing cycle).
+    ///
+    /// Collapsing both into one figure hides which limit is actually near —
+    /// "am I about to be throttled" and "will I run out this week" are
+    /// different questions. A plan that reports only one horizon (a Codex Pro
+    /// account has no 5-hour window) draws a single centred row rather than an
+    /// empty one, which would read as "nothing left".
+    private static func renderDual(
+        _ reading: MeterReading,
+        ink: NSColor,
+        track: NSColor,
+        mode: MeterMode) -> NSImage
+    {
+        let count = 5
+        let cellWidth: CGFloat = 4.2
+        let gap: CGFloat = 1.6
+        let totalWidth = cellWidth * CGFloat(count) + gap * CGFloat(count - 1)
+        let size = NSSize(width: totalWidth + 4, height: 22)
+
+        let rows: [Double?] = reading.hasBothHorizons
+            ? [reading.short, reading.long]
+            : [reading.headline]
+
+        return NSImage(size: size, flipped: false) { _ in
+            let rowHeight: CGFloat = rows.count > 1 ? 5.5 : 8
+            let rowGap: CGFloat = 2.5
+            let block = rowHeight * CGFloat(rows.count) + rowGap * CGFloat(rows.count - 1)
+            var y = (22 - block) / 2 + block - rowHeight
+
+            for value in rows {
+                let lit = steps(value.map { mode.shownPercent(fromUsed: $0) }, of: count)
+                var x = (size.width - totalWidth) / 2
+                for index in 0..<count {
+                    let rect = NSRect(x: x, y: y, width: cellWidth, height: rowHeight)
+                    if index < lit {
+                        ink.setFill()
+                        NSBezierPath(roundedRect: rect, xRadius: 1.1, yRadius: 1.1).fill()
+                    } else {
+                        strokeCell(NSBezierPath(roundedRect: rect.insetBy(dx: 0.6, dy: 0.6),
+                                                xRadius: 0.9, yRadius: 0.9), ink)
+                    }
+                    x += cellWidth + gap
+                }
+                y -= rowHeight + rowGap
             }
             return true
         }
@@ -135,20 +227,30 @@ enum MenuBarIcon {
     /// are never drawn — a cell lights only once its step is fully reached,
     /// so the glyph never overstates.
     private static func renderSegments(_ percent: Double?, ink: NSColor, track: NSColor) -> NSImage {
+        // Five cells, linear. Ten was tried and is worse: at 22pt each cell
+        // becomes ~2pt wide, and a filled cell stops being distinguishable
+        // from an outlined one — finer gradations bought nothing because the
+        // gradations themselves became unreadable.
+        //
+        // Linear rather than a 3x3 grid: proportion along one axis is read
+        // preattentively, while a grid has to be counted in two dimensions.
         let count = 5
-        let cellWidth: CGFloat = 3.6
-        let gap: CGFloat = 1.5
+        let cellWidth: CGFloat = 4.2
+        let gap: CGFloat = 1.6
         let totalWidth = cellWidth * CGFloat(count) + gap * CGFloat(count - 1)
         let size = NSSize(width: totalWidth + 4, height: 22)
         return NSImage(size: size, flipped: false) { _ in
             var x = (size.width - totalWidth) / 2
             let lit = steps(percent, of: count)
             for index in 0..<count {
-                let cell = NSBezierPath(
-                    roundedRect: NSRect(x: x, y: 8, width: cellWidth, height: 7),
-                    xRadius: 1.2, yRadius: 1.2)
-                (index < lit ? ink : track).setFill()
-                cell.fill()
+                let rect = NSRect(x: x, y: 7.5, width: cellWidth, height: 8)
+                if index < lit {
+                    ink.setFill()
+                    NSBezierPath(roundedRect: rect, xRadius: 1.2, yRadius: 1.2).fill()
+                } else {
+                    strokeCell(NSBezierPath(roundedRect: rect.insetBy(dx: 0.6, dy: 0.6),
+                                            xRadius: 1, yRadius: 1), ink)
+                }
                 x += cellWidth + gap
             }
             return true
@@ -174,8 +276,13 @@ enum MenuBarIcon {
                     y: originY + CGFloat(row) * (cell + gap),
                     width: cell, height: cell)
                 let path = NSBezierPath(roundedRect: rect, xRadius: 1.2, yRadius: 1.2)
-                (index < lit ? ink : track).setFill()
-                path.fill()
+                if index < lit {
+                    ink.setFill()
+                    path.fill()
+                } else {
+                    strokeCell(NSBezierPath(roundedRect: rect.insetBy(dx: 0.6, dy: 0.6),
+                                            xRadius: 1, yRadius: 1), ink)
+                }
             }
             return true
         }
