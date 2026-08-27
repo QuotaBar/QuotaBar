@@ -39,7 +39,7 @@ public struct OpenCodeGoProvider: QuotaProvider {
         // any older/flatter shape.
         let container = (root["usage"] as? [String: Any]) ?? root
 
-        func window(_ keys: [String], title: String) -> UsageWindow? {
+        func window(_ keys: [String], title: String, seconds: Int? = nil) -> UsageWindow? {
             for key in keys {
                 guard let dict = container[key] as? [String: Any] else { continue }
                 let percent = (dict["percent"] as? Double)
@@ -52,7 +52,8 @@ public struct OpenCodeGoProvider: QuotaProvider {
                     ?? Dates.parseAny(dict["reset_at"] as? String)
                     ?? (dict["resetInSec"] as? Int).map { Date().addingTimeInterval(TimeInterval($0)) }
                     ?? (dict["reset_in_sec"] as? Int).map { Date().addingTimeInterval(TimeInterval($0)) }
-                return UsageWindow(title: title, usedPercent: percent, resetsAt: resetsAt)
+                return UsageWindow(
+                    title: title, usedPercent: percent, resetsAt: resetsAt, windowSeconds: seconds)
             }
             return nil
         }
@@ -61,10 +62,16 @@ public struct OpenCodeGoProvider: QuotaProvider {
         if let rolling = window(["rolling", "rollingUsage", "rolling_usage"], title: L10n.t("Rolling window", "滚动窗口")) {
             windows.append(rolling)
         }
-        if let weekly = window(["weekly", "weeklyUsage", "weekly_usage"], title: WindowTitle.forSeconds(604_800)) {
+        if let weekly = window(
+            ["weekly", "weeklyUsage", "weekly_usage"],
+            title: WindowTitle.forSeconds(604_800), seconds: 604_800)
+        {
             windows.append(weekly)
         }
-        if let monthly = window(["monthly", "monthlyUsage", "monthly_usage"], title: WindowTitle.forSeconds(2_592_000)) {
+        if let monthly = window(
+            ["monthly", "monthlyUsage", "monthly_usage"],
+            title: WindowTitle.forSeconds(2_592_000), seconds: 2_592_000)
+        {
             windows.append(monthly)
         }
         guard !windows.isEmpty else { throw ProviderError.badResponse }
@@ -135,7 +142,9 @@ public struct MiniMaxProvider: QuotaProvider {
                 windows.append(UsageWindow(
                     title: L10n.t("\(name) · weekly", "\(name) · 每周"),
                     usedPercent: 100 - weeklyRemaining,
-                    resetsAt: Dates.parseEpoch(entry.weeklyEndTime.map(Double.init))))
+                    resetsAt: Dates.parseEpoch(entry.weeklyEndTime.map(Double.init)),
+                    windowSeconds: 604_800,
+                    scope: name))
             }
         }
         return UsageSnapshot(windows: windows)

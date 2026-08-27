@@ -82,6 +82,16 @@ public struct CodexProvider: QuotaProvider {
         }
     }
 
+    struct ResetCreditsBody: Decodable {
+        let availableCount: Int?
+        let applicableAvailableCount: Int?
+
+        enum CodingKeys: String, CodingKey {
+            case availableCount = "available_count"
+            case applicableAvailableCount = "applicable_available_count"
+        }
+    }
+
     struct Body: Decodable {
         let email: String?
         let accountId: String?
@@ -89,6 +99,7 @@ public struct CodexProvider: QuotaProvider {
         let rateLimit: RateLimit?
         let additionalRateLimits: [AdditionalLimit]?
         let credits: Credits?
+        let rateLimitResetCredits: ResetCreditsBody?
 
         enum CodingKeys: String, CodingKey {
             case email
@@ -97,6 +108,7 @@ public struct CodexProvider: QuotaProvider {
             case rateLimit = "rate_limit"
             case additionalRateLimits = "additional_rate_limits"
             case credits
+            case rateLimitResetCredits = "rate_limit_reset_credits"
         }
     }
 
@@ -120,10 +132,18 @@ public struct CodexProvider: QuotaProvider {
             windows.append(creditWindow)
         }
 
+        var resetCredits: ResetCredits?
+        if let raw = body.rateLimitResetCredits, let available = raw.availableCount, available > 0 {
+            resetCredits = ResetCredits(
+                available: available,
+                applicable: raw.applicableAvailableCount)
+        }
+
         return UsageSnapshot(
             planName: body.planType?.capitalized,
             account: body.email ?? body.accountId ?? fallbackAccount,
-            windows: windows)
+            windows: windows,
+            resetCredits: resetCredits)
     }
 
     private static func convert(_ limit: RateLimit?, prefix: String?, active: Bool) -> [UsageWindow] {
@@ -140,7 +160,9 @@ public struct CodexProvider: QuotaProvider {
                     title: prefix.map { "\($0) · \(base)" } ?? base,
                     usedPercent: percent,
                     resetsAt: resetsAt,
-                    isActive: active)
+                    isActive: active,
+                    windowSeconds: window.limitWindowSeconds,
+                    scope: prefix)
             }
     }
 
@@ -280,8 +302,12 @@ public struct ClaudeProvider: QuotaProvider {
         if windows.isEmpty {
             // Older responses only carried the two top-level windows.
             windows = [
-                body.fiveHour.map { legacy($0, title: WindowTitle.forSeconds(18_000), active: true) },
-                body.sevenDay.map { legacy($0, title: WindowTitle.forSeconds(604_800), active: false) },
+                body.fiveHour.map {
+                    legacy($0, title: WindowTitle.forSeconds(18_000), seconds: 18_000, active: true)
+                },
+                body.sevenDay.map {
+                    legacy($0, title: WindowTitle.forSeconds(604_800), seconds: 604_800, active: false)
+                },
             ].compactMap { $0 }
         }
         if let extra = extraUsageWindow(body.extraUsage) {
@@ -295,14 +321,19 @@ public struct ClaudeProvider: QuotaProvider {
         guard let percent = limit.percent else { return nil }
         let kind = limit.kind ?? limit.group ?? ""
         var title: String
+        var seconds: Int?
+        var scope: String?
         switch kind {
         case "session":
+            seconds = 18_000
             title = WindowTitle.forSeconds(18_000)
         case "weekly_all":
+            seconds = 604_800
             title = WindowTitle.forSeconds(604_800)
         case "weekly_scoped":
+            seconds = 604_800
             let weekly = WindowTitle.forSeconds(604_800)
-            let scope = limit.scope?.model?.displayName ?? limit.scope?.model?.id
+            scope = limit.scope?.model?.displayName ?? limit.scope?.model?.id
             title = scope.map { "\(weekly) · \($0)" } ?? weekly
         default:
             title = prettify(kind)
@@ -316,16 +347,24 @@ public struct ClaudeProvider: QuotaProvider {
             usedPercent: percent,
             detail: dollarDetail(dollars),
             resetsAt: Dates.parseISO(limit.resetsAt),
-            isActive: limit.isActive ?? false)
+            isActive: limit.isActive ?? false,
+            windowSeconds: seconds,
+            scope: scope)
     }
 
-    private static func legacy(_ window: LegacyWindow, title: String, active: Bool) -> UsageWindow {
+    private static func legacy(
+        _ window: LegacyWindow,
+        title: String,
+        seconds: Int,
+        active: Bool) -> UsageWindow
+    {
         UsageWindow(
             title: title,
             usedPercent: window.utilization,
             detail: dollarDetail(window),
             resetsAt: Dates.parseISO(window.resetsAt),
-            isActive: active)
+            isActive: active,
+            windowSeconds: seconds)
     }
 
     private static func dollarDetail(_ window: LegacyWindow?) -> String? {

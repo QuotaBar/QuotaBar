@@ -272,6 +272,16 @@ public enum WindowTitle {
     public static func forMinutes(_ minutes: Int) -> String {
         forSeconds(minutes * 60)
     }
+
+    /// Compact badge form: "5h", "7d", "30d", "45m". Untranslated on purpose —
+    /// these read the same in both languages and have to fit a small pill.
+    public static func short(_ seconds: Int) -> String? {
+        guard seconds > 0 else { return nil }
+        if seconds % 86_400 == 0 { return "\(seconds / 86_400)d" }
+        if seconds % 3_600 == 0 { return "\(seconds / 3_600)h" }
+        if seconds >= 60 { return "\(seconds / 60)m" }
+        return "\(seconds)s"
+    }
 }
 
 // MARK: - Usage models
@@ -286,13 +296,22 @@ public struct UsageWindow: Sendable, Identifiable {
     public var resetsAt: Date?
     /// True for the window the provider says is currently governing requests.
     public var isActive: Bool
+    /// Window length as reported by the provider, when it reports one. Drives
+    /// the compact "5h" / "7d" badge; nil for billing-cycle or balance rows
+    /// that have no fixed length.
+    public var windowSeconds: Int?
+    /// What the window is scoped to — a model or a metered feature — when it
+    /// applies to less than the whole account.
+    public var scope: String?
 
     public init(
         title: String,
         usedPercent: Double? = nil,
         detail: String? = nil,
         resetsAt: Date? = nil,
-        isActive: Bool = false)
+        isActive: Bool = false,
+        windowSeconds: Int? = nil,
+        scope: String? = nil)
     {
         self.id = title
         self.title = title
@@ -300,6 +319,28 @@ public struct UsageWindow: Sendable, Identifiable {
         self.detail = detail
         self.resetsAt = resetsAt
         self.isActive = isActive
+        self.windowSeconds = windowSeconds
+        self.scope = scope
+    }
+
+    /// Badge text, when the provider reported a window length.
+    public var shortLabel: String? {
+        windowSeconds.flatMap(WindowTitle.short)
+    }
+}
+
+/// Credits that let the user reset a rate-limit window early, when the plan
+/// grants them.
+public struct ResetCredits: Sendable, Equatable {
+    /// How many the account holds.
+    public var available: Int
+    /// How many apply to the window that is currently limiting — often 0 while
+    /// nothing is actually throttled.
+    public var applicable: Int?
+
+    public init(available: Int, applicable: Int? = nil) {
+        self.available = available
+        self.applicable = applicable
     }
 }
 
@@ -308,17 +349,21 @@ public struct UsageSnapshot: Sendable {
     public var account: String?
     public var windows: [UsageWindow]
     public var fetchedAt: Date
+    /// Early-reset credits, when the provider reports them.
+    public var resetCredits: ResetCredits?
 
     public init(
         planName: String? = nil,
         account: String? = nil,
         windows: [UsageWindow] = [],
-        fetchedAt: Date = .now)
+        fetchedAt: Date = .now,
+        resetCredits: ResetCredits? = nil)
     {
         self.planName = planName
         self.account = account
         self.windows = UsageSnapshot.uniquingIDs(windows)
         self.fetchedAt = fetchedAt
+        self.resetCredits = resetCredits
     }
 
     /// `ForEach` needs stable unique ids; two providers legitimately report two

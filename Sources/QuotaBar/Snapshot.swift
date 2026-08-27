@@ -34,28 +34,36 @@ enum Snapshot {
                         title: WindowTitle.forSeconds(604_800),
                         usedPercent: 36,
                         resetsAt: now.addingTimeInterval(524_721),
-                        isActive: true),
+                        isActive: true,
+                        windowSeconds: 604_800),
                     UsageWindow(
                         title: "GPT-5.3-Codex-Spark · \(WindowTitle.forSeconds(18_000))",
                         usedPercent: 4,
-                        resetsAt: now.addingTimeInterval(18_000)),
+                        resetsAt: now.addingTimeInterval(18_000),
+                        windowSeconds: 18_000,
+                        scope: "GPT-5.3-Codex-Spark"),
                 ],
-                fetchedAt: now)),
+                fetchedAt: now,
+                resetCredits: ResetCredits(available: 1, applicable: 0))),
             .claude: .loaded(UsageSnapshot(
                 windows: [
                     UsageWindow(
                         title: WindowTitle.forSeconds(18_000),
                         usedPercent: 18,
                         resetsAt: now.addingTimeInterval(9_000),
-                        isActive: true),
+                        isActive: true,
+                        windowSeconds: 18_000),
                     UsageWindow(
                         title: WindowTitle.forSeconds(604_800),
                         usedPercent: 88,
-                        resetsAt: now.addingTimeInterval(320_000)),
+                        resetsAt: now.addingTimeInterval(320_000),
+                        windowSeconds: 604_800),
                     UsageWindow(
                         title: "\(WindowTitle.forSeconds(604_800)) · Fable",
                         usedPercent: 10,
-                        resetsAt: now.addingTimeInterval(320_000)),
+                        resetsAt: now.addingTimeInterval(320_000),
+                        windowSeconds: 604_800,
+                        scope: "Fable"),
                 ],
                 fetchedAt: now)),
             .cursor: .stale(UsageSnapshot(
@@ -216,6 +224,7 @@ enum Snapshot {
 
         let panels: [(String, ProviderID?)] = [
             ("overview", nil),
+            ("codex", .codex),
             ("claude", .claude),
             ("stale", .cursor),
             ("failed", .zai),

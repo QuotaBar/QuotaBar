@@ -493,6 +493,10 @@ struct ProviderDetailView: View {
                 accent: Color(hex: id.accentHex),
                 alerts: store.alertSettings)
         }
+        if let credits = snapshot.resetCredits {
+            Divider()
+            ResetCreditsRow(credits: credits, accent: Color(hex: id.accentHex))
+        }
         if error == nil {
             Text(L10n.t(
                 "Updated \(QuotaFormat.age(of: snapshot.fetchedAt))",
@@ -698,6 +702,11 @@ struct SparklineView: View {
     }
 }
 
+/// One quota window: a length badge, a meter, the figure, and when it resets.
+///
+/// The badge carries the window length ("5h", "7d") so the row scans without
+/// reading a sentence — several providers report two or three windows and the
+/// difference between them is the only thing that distinguishes the rows.
 struct WindowRow: View {
     let window: UsageWindow
     let accent: Color
@@ -712,32 +721,84 @@ struct WindowRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: Design.space1 + 2) {
-                Text(window.title)
+        HStack(alignment: .top, spacing: Design.space2) {
+            badge
+            VStack(alignment: .leading, spacing: 4) {
+                headline
+                if let percent = window.usedPercent {
+                    ProgressView(value: min(max(percent, 0), 100), total: 100)
+                        .progressViewStyle(.linear)
+                        .tint(tint)
+                }
+                secondary
+            }
+        }
+    }
+
+    // MARK: Badge
+
+    @ViewBuilder
+    private var badge: some View {
+        if let label = window.shortLabel {
+            Text(label)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(accent)
+                .frame(minWidth: 30)
+                .padding(.vertical, 3)
+                .background(
+                    RoundedRectangle(cornerRadius: Design.radiusTile - 2, style: .continuous)
+                        .fill(accent.opacity(0.14)))
+        } else {
+            // Balance rows and billing cycles have no fixed length; keep the
+            // meters aligned with the badged rows above them.
+            Color.clear.frame(width: 30, height: 1)
+        }
+    }
+
+    // MARK: Rows
+
+    private var headline: some View {
+        HStack(spacing: Design.space1 + 2) {
+            // Only labelled when the window is scoped to something. An
+            // account-wide window needs no caption — repeating "whole account"
+            // on every row is filler, and the badge already says what it is.
+            if let caption {
+                Text(caption)
                     .font(.callout.weight(.medium))
                     .lineLimit(1)
-                if window.isActive {
-                    Text(L10n.t("active", "生效中"))
-                        .font(.system(size: 9, weight: .semibold))
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(Capsule().fill(accent.opacity(0.18)))
-                        .foregroundStyle(accent)
-                }
-                Spacer()
-                if let percent = window.usedPercent {
-                    Text(QuotaFormat.percent(percent))
-                        .font(.callout.weight(.semibold))
-                        .monospacedDigit()
-                        .foregroundStyle(tint)
-                }
             }
+            if window.isActive {
+                Text(L10n.t("active", "生效中"))
+                    .font(.system(size: 9, weight: .semibold))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(accent.opacity(0.18)))
+                    .foregroundStyle(accent)
+            }
+            Spacer(minLength: Design.space2)
             if let percent = window.usedPercent {
-                ProgressView(value: min(max(percent, 0), 100), total: 100)
-                    .progressViewStyle(.linear)
-                    .tint(tint)
+                Text(QuotaFormat.percent(percent))
+                    .font(.callout.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(tint)
             }
+        }
+    }
+
+    /// The badge already carries the length, so the text beside it names what
+    /// the window is scoped to and does not repeat "7-day window". nil when
+    /// there is nothing to add.
+    private var caption: String? {
+        if let scope = window.scope, !scope.isEmpty { return scope }
+        // No badge means no length was reported — fall back to the full title
+        // so balance and billing-cycle rows still say what they are.
+        return window.shortLabel == nil ? window.title : nil
+    }
+
+    @ViewBuilder
+    private var secondary: some View {
+        if window.detail != nil || window.resetsAt != nil {
             HStack {
                 if let detail = window.detail {
                     Text(detail)
@@ -752,5 +813,30 @@ struct WindowRow: View {
                 }
             }
         }
+    }
+}
+
+/// Early-reset credits, when the plan grants them.
+struct ResetCreditsRow: View {
+    let credits: ResetCredits
+    let accent: Color
+
+    var body: some View {
+        HStack(spacing: Design.space2) {
+            Image(systemName: "arrow.clockwise.circle")
+                .foregroundStyle(accent)
+            Text(L10n.t("Early resets", "限额重置额度"))
+                .font(.callout.weight(.medium))
+            Spacer()
+            Text(L10n.t(
+                "\(credits.available) available",
+                "\(credits.available) 次可用"))
+                .font(.callout.weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(accent)
+        }
+        .help(L10n.t(
+            "Credits that reset a rate-limit window early. \(credits.applicable ?? 0) apply to the window limiting you right now.",
+            "可提前重置限额窗口的次数。当前正在限流的窗口可用 \(credits.applicable ?? 0) 次。"))
     }
 }

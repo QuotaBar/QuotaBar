@@ -165,7 +165,8 @@ public struct KimiProvider: QuotaProvider {
                 windows.append(UsageWindow(
                     title: WindowTitle.forSeconds(604_800),
                     usedPercent: ratio <= 1 ? ratio * 100 : ratio,
-                    resetsAt: Dates.parseAny(weekly.resetTime)))
+                    resetsAt: Dates.parseAny(weekly.resetTime),
+                    windowSeconds: 604_800))
             }
         }
         guard !windows.isEmpty else { throw ProviderError.badResponse }
@@ -225,7 +226,8 @@ public struct ZaiProvider: QuotaProvider {
                 detail: limit.usage.flatMap { usage in
                     limit.remaining.map { L10n.t("\($0) left of \(usage)", "剩余 \($0) / 共 \(usage)") }
                 },
-                resetsAt: Dates.parseEpoch(limit.nextResetTime)))
+                resetsAt: Dates.parseEpoch(limit.nextResetTime),
+                windowSeconds: minutes > 0 ? minutes * 60 : nil))
         }
         return UsageSnapshot(windows: windows)
     }

@@ -281,3 +281,48 @@ final class MenuBarStyleTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(QuotaConfig.self, from: future).menuBarStyle, .grid)
     }
 }
+
+final class WindowBadgeTests: XCTestCase {
+    override func setUp() { L10n.override = .en }
+    override func tearDown() { L10n.override = .system }
+
+    func testShortLabels() {
+        XCTAssertEqual(WindowTitle.short(18_000), "5h")
+        XCTAssertEqual(WindowTitle.short(604_800), "7d")
+        XCTAssertEqual(WindowTitle.short(2_592_000), "30d")
+        XCTAssertEqual(WindowTitle.short(3_600), "1h")
+        XCTAssertEqual(WindowTitle.short(1_800), "30m")
+    }
+
+    func testShortLabelPrefersTheLargerUnit() {
+        // 86400s is a day, not "24h".
+        XCTAssertEqual(WindowTitle.short(86_400), "1d")
+    }
+
+    func testNoBadgeForAnUnknownLength() {
+        XCTAssertNil(WindowTitle.short(0))
+        XCTAssertNil(WindowTitle.short(-1))
+    }
+
+    func testWindowExposesItsBadge() {
+        let window = UsageWindow(title: "x", usedPercent: 10, windowSeconds: 604_800)
+        XCTAssertEqual(window.shortLabel, "7d")
+    }
+
+    func testWindowWithoutALengthHasNoBadge() {
+        // Balance and billing-cycle rows have no fixed window.
+        XCTAssertNil(UsageWindow(title: "Balance", detail: "$3.00").shortLabel)
+    }
+}
+
+final class ResetCreditsTests: XCTestCase {
+    func testCarriesBothCounts() {
+        let credits = ResetCredits(available: 3, applicable: 1)
+        XCTAssertEqual(credits.available, 3)
+        XCTAssertEqual(credits.applicable, 1)
+    }
+
+    func testApplicableIsOptional() {
+        XCTAssertNil(ResetCredits(available: 2).applicable)
+    }
+}

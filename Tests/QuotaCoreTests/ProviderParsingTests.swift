@@ -345,3 +345,49 @@ final class OpenCodeGoParsingTests: XCTestCase {
         XCTAssertThrowsError(try OpenCodeGoProvider.parse(Data("{}".utf8)))
     }
 }
+
+final class CodexResetCreditsTests: XCTestCase {
+    /// Recorded live: one reset credit held, none applicable right now.
+    private let response = """
+    {"plan_type":"pro","email":"dev@example.com",
+     "rate_limit":{"primary_window":{"used_percent":0,"limit_window_seconds":604800,
+                                     "reset_at":1788453173}},
+     "additional_rate_limits":[{"limit_name":"GPT-5.3-Codex-Spark",
+       "rate_limit":{"primary_window":{"used_percent":0,"limit_window_seconds":18000}}}],
+     "rate_limit_reset_credits":{"available_count":1,"applicable_available_count":0}}
+    """
+
+    func testParsesResetCredits() throws {
+        let snapshot = try CodexProvider.parse(Data(response.utf8))
+        let credits = try XCTUnwrap(snapshot.resetCredits)
+
+        XCTAssertEqual(credits.available, 1)
+        XCTAssertEqual(credits.applicable, 0)
+    }
+
+    func testZeroCreditsAreNotShown() throws {
+        let none = """
+        {"plan_type":"pro","rate_limit":null,
+         "rate_limit_reset_credits":{"available_count":0,"applicable_available_count":0}}
+        """
+        // Nothing to offer the user, so the row should not appear at all.
+        XCTAssertNil(try CodexProvider.parse(Data(none.utf8)).resetCredits)
+    }
+
+    func testAbsentFieldIsTolerated() throws {
+        let none = #"{"plan_type":"pro","rate_limit":null}"#
+        XCTAssertNil(try CodexProvider.parse(Data(none.utf8)).resetCredits)
+    }
+
+    func testWindowsCarryTheirLengthAndScope() throws {
+        let snapshot = try CodexProvider.parse(Data(response.utf8))
+
+        // Badge comes from the reported length, not from parsing the title.
+        XCTAssertEqual(snapshot.windows[0].shortLabel, "7d")
+        XCTAssertNil(snapshot.windows[0].scope, "the account-wide window has no scope")
+
+        let spark = try XCTUnwrap(snapshot.windows.first { $0.scope != nil })
+        XCTAssertEqual(spark.shortLabel, "5h")
+        XCTAssertEqual(spark.scope, "GPT-5.3-Codex-Spark")
+    }
+}
