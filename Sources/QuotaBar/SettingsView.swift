@@ -84,6 +84,11 @@ struct SettingsView: View {
                     "只影响菜单栏图标。面板内的百分比始终表示已用量。"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Text(L10n.t(
+                    "The glyph reports whichever provider the panel is focused on. Pick Overview in the panel to have it cover everything enabled.",
+                    "菜单栏图标显示的是面板中当前选中的服务商。在面板里选「总览」可让它覆盖所有已启用的服务商。"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Picker(L10n.t("Presentation", "展示方式"), selection: Binding(
                     get: { store.presentation },
                     set: { store.setPresentation($0) }))

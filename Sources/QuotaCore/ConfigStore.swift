@@ -8,6 +8,9 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
     public var presentation: Presentation
     public var alerts: AlertSettings
     public var language: L10n.Language
+    /// Which provider the panel — and therefore the menu-bar glyph — is
+    /// focused on. nil means the overview, where the glyph aggregates.
+    public var selected: ProviderID?
 
     /// Only ever populated by decoding a pre-Keychain config file. `ConfigStore`
     /// drains it into the keychain on load and rewrites the file without it;
@@ -27,6 +30,7 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
         presentation: Presentation = .menuBar,
         alerts: AlertSettings = AlertSettings(),
         language: L10n.Language = .system,
+        selected: ProviderID? = nil,
         legacyCredentials: [ProviderID: String] = [:])
     {
         self.enabled = enabled
@@ -36,11 +40,13 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
         self.presentation = presentation
         self.alerts = alerts
         self.language = language
+        self.selected = selected
         self.legacyCredentials = legacyCredentials
     }
 
     private enum CodingKeys: String, CodingKey {
         case enabled, refreshMinutes, menuBarStyle, meterMode, presentation, alerts, language
+        case selected
         case legacyCredentials = "credentials"
     }
 
@@ -63,6 +69,9 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
         alerts = ((try? container.decodeIfPresent(AlertSettings.self, forKey: .alerts))
             ?? defaults.alerts).normalized()
         language = QuotaConfig.decodeEnum(from: container, forKey: .language) ?? defaults.language
+        // nil is meaningful here (the overview), so an absent or unreadable
+        // value simply means "no provider focused".
+        selected = QuotaConfig.decodeEnum(from: container, forKey: .selected)
         legacyCredentials = QuotaConfig.decodeLegacyCredentials(from: container)
         hasLegacyCredentialKey = container.contains(.legacyCredentials)
     }
@@ -122,6 +131,7 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
         try container.encode(presentation, forKey: .presentation)
         try container.encode(alerts, forKey: .alerts)
         try container.encode(language, forKey: .language)
+        try container.encodeIfPresent(selected, forKey: .selected)
         // `legacyCredentials` intentionally omitted.
     }
 }
@@ -315,6 +325,16 @@ public final class ConfigStore: @unchecked Sendable {
             mutate { $0.language = newValue }
             L10n.override = newValue
         }
+    }
+
+    /// Which provider the panel — and therefore the menu-bar glyph — is
+    /// focused on. nil means the overview, where the glyph aggregates.
+    public var selected: ProviderID? {
+        get {
+            lock.lock(); defer { lock.unlock() }
+            return config.selected
+        }
+        set { mutate { $0.selected = newValue } }
     }
 
     private func mutate(_ body: (inout QuotaConfig) -> Void) {

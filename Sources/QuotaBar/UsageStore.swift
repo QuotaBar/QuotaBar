@@ -32,7 +32,15 @@ enum ProviderPhase: Sendable {
 final class UsageStore: ObservableObject {
     @Published var enabled: [ProviderID]
     @Published var states: [ProviderID: ProviderPhase] = [:]
-    @Published var selected: ProviderID?
+    /// Persisted, because it decides what the menu-bar glyph reports — a
+    /// choice that silently reverted on every launch would make the icon
+    /// change meaning without the user doing anything.
+    @Published var selected: ProviderID? {
+        didSet {
+            guard selected != oldValue else { return }
+            config.selected = selected
+        }
+    }
     @Published var refreshMinutes: Int
     @Published var menuBarStyle: MenuBarStyle
     @Published var meterMode: MeterMode
@@ -101,7 +109,11 @@ final class UsageStore: ObservableObject {
         self.presentation = ConfigStore.shared.presentation
         self.alertSettings = ConfigStore.shared.alerts
         self.language = ConfigStore.shared.language
-        self.selected = ConfigStore.shared.enabledProviders.first
+        // Restore the focused provider, dropping it if it is no longer enabled.
+        let saved = ConfigStore.shared.selected
+        self.selected = saved.flatMap {
+            ConfigStore.shared.enabledProviders.contains($0) ? $0 : nil
+        }
         for id in enabled {
             history[id] = UsageHistoryStore.shared.readings(for: id).map(\.percent)
         }
@@ -121,10 +133,15 @@ final class UsageStore: ObservableObject {
 
     // MARK: Derived state
 
-    /// Per-horizon readings across every enabled provider — drives the
-    /// menu-bar glyph, including the two-row form.
+    /// Per-horizon readings driving the menu-bar glyph.
+    ///
+    /// Follows whatever the panel is focused on: a selected provider reports
+    /// only its own windows, while the overview aggregates across everything
+    /// enabled. Switching provider in the panel therefore switches what the
+    /// menu bar is telling you about.
     var meterReading: MeterReading {
-        MeterReading.across(enabled.compactMap { states[$0]?.snapshot })
+        let sources: [ProviderID] = selected.map { [$0] } ?? enabled
+        return MeterReading.across(sources.compactMap { states[$0]?.snapshot })
     }
 
     /// Highest reading overall, for anything that shows a single figure.

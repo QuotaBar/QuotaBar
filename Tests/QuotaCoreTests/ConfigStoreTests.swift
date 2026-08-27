@@ -369,3 +369,52 @@ final class ConfigResilienceTests: XCTestCase {
         XCTAssertEqual(config.menuBarStyle, defaults.menuBarStyle)
     }
 }
+
+final class SelectedProviderTests: XCTestCase {
+    private var fileURL: URL!
+
+    override func setUpWithError() throws {
+        fileURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("quotabar-sel-\(UUID().uuidString)")
+            .appendingPathComponent("config.json")
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent())
+    }
+
+    func testSurvivesRelaunch() {
+        // The focused provider decides what the menu-bar glyph reports, so
+        // losing it on relaunch would silently change what the icon means.
+        let keychain = MemoryCredentialStorage()
+        let first = ConfigStore(fileURL: fileURL, credentials: keychain)
+        first.selected = .claude
+
+        XCTAssertEqual(ConfigStore(fileURL: fileURL, credentials: keychain).selected, .claude)
+    }
+
+    func testNilMeansTheOverview() {
+        let keychain = MemoryCredentialStorage()
+        let store = ConfigStore(fileURL: fileURL, credentials: keychain)
+        store.selected = .codex
+        store.selected = nil
+
+        XCTAssertNil(ConfigStore(fileURL: fileURL, credentials: keychain).selected)
+    }
+
+    func testDefaultsToTheOverview() {
+        XCTAssertNil(ConfigStore(fileURL: fileURL, credentials: MemoryCredentialStorage()).selected)
+    }
+
+    func testAnUnknownProviderIsTreatedAsTheOverview() throws {
+        try FileManager.default.createDirectory(
+            at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try #"{"enabled":["codex"],"selected":"retired-provider"}"#
+            .write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let store = ConfigStore(fileURL: fileURL, credentials: MemoryCredentialStorage())
+
+        XCTAssertNil(store.selected)
+        XCTAssertEqual(store.enabledProviders, [.codex], "the rest of the file still loads")
+    }
+}
