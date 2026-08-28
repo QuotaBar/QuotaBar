@@ -505,6 +505,18 @@ struct ProviderGlyph: View {
     var size: CGFloat = 18
     /// Renders the logo as a solid ink silhouette (for selected tiles on accent background).
     var ink: Bool = false
+    /// Forces the colour of a monochrome mark.
+    ///
+    /// Needed wherever the background is not the window's own: the always-dark
+    /// surfaces (dock, widget, island) resolve `Color.primary` against the
+    /// system appearance, which in light mode is black — and the black marks
+    /// (Codex, Cursor, OpenCode, z.ai, Kimi) then vanish into a black panel.
+    var tint: Color?
+
+    private var monochromeColour: Color {
+        if let tint { return tint }
+        return ink ? Design.ink : Color.primary
+    }
 
     var body: some View {
         if let logo = Self.logo(for: id) {
@@ -514,7 +526,7 @@ struct ProviderGlyph: View {
                     .renderingMode(.template)
                     .scaledToFit()
                     .frame(width: size, height: size)
-                    .foregroundStyle(ink ? Design.ink : Color.primary)
+                    .foregroundStyle(monochromeColour)
             } else {
                 Image(nsImage: logo.image)
                     .resizable()
@@ -526,7 +538,7 @@ struct ProviderGlyph: View {
         } else {
             Image(systemName: id.symbolName)
                 .font(.system(size: size * 0.85, weight: .semibold))
-                .foregroundStyle(ink ? Design.ink : Color.primary)
+                .foregroundStyle(monochromeColour)
         }
     }
 

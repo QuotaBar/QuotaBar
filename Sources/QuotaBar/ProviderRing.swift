@@ -38,8 +38,9 @@ struct ProviderRing: View {
                         .stroke(tint, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                 }
-                ProviderGlyph(id: id, size: diameter * 0.42)
-                    .foregroundStyle(.white)
+                // Always-dark surface: force the mark light rather than
+                // leaving it to resolve against the system appearance.
+                ProviderGlyph(id: id, size: diameter * 0.42, tint: .white)
             }
             .frame(width: diameter, height: diameter)
 
@@ -65,8 +66,7 @@ struct ProviderCallout: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Design.space3) {
             HStack(spacing: Design.space2) {
-                ProviderGlyph(id: id, size: 15)
-                    .foregroundStyle(.white)
+                ProviderGlyph(id: id, size: 15, tint: .white)
                 Text(L10n.t("\(id.displayName) usage", "\(id.displayName) 用量"))
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)

@@ -132,7 +132,7 @@ struct IslandView: View {
                     // the same remaining/used preference.
                     let shown = store.meterMode.shownPercent(fromUsed: used)
                     HStack(spacing: Design.space1) {
-                        ProviderGlyph(id: id, size: 13)
+                        ProviderGlyph(id: id, size: 13, tint: .white)
                         Text("\(Int(shown.rounded()))%")
                             .font(.system(size: 11, weight: .semibold, design: .monospaced))
                     }
