@@ -436,7 +436,11 @@ enum Snapshot {
                     ProviderRing(
                         id: id,
                         percent: store.states[id]?.snapshot?.headlinePercent,
-                        alerts: store.alertSettings)
+                        alerts: store.alertSettings,
+                        // Claude marked: a single click in the dock picks which
+                        // provider the menu-bar glyph reports, and the mark is
+                        // the only thing that says which one that is.
+                        selected: id == .claude)
                 }
             }
             .padding(.vertical, Design.space4)

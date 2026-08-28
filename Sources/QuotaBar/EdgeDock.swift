@@ -406,16 +406,23 @@ struct EdgeDockView: View {
                 ProviderRing(
                     id: id,
                     percent: store.states[id]?.snapshot?.headlinePercent,
-                    alerts: store.alertSettings)
+                    alerts: store.alertSettings,
+                    selected: store.selected == id)
                     .onHover { inside in
                         hovered = inside ? id : (hovered == id ? nil : hovered)
                     }
-                    .onTapGesture {
-                        // Focus that provider and open the full panel — the
-                        // strip is a summary, not a replacement for it.
+                    // Declared before the single tap: SwiftUI resolves the
+                    // higher count first only if it is attached first.
+                    .onTapGesture(count: 2) {
                         store.selected = id
                         openSettings()
                         SettingsWindow.focus()
+                    }
+                    .onTapGesture {
+                        // A single click only points the menu-bar glyph at this
+                        // provider. Opening a window is a bigger thing than
+                        // choosing what an icon means, so it takes two.
+                        store.selected = id
                     }
             }
         }

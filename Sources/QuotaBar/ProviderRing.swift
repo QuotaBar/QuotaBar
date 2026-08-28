@@ -12,6 +12,10 @@ struct ProviderRing: View {
     let alerts: AlertSettings
     var diameter: CGFloat = 46
     var showsLabel: Bool = true
+    /// Marks the provider the menu-bar glyph is reporting. Picking one is a
+    /// single click in the dock; opening the panel is a double click, so
+    /// choosing what the icon means does not also throw a window at you.
+    var selected: Bool = false
 
     private var level: AlertLevel {
         alerts.level(for: percent ?? 0)
@@ -51,9 +55,21 @@ struct ProviderRing: View {
                     .foregroundStyle(.white)
             }
         }
+        .background {
+            if selected {
+                // Negative padding so the marker is larger than the cell
+                // without changing its size — the dock computes its own height
+                // from `cellHeight` and a taller cell would desync the panel.
+                RoundedRectangle(cornerRadius: Design.radiusCard, style: .continuous)
+                    .fill(Color.white.opacity(0.13))
+                    .padding(.horizontal, -7)
+                    .padding(.vertical, -5)
+            }
+        }
         .accessibilityLabel(percent.map {
             "\(id.displayName) \(QuotaFormat.percent($0))"
         } ?? id.displayName)
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 }
 
