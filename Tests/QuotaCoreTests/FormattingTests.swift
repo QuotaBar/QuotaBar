@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import QuotaCore
 
@@ -175,6 +176,30 @@ final class ProviderRegistryTests: XCTestCase {
             XCTAssertEqual(id.accentHex.count, 6, "\(id) accent must be a 6-digit hex")
             XCTAssertNotNil(id.dashboardURL, "\(id) should link to its console")
             XCTAssertFalse(id.setupHint.isEmpty, "\(id) must tell the user how to connect")
+        }
+    }
+
+    /// A name that is not a real SF Symbol renders as nothing at all, so the
+    /// fallback for a provider with no logo PNG is a blank tile — which is the
+    /// exact failure the rest of this test exists to prevent. `braces` shipped
+    /// for OpenCode Go and does not exist; the symbol is `curlybraces`.
+    func testEverySymbolResolves() {
+        for id in ProviderID.allCases {
+            XCTAssertNotNil(
+                NSImage(systemSymbolName: id.symbolName, accessibilityDescription: nil),
+                "\(id): '\(id.symbolName)' is not an SF Symbol")
+        }
+    }
+
+    /// SF Symbols localises a handful of marks — `textformat` draws the word
+    /// "格式" under a Chinese locale. A brand fallback must mean the same thing
+    /// in both languages the app ships.
+    func testNoSymbolIsLocaleDependent() {
+        let localised: Set<String> = ["textformat", "textformat.size", "character", "bold", "italic", "underline"]
+        for id in ProviderID.allCases {
+            XCTAssertFalse(
+                localised.contains(id.symbolName),
+                "\(id): '\(id.symbolName)' renders differently per language")
         }
     }
 

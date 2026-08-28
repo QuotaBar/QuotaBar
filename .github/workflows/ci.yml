@@ -44,6 +44,8 @@ jobs:
         run: |
           QuotaBar.app/Contents/MacOS/QuotaBar --snapshot "$PWD/snapshots"
           test "$(ls snapshots/*.png | wc -l)" -ge 12
+          QuotaBar.app/Contents/MacOS/QuotaBar --settings-preview "$PWD/snapshots/settings"
+          test "$(ls snapshots/settings/*.png | wc -l)" -ge 28
 
       - uses: actions/upload-artifact@v7
         with:

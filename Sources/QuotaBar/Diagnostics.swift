@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import Foundation
 import QuotaCore
 
@@ -14,6 +15,59 @@ enum Diagnostics {
     ///
     /// Terminates from inside the task rather than blocking the main thread;
     /// blocking in `applicationDidFinishLaunching` deadlocks the SwiftUI app.
+    /// Opens the settings pane in a real window: `QuotaBar --settings-window`.
+    ///
+    /// `--settings-preview` shows layout but never material: glass and vibrancy
+    /// are composited by the window server, so they exist only on screen. This
+    /// is how you look at them without clicking through the menu bar, and it is
+    /// also the only way to see the AppKit controls the renderer replaces with
+    /// yellow placeholders.
+    /// Held for the process lifetime. A local `NSWindow` has no owner under ARC
+    /// — `makeKeyAndOrderFront` does not retain it — so without this the window
+    /// is deallocated before it ever draws, and the app looks like it ignored
+    /// the flag.
+    @MainActor private static var debugWindow: NSWindow?
+
+    @MainActor
+    static func settingsWindow() {
+        // After SwiftUI has finished building its scenes. Creating the window
+        // from inside `applicationDidFinishLaunching` gets it ordered out again
+        // as the MenuBarExtra scene comes up.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { build() }
+    }
+
+    @MainActor
+    private static func build() {
+        // An accessory app is never activated as a side effect, and this one
+        // wants to be looked at.
+        NSApp.setActivationPolicy(.regular)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 840, height: 700),
+            styleMask: [.titled, .closable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false)
+        window.contentView = NSHostingView(rootView: SettingsView(store: UsageStore()))
+        window.isReleasedWhenClosed = false
+        // Floating, because the point of this flag is to look at the window:
+        // activating an accessory process does not reliably outrank whatever
+        // app happened to be frontmost.
+        window.level = .floating
+        // Not `center()` — it picks whichever screen is "main", which on a
+        // multi-display Mac is routinely not the one you are looking at.
+        if let screen = NSScreen.screens.first {
+            let visible = screen.visibleFrame
+            window.setFrameOrigin(NSPoint(
+                x: visible.midX - window.frame.width / 2,
+                y: visible.midY - window.frame.height / 2))
+        }
+        debugWindow = window
+        window.makeKeyAndOrderFront(nil)
+        // Same ordering rule as `SettingsWindow.focus()`: activating before the
+        // window is on screen does nothing.
+        DispatchQueue.main.async { NSApp.activate(ignoringOtherApps: true) }
+        FileHandle.standardOutput.write(Data("settings window: \(window.frame)\n".utf8))
+    }
+
     static func printWindows() {
         Task { @MainActor in
             let config = ConfigStore.shared

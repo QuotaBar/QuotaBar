@@ -188,9 +188,11 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
         case .codex: "terminal"
         case .claude: "sparkles"
         case .cursor: "cursorarrow.rays"
-        case .kimi: "textformat"
+        // Not `textformat`: SF Symbols localises that one, so the fallback
+        // draws the literal word "格式" under a Chinese locale.
+        case .kimi: "moon.stars"
         case .zai: "z.square"
-        case .opencodeGo: "braces"
+        case .opencodeGo: "curlybraces"
         case .minimax: "square.stack.3d.up"
         case .gemini: "star"
         case .manus: "hand.raised"

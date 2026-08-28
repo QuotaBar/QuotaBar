@@ -15,9 +15,18 @@ enum Design {
     static let space6: CGFloat = 24
 
     // Radius tiers.
+    static let radiusField: CGFloat = 7
     static let radiusTile: CGFloat = 8
     static let radiusCard: CGFloat = 10
     static let radiusPanel: CGFloat = 14
+
+    // Settings window metrics. A form only reads as a form when every control
+    // in it is the same height and starts at the same x.
+    static let fieldHeight: CGFloat = 30
+    static let labelColumn: CGFloat = 132
+    static let sidebarWidth: CGFloat = 180
+    /// Clears the traffic lights once the titlebar is transparent.
+    static let titlebarInset: CGFloat = 30
 
     /// Opaque panel backing. Explicit rather than a material: the panel must
     /// carry its own contrast, since it cannot rely on what sits behind it.
@@ -29,6 +38,20 @@ enum Design {
     static let surface = Color.primary.opacity(0.05)
     static let surfaceStrong = Color.primary.opacity(0.08)
     static let track = Color.primary.opacity(0.15)
+
+    /// The settings sidebar is an always-dark surface, like the dock and the
+    /// widget. Its colours are therefore pinned, not adaptive: `Color.primary`
+    /// and `Design.accent` resolve against the *system* appearance and both go
+    /// black-on-black in light mode. Same trap as `ProviderGlyph`'s `tint`.
+    static let sidebarSurface = Color.black
+    static let sidebarInk = Color.white
+    static let sidebarInkDim = Color.white.opacity(0.62)
+
+    /// Specular edge on a glass surface, and the well behind a text field.
+    /// Both are `Color.primary` derivatives so they invert with the appearance
+    /// on their own — a fixed white hairline is invisible in light mode.
+    static let glassEdge = Color.primary.opacity(0.12)
+    static let fieldFill = Color.primary.opacity(0.04)
 
     /// Resolves per appearance: graphite-on-white in light mode, and the
     /// inverse in dark mode so the selection block never sinks into the window.

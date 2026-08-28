@@ -51,6 +51,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Snapshot.run(directory: directory)
             NSApp.terminate(nil)
         }
+        if let index = arguments.firstIndex(of: "--settings-preview") {
+            let directory = index + 1 < arguments.count ? arguments[index + 1] : "./settings"
+            Snapshot.settingsPreview(directory: directory)
+            NSApp.terminate(nil)
+        }
         if let index = arguments.firstIndex(of: "--icon-preview") {
             let directory = index + 1 < arguments.count ? arguments[index + 1] : "./icons"
             Snapshot.iconPreview(directory: directory)
@@ -60,6 +65,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let directory = index + 1 < arguments.count ? arguments[index + 1] : "./themes"
             Snapshot.themePreview(directory: directory)
             NSApp.terminate(nil)
+        }
+        if arguments.contains("--settings-window") {
+            Diagnostics.settingsWindow()
+            return
         }
         if arguments.contains("--windows") {
             Diagnostics.printWindows()

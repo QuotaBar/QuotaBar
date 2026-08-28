@@ -16,9 +16,10 @@ import QuotaCore
 /// - AppKit-backed controls (`.borderless` buttons, `ProgressView`) come out as
 ///   yellow placeholder glyphs.
 ///
-/// `SettingsView` is excluded outright: it assigns `@State` from `onAppear`,
-/// which `ImageRenderer` cannot service — it renders outside a SwiftUI update
-/// transaction and traps on the queued change.
+/// `SettingsView` renders too, via `--settings-preview`. Every `@State` in it
+/// is seeded from `init` rather than `onAppear` precisely so that it can:
+/// `ImageRenderer` runs outside a SwiftUI update transaction and traps on a
+/// change queued from `onAppear`.
 @MainActor
 enum Snapshot {
     /// Representative data: a healthy provider, one in the alert band, one
@@ -334,6 +335,44 @@ enum Snapshot {
             backing: Color(hex: "1E1E1E"))
         L10n.override = ConfigStore.shared.language
         FileHandle.standardOutput.write(Data("Wrote icon sheet to \(base.path)\n".utf8))
+    }
+
+    /// Renders the settings window section by section: `--settings-preview <dir>`.
+    ///
+    /// Glass and vibrancy do not survive `ImageRenderer` — the flat stand-in is
+    /// what comes out. Read this for spacing, alignment and truncation; judge
+    /// the material on screen.
+    static func settingsPreview(directory: String) {
+        let base = URL(fileURLWithPath: directory)
+        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+
+        let store = makeStore(selected: nil)
+        for language in [L10n.Language.en, .zhHans] {
+            L10n.override = language
+            let suffix = language == .en ? "en" : "zh"
+            for section in SettingsSection.allCases {
+                for dark in [false, true] {
+                    write(
+                        SettingsView(store: store, scrollable: false, section: section),
+                        to: base,
+                        name: "settings-\(section.rawValue)-\(suffix)\(dark ? "-dark" : "")",
+                        dark: dark)
+                }
+            }
+        }
+
+        // One provider expanded, which is the only state that shows the
+        // credential field, the action row and the label column together.
+        L10n.override = .zhHans
+        for dark in [false, true] {
+            write(
+                SettingsView(store: store, scrollable: false, section: .providers, expanded: .cursor),
+                to: base,
+                name: "settings-providers-expanded-zh\(dark ? "-dark" : "")",
+                dark: dark)
+        }
+        L10n.override = ConfigStore.shared.language
+        FileHandle.standardOutput.write(Data("Wrote settings preview to \(base.path)\n".utf8))
     }
 
     static func run(directory: String) {
