@@ -318,6 +318,20 @@ final class UsageStore: ObservableObject {
     var updateIsManagedByHomebrew: Bool { Updater.isManagedByHomebrew() }
 
     var checksForUpdates: Bool { config.checksForUpdates }
+    var dockEdge: DockEdge { config.dockEdge }
+    var dockAlwaysVisible: Bool { config.dockAlwaysVisible }
+
+    func setDockEdge(_ edge: DockEdge) {
+        config.dockEdge = edge
+        objectWillChange.send()
+        presentation = presentation  // nudge the coordinator to re-lay out
+    }
+
+    func setDockAlwaysVisible(_ on: Bool) {
+        config.dockAlwaysVisible = on
+        objectWillChange.send()
+        presentation = presentation
+    }
     var updateFeedValue: String { config.updateFeed.configValue }
 
     func setChecksForUpdates(_ on: Bool) {

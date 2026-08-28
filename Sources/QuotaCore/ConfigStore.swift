@@ -15,6 +15,13 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
     /// JSON endpoint you host.
     public var updateFeed: String
     public var checksForUpdates: Bool
+    public var dockEdge: DockEdge
+    /// Vertical placement of the dock as a fraction of the screen, 0 at the
+    /// top. Remembered so the strip stays out of whatever the user keeps at
+    /// the middle of that edge.
+    public var dockPosition: Double
+    /// When false the strip hides itself until the pointer reaches the edge.
+    public var dockAlwaysVisible: Bool
 
     /// Only ever populated by decoding a pre-Keychain config file. `ConfigStore`
     /// drains it into the keychain on load and rewrites the file without it;
@@ -37,6 +44,9 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
         selected: ProviderID? = nil,
         updateFeed: String = UpdateFeed.default.configValue,
         checksForUpdates: Bool = true,
+        dockEdge: DockEdge = .right,
+        dockPosition: Double = 0.5,
+        dockAlwaysVisible: Bool = false,
         legacyCredentials: [ProviderID: String] = [:])
     {
         self.enabled = enabled
@@ -49,12 +59,16 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
         self.selected = selected
         self.updateFeed = updateFeed
         self.checksForUpdates = checksForUpdates
+        self.dockEdge = dockEdge
+        self.dockPosition = dockPosition
+        self.dockAlwaysVisible = dockAlwaysVisible
         self.legacyCredentials = legacyCredentials
     }
 
     private enum CodingKeys: String, CodingKey {
         case enabled, refreshMinutes, menuBarStyle, meterMode, presentation, alerts, language
         case selected, updateFeed, checksForUpdates
+        case dockEdge, dockPosition, dockAlwaysVisible
         case legacyCredentials = "credentials"
     }
 
@@ -84,6 +98,13 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
             ?? defaults.updateFeed
         checksForUpdates = (try? container.decodeIfPresent(Bool.self, forKey: .checksForUpdates))
             ?? defaults.checksForUpdates
+        dockEdge = QuotaConfig.decodeEnum(from: container, forKey: .dockEdge) ?? defaults.dockEdge
+        // Clamped: a stored value outside 0...1 would park the strip off-screen.
+        dockPosition = min(max(
+            (try? container.decodeIfPresent(Double.self, forKey: .dockPosition))
+                ?? defaults.dockPosition, 0), 1)
+        dockAlwaysVisible = (try? container.decodeIfPresent(Bool.self, forKey: .dockAlwaysVisible))
+            ?? defaults.dockAlwaysVisible
         legacyCredentials = QuotaConfig.decodeLegacyCredentials(from: container)
         hasLegacyCredentialKey = container.contains(.legacyCredentials)
     }
@@ -146,6 +167,9 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
         try container.encodeIfPresent(selected, forKey: .selected)
         try container.encode(updateFeed, forKey: .updateFeed)
         try container.encode(checksForUpdates, forKey: .checksForUpdates)
+        try container.encode(dockEdge, forKey: .dockEdge)
+        try container.encode(dockPosition, forKey: .dockPosition)
+        try container.encode(dockAlwaysVisible, forKey: .dockAlwaysVisible)
         // `legacyCredentials` intentionally omitted.
     }
 }
@@ -346,6 +370,30 @@ public final class ConfigStore: @unchecked Sendable {
             return config.checksForUpdates
         }
         set { mutate { $0.checksForUpdates = newValue } }
+    }
+
+    public var dockEdge: DockEdge {
+        get {
+            lock.lock(); defer { lock.unlock() }
+            return config.dockEdge
+        }
+        set { mutate { $0.dockEdge = newValue } }
+    }
+
+    public var dockPosition: Double {
+        get {
+            lock.lock(); defer { lock.unlock() }
+            return config.dockPosition
+        }
+        set { mutate { $0.dockPosition = min(max(newValue, 0), 1) } }
+    }
+
+    public var dockAlwaysVisible: Bool {
+        get {
+            lock.lock(); defer { lock.unlock() }
+            return config.dockAlwaysVisible
+        }
+        set { mutate { $0.dockAlwaysVisible = newValue } }
     }
 
     public var language: L10n.Language {

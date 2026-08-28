@@ -40,10 +40,12 @@ struct MenuContentBody: View {
                     detailSection
                 }
             } else {
-                // No cap: a clipped panel with a scrollbar hides the numbers
-                // the app exists to show.
+                // No cap — a clipped panel with a scrollbar hides the numbers
+                // the app exists to show — but a floor, so switching between a
+                // provider with two windows and one with four does not resize
+                // the whole panel out from under the pointer.
                 detailSection
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, minHeight: 210, alignment: .top)
             }
             updateBanner
             Divider()
@@ -817,12 +819,12 @@ struct SparklineView: View {
                     // as dramatic as 90%, which is the opposite of useful here.
                     // The plot area is drawn so the headroom above a low line
                     // reads as "plenty left", not as a layout gap.
-                    ZStack {
-                        area(in: proxy.size).fill(accent.opacity(0.18))
-                        line(in: proxy.size).stroke(
-                            accent.opacity(0.9),
-                            style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
-                    }
+                    // Line only, no area fill. A series pinned at 100% — which
+                    // is exactly what an exhausted quota looks like — fills the
+                    // whole plot and stops reading as a trend at all.
+                    line(in: proxy.size).stroke(
+                        accent.opacity(0.9),
+                        style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
                 }
                 .frame(height: height)
                 .padding(.horizontal, 1)
@@ -859,16 +861,6 @@ struct SparklineView: View {
         }
     }
 
-    private func area(in size: CGSize) -> Path {
-        Path { path in
-            path.move(to: CGPoint(x: 0, y: size.height))
-            for index in values.indices {
-                path.addLine(to: point(index, in: size))
-            }
-            path.addLine(to: CGPoint(x: size.width, y: size.height))
-            path.closeSubpath()
-        }
-    }
 }
 
 /// One quota window: a length badge, a meter, the figure, and when it resets.

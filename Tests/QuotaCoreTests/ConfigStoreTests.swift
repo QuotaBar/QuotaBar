@@ -418,3 +418,67 @@ final class SelectedProviderTests: XCTestCase {
         XCTAssertEqual(store.enabledProviders, [.codex], "the rest of the file still loads")
     }
 }
+
+final class DockSettingsTests: XCTestCase {
+    private var fileURL: URL!
+
+    override func setUpWithError() throws {
+        fileURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("quotabar-dock-\(UUID().uuidString)")
+            .appendingPathComponent("config.json")
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent())
+    }
+
+    func testDefaults() {
+        let store = ConfigStore(fileURL: fileURL, credentials: MemoryCredentialStorage())
+        XCTAssertEqual(store.dockEdge, .right)
+        XCTAssertEqual(store.dockPosition, 0.5, accuracy: 0.001)
+        XCTAssertFalse(store.dockAlwaysVisible)
+    }
+
+    func testRoundTrips() {
+        let keychain = MemoryCredentialStorage()
+        let first = ConfigStore(fileURL: fileURL, credentials: keychain)
+        first.dockEdge = .left
+        first.dockPosition = 0.2
+        first.dockAlwaysVisible = true
+
+        let second = ConfigStore(fileURL: fileURL, credentials: keychain)
+        XCTAssertEqual(second.dockEdge, .left)
+        XCTAssertEqual(second.dockPosition, 0.2, accuracy: 0.001)
+        XCTAssertTrue(second.dockAlwaysVisible)
+    }
+
+    func testPositionIsClampedOnWrite() {
+        let store = ConfigStore(fileURL: fileURL, credentials: MemoryCredentialStorage())
+        store.dockPosition = 5
+        XCTAssertEqual(store.dockPosition, 1, accuracy: 0.001)
+        store.dockPosition = -3
+        XCTAssertEqual(store.dockPosition, 0, accuracy: 0.001)
+    }
+
+    func testPositionIsClampedOnRead() throws {
+        // A hand-edited or corrupted value must not park the strip off-screen.
+        try FileManager.default.createDirectory(
+            at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try #"{"enabled":["codex"],"dockPosition":42}"#
+            .write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let store = ConfigStore(fileURL: fileURL, credentials: MemoryCredentialStorage())
+        XCTAssertEqual(store.dockPosition, 1, accuracy: 0.001)
+    }
+
+    func testUnknownEdgeFallsBack() throws {
+        try FileManager.default.createDirectory(
+            at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try #"{"enabled":["codex"],"dockEdge":"ceiling","refreshMinutes":9}"#
+            .write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let store = ConfigStore(fileURL: fileURL, credentials: MemoryCredentialStorage())
+        XCTAssertEqual(store.dockEdge, .right)
+        XCTAssertEqual(store.refreshMinutes, 9, "the rest of the file still loads")
+    }
+}

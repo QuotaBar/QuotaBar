@@ -5,6 +5,7 @@ import Foundation
 public enum Presentation: String, Codable, CaseIterable, Identifiable, Sendable {
     case menuBar
     case island
+    case edgeDock
 
     public var id: String { rawValue }
 
@@ -12,6 +13,7 @@ public enum Presentation: String, Codable, CaseIterable, Identifiable, Sendable 
         switch self {
         case .menuBar: L10n.t("Menu bar", "菜单栏")
         case .island: L10n.t("Notch island", "刘海岛")
+        case .edgeDock: L10n.t("Edge dock", "边缘停靠")
         }
     }
 }
@@ -109,6 +111,21 @@ public enum QuotaTheme {
 
     public nonisolated(unsafe) static var accentDarkHex = "E4E4E7"
     public nonisolated(unsafe) static var inkDarkHex = "18181B"
+}
+
+/// Which screen edge the dock attaches to.
+public enum DockEdge: String, Codable, CaseIterable, Identifiable, Sendable {
+    case right
+    case left
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .right: L10n.t("Right", "右侧")
+        case .left: L10n.t("Left", "左侧")
+        }
+    }
 }
 
 // MARK: - Provider identity

@@ -98,6 +98,27 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+
+                if store.presentation == .edgeDock {
+                    Picker(L10n.t("Dock edge", "停靠边缘"), selection: Binding(
+                        get: { store.dockEdge },
+                        set: { store.setDockEdge($0) }))
+                    {
+                        ForEach(DockEdge.allCases) { edge in
+                            Text(edge.displayName).tag(edge)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    Toggle(L10n.t("Keep the dock visible", "常驻显示（不自动隐藏）"), isOn: Binding(
+                        get: { store.dockAlwaysVisible },
+                        set: { store.setDockAlwaysVisible($0) }))
+                    Text(L10n.t(
+                        "Drag the dock up or down to move it; the position is remembered. Click a ring to open the panel for that provider.",
+                        "上下拖动可移动停靠条，位置会被记住。点击圆环可打开该服务商的完整面板。"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             Section(L10n.t("Alerts", "提醒")) {

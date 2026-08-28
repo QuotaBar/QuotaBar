@@ -7,6 +7,7 @@ struct QuotaBarApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var store = UsageStore()
     private let island = IslandCoordinator()
+    private let dock = EdgeDockCoordinator()
 
     var body: some Scene {
         MenuBarExtra {
@@ -17,14 +18,21 @@ struct QuotaBarApp: App {
                 style: store.menuBarStyle,
                 level: store.alertLevel,
                 mode: store.meterMode))
-                .onAppear { island.sync(store: store) }
-                .onChange(of: store.presentation) { _, _ in island.sync(store: store) }
+                .onAppear { syncPresentation() }
+                .onChange(of: store.presentation) { _, _ in syncPresentation() }
         }
         .menuBarExtraStyle(.window)
 
         Settings {
             SettingsView(store: store)
         }
+    }
+
+    /// Only one alternate presentation is live at a time; the menu-bar item
+    /// stays regardless, as the settings entry point.
+    private func syncPresentation() {
+        island.sync(store: store)
+        dock.sync(store: store)
     }
 }
 

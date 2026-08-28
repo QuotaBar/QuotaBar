@@ -369,6 +369,39 @@ enum Snapshot {
         }
         L10n.override = ConfigStore.shared.language
 
+        // Edge dock: the strip and one callout, on a dark ground since both
+        // are always dark regardless of appearance.
+        L10n.override = .zhHans
+        let store = makeStore(selected: nil)
+        let dockSheet = HStack(alignment: .top, spacing: 12) {
+            ProviderCallout(
+                id: .claude,
+                phase: store.states[.claude],
+                alerts: store.alertSettings)
+            VStack(spacing: Design.space3) {
+                ForEach(store.enabled) { id in
+                    ProviderRing(
+                        id: id,
+                        percent: store.states[id]?.snapshot?.headlinePercent,
+                        alerts: store.alertSettings)
+                }
+            }
+            .padding(.vertical, Design.space4)
+            .frame(width: 74)
+            .background(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: Design.radiusPanel + 6,
+                    bottomLeadingRadius: Design.radiusPanel + 6,
+                    bottomTrailingRadius: 0,
+                    topTrailingRadius: 0,
+                    style: .continuous)
+                    .fill(Color.black))
+        }
+        .padding(20)
+        .environment(\.colorScheme, .dark)
+        render(dockSheet, to: base, name: "edge-dock", backing: Color(hex: "3A4A5A"))
+        L10n.override = ConfigStore.shared.language
+
         writeMenuBarIcons(to: base)
         FileHandle.standardOutput.write(Data("Wrote snapshots to \(base.path)\n".utf8))
     }
