@@ -464,6 +464,9 @@ enum Snapshot {
                         tint: used >= 95 ? Color(hex: "DC2626")
                             : (used >= 80 ? Color(hex: "D97706") : Color(hex: "34C759")),
                         onLeft: false)
+                        // The dock draws this black itself; the handle no
+                        // longer carries its own, so the sheet supplies it.
+                        .background(EdgeDockView.dockShape(onLeft: false).fill(Color.black))
                     Text("用\(Int(used))%")
                         .font(.system(size: 9))
                         .foregroundStyle(.secondary)
