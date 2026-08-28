@@ -30,6 +30,12 @@ final class EdgeDockCoordinator {
     static let handleHeight: CGFloat = 92
     static let width: CGFloat = 74
 
+    /// One clock for the panel's frame and for the content inside it. They used
+    /// to be independent — the content swapped instantly and the frame animated
+    /// afterwards — which is what the hitch was.
+    static let slideDuration: TimeInterval = 0.24
+    static var slide: Animation { .easeOut(duration: slideDuration) }
+
     func sync(store: UsageStore) {
         if store.presentation == .edgeDock {
             show(store: store)
@@ -43,6 +49,8 @@ final class EdgeDockCoordinator {
         collapseTask = nil
         panel?.orderOut(nil)
         panel = nil
+        targetFrame = nil
+        sliding = false
         hideCallout()
         expanded = false
     }
@@ -120,6 +128,9 @@ final class EdgeDockCoordinator {
         panel.hidesOnDeactivate = false
         panel.acceptsMouseMovedEvents = true
         panel.isMovable = false
+        // Borderless panels default to the utility-window behaviour, which adds
+        // its own fade on top of ours.
+        panel.animationBehavior = .none
         panel.contentView = NSHostingView(
             rootView: EdgeDockView(store: store, coordinator: self))
         self.panel = panel
@@ -137,29 +148,36 @@ final class EdgeDockCoordinator {
         collapseTask = nil
         if value {
             expanded = true
-            apply(true)
-            layout(expanded: true, height: nil)
+            withAnimation(Self.slide) { apply(true) }
+            layout(expanded: true, height: nil, animated: true)
             return
         }
         collapseTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(320))
             guard !Task.isCancelled else { return }
             self?.expanded = false
-            apply(false)
+            withAnimation(Self.slide) { apply(false) }
             self?.hideCallout()
-            self?.layout(expanded: false, height: nil)
+            self?.layout(expanded: false, height: nil, animated: true)
         }
     }
 
     /// The strip is as tall as its contents, so the panel resizes as providers
     /// are enabled or disabled.
     func setContentHeight(_ height: CGFloat) {
+        // Not animated: this fires when a provider is enabled or a refresh
+        // changes the row count, and a panel that eases into every such change
+        // reads as drift rather than as a response to anything.
         layout(expanded: expanded, height: height)
     }
 
     private var lastHeight: CGFloat = 200
+    /// Where the panel is *going*, which is not `panel.frame` while a slide is
+    /// in flight — that reports the in-between value.
+    private var targetFrame: NSRect?
+    private var sliding = false
 
-    private func layout(expanded: Bool, height: CGFloat?) {
+    private func layout(expanded: Bool, height: CGFloat?, animated: Bool = false) {
         guard let panel, let screen = Self.hostScreen else { return }
         if let height { lastHeight = max(80, height) }
         let config = ConfigStore.shared
@@ -179,10 +197,34 @@ final class EdgeDockCoordinator {
         // bottom, and the panel is kept fully on screen at either extreme.
         let travel = max(0, visible.height - panelHeight)
         let y = visible.maxY - panelHeight - travel * CGFloat(config.dockPosition)
-        panel.setFrame(
-            NSRect(x: x, y: y, width: panelWidth, height: panelHeight),
-            display: true,
-            animate: true)
+        let frame = NSRect(x: x, y: y, width: panelWidth, height: panelHeight)
+        switch DockSlide.decide(
+            target: frame, pending: targetFrame, animated: animated, sliding: sliding)
+        {
+        case .skip:
+            return
+        case let .snap(target):
+            targetFrame = target
+            panel.setFrame(target, display: true)
+            return
+        case .animate:
+            targetFrame = frame
+        }
+        // Not `setFrame(_:display:animate:)`. That one steps the resize on a
+        // *blocking* run-loop loop — measured at 341ms of stalled main thread
+        // for this size change — and relayouts the hosting view on every step,
+        // so the content's own animation cannot run at all while it is going.
+        // The animator hands the frame to Core Animation and returns in under
+        // a millisecond.
+        sliding = true
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = Self.slideDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            context.allowsImplicitAnimation = true
+            panel.animator().setFrame(frame, display: true)
+        }, completionHandler: {
+            MainActor.assumeIsolated { self.sliding = false }
+        })
     }
 
     /// Records where the user dragged the strip to, as a fraction of the
@@ -202,6 +244,9 @@ final class EdgeDockCoordinator {
         frame.origin.y = min(
             max(frame.origin.y - delta, visible.minY),
             visible.maxY - frame.height)
+        // Dragging writes the frame directly, so the slide's idea of where the
+        // panel is headed has to be brought along or the next reveal no-ops.
+        targetFrame = frame
         panel.setFrame(frame, display: true)
     }
 
@@ -232,8 +277,10 @@ struct EdgeDockView: View {
                     strip
                     if onLeft { Spacer(minLength: 0) }
                 }
+                .transition(.opacity)
             } else {
                 handle
+                    .transition(.opacity)
             }
         }
         .onHover { inside in
