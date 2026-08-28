@@ -13,34 +13,22 @@ final class DockSlideTests: XCTestCase {
     /// already animating toward. Re-applying it cuts the animation off partway.
     func testRepeatingThePendingFrameIsIgnored() {
         XCTAssertEqual(
-            DockSlide.decide(
-                target: expanded, pending: expanded, animated: false, sliding: true),
+            DockSlide.decide(target: expanded, pending: expanded, animated: false),
             .skip)
     }
 
     func testRepeatingThePendingFrameIsIgnoredWhenIdleToo() {
         XCTAssertEqual(
             DockSlide.decide(
-                target: collapsed, pending: collapsed, animated: false, sliding: false),
+                target: collapsed, pending: collapsed, animated: false),
             .skip)
     }
 
     func testHoverTransitionAnimates() {
         XCTAssertEqual(
             DockSlide.decide(
-                target: expanded, pending: collapsed, animated: true, sliding: false),
+                target: expanded, pending: collapsed, animated: true),
             .animate(expanded))
-    }
-
-    /// The first reveal only learns the strip's real height once the animation
-    /// is already running. Snapping there would be the same visible break as
-    /// the bug, so a genuine change mid-slide joins the slide.
-    func testAContentResizeArrivingMidSlideJoinsIt() {
-        let taller = CGRect(x: 1982, y: 380, width: 74, height: 352)
-        XCTAssertEqual(
-            DockSlide.decide(
-                target: taller, pending: expanded, animated: false, sliding: true),
-            .animate(taller))
     }
 
     /// Enabling a provider while the dock sits open should resize it at once.
@@ -49,14 +37,14 @@ final class DockSlideTests: XCTestCase {
         let taller = CGRect(x: 1982, y: 380, width: 74, height: 352)
         XCTAssertEqual(
             DockSlide.decide(
-                target: taller, pending: expanded, animated: false, sliding: false),
+                target: taller, pending: expanded, animated: false),
             .snap(taller))
     }
 
     func testNothingPendingYetStillResolves() {
         XCTAssertEqual(
             DockSlide.decide(
-                target: collapsed, pending: nil, animated: false, sliding: false),
+                target: collapsed, pending: nil, animated: false),
             .snap(collapsed))
     }
 }

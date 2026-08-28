@@ -632,15 +632,6 @@ public enum ProviderError: LocalizedError, Sendable {
             return L10n.t("Network error: \(message)", "网络错误：\(message)")
         }
     }
-
-    /// Distinguishes "you need to set this up" from "something went wrong",
-    /// so the UI can offer the right next step.
-    public var isSetupProblem: Bool {
-        switch self {
-        case .notConfigured, .unauthorized: return true
-        default: return false
-        }
-    }
 }
 
 // MARK: - Provider protocol

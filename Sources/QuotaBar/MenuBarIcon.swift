@@ -547,10 +547,6 @@ struct ProviderGlyph: View {
         let isMonochrome: Bool
     }
 
-    static func logoImage(for id: ProviderID) -> NSImage? {
-        logo(for: id)?.image
-    }
-
     static func logo(for id: ProviderID) -> Logo? {
         if let cached = Self.cache[id] { return cached }
         guard let url = Self.logoURL(for: id), let image = NSImage(contentsOf: url) else {

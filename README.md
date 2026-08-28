@@ -77,8 +77,16 @@ export DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
 swift build && swift test
 ./Scripts/dev.sh           # runs the bare debug binary, no packaging
 
-# Render the panel off-screen to PNGs (both languages, four states)
-.build/debug/QuotaBar --snapshot ./snapshots
+# The app is a menu-bar agent, so there is no window to screenshot. Render
+# the surfaces off-screen instead — CI runs the first two as smoke tests.
+.build/debug/QuotaBar --snapshot ./snapshots         # panel, dock, notch strip
+.build/debug/QuotaBar --settings-preview ./settings  # every settings section
+.build/debug/QuotaBar --icon-preview ./icons         # all eleven menu-bar styles
+
+# Glass, vibrancy and springs only exist on screen — ImageRenderer draws none
+# of them. For those, open the real thing:
+.build/debug/QuotaBar --settings-window
+QUOTABAR_DOCK_TRACE=1 QUOTABAR_DOCK_SLIDE=2 ./QuotaBar.app/Contents/MacOS/QuotaBar
 ```
 
 ## Distribution

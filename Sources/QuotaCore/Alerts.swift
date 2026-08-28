@@ -1,5 +1,3 @@
-import Foundation
-
 // MARK: - Threshold alerts
 
 public enum AlertLevel: Int, Comparable, Sendable, Codable {

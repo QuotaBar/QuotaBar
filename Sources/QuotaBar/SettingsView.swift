@@ -596,6 +596,15 @@ private struct CredentialEditor: View {
 
     private func test() {
         testPhase = .running
+        // Both caches exist so a refresh does not hit the keychain eleven times
+        // a minute, and both would answer this button from a memo up to a
+        // minute old. That is exactly wrong here: someone pressing "test" has
+        // usually just changed the thing being tested — pasted a cookie, or
+        // re-run `claude` to renew an expired session — and a stale "still
+        // failing" reads as the app being broken at the moment they are fixing
+        // it. This button asks the source, not the memo.
+        ConfigStore.shared.invalidateCredentialCache()
+        LocalCredentials.invalidateClaudeToken()
         Task {
             do {
                 let snapshot = try await provider.fetch(config: ConfigStore.shared)

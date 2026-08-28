@@ -192,7 +192,9 @@ final class EdgeDockCoordinator {
         measuredHeights[count] = measured
         // Never re-aim mid-slide. Four milliseconds into the animation is a
         // second animation, not a correction, and the panel changes course
-        // where the user can see it. The next reveal picks this up.
+        // where the user can see it. The measurement above is already recorded,
+        // so the next reveal lands on it — the cost is that a provider toggled
+        // during the 240ms reveal leaves the strip its old height until then.
         guard !sliding else { return }
         // Not animated: this fires when a provider is enabled or a refresh
         // changes the row count, and a panel that eases into every such change
@@ -247,7 +249,7 @@ final class EdgeDockCoordinator {
         let y = visible.maxY - panelHeight - travel * CGFloat(config.dockPosition)
         let frame = NSRect(x: x, y: y, width: panelWidth, height: panelHeight)
         let decision = DockSlide.decide(
-            target: frame, pending: targetFrame, animated: animated, sliding: sliding)
+            target: frame, pending: targetFrame, animated: animated)
         Self.trace(
             "layout animated=\(animated) sliding=\(sliding) "
                 + "target=\(Int(frame.width))x\(Int(frame.height))@\(Int(frame.origin.y)) "

@@ -17,14 +17,6 @@ import QuotaCore
 /// wallpaper and have to carry their own contrast, and glass there would put
 /// the user's wallpaper behind the numbers the app exists to show. A settings
 /// window is always over the desktop *and* always in front, so it can afford it.
-enum GlassKit {
-    /// True when the real thing is available, rather than the frosted stand-in.
-    static var isSupported: Bool {
-        if #available(macOS 26.0, *) { return true }
-        return false
-    }
-}
-
 @available(macOS 26.0, *)
 private struct LiquidGlassSurface: ViewModifier {
     let radius: CGFloat

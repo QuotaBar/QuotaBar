@@ -5,9 +5,9 @@ import CoreGraphics
 /// Split out of `EdgeDockCoordinator` because getting it wrong is invisible in
 /// a log and obvious on screen: the animation still runs to completion, it just
 /// gets cut off partway and restarted. Two separate sources drive the panel's
-/// frame — the hover transition, and a `GeometryReader` reporting the strip's
-/// measured height — and the second used to land an un-animated `setFrame` one
-/// layout pass into the first.
+/// frame — the hover transition, and the strip's measured height — and the
+/// second used to land an un-animated `setFrame` one layout pass into the
+/// first.
 public enum DockSlide {
     public enum Decision: Equatable, Sendable {
         /// Already heading there. Doing nothing is the whole point: re-applying
@@ -24,17 +24,17 @@ public enum DockSlide {
     ///     and would never compare equal.
     ///   - animated: true for a hover transition, false for a content-driven
     ///     resize such as a provider being enabled.
-    ///   - sliding: true while a hover transition is still running.
+    ///
+    /// There is deliberately no "mid-slide" case. A slide is never re-aimed:
+    /// the caller holds content-driven resizes until it finishes, because
+    /// re-aiming four milliseconds in is a second animation, not a correction,
+    /// and the panel changes course where the user can see it.
     public static func decide(
         target: CGRect,
         pending: CGRect?,
-        animated: Bool,
-        sliding: Bool
+        animated: Bool
     ) -> Decision {
         if target == pending { return .skip }
-        // A content-driven resize that arrives mid-slide joins the slide rather
-        // than snapping: on the first reveal the strip has never been measured,
-        // so its real height only turns up once the animation is under way.
-        return animated || sliding ? .animate(target) : .snap(target)
+        return animated ? .animate(target) : .snap(target)
     }
 }
