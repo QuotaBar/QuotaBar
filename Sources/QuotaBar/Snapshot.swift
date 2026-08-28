@@ -408,6 +408,20 @@ enum Snapshot {
         }
         L10n.override = ConfigStore.shared.language
 
+        // Notch strip: the collapsed island on a notched Mac. Rendered against
+        // a fake notch, since the CI runner has no display at all.
+        L10n.override = .zhHans
+        let notchStore = makeStore(selected: nil)
+        let notch = IslandCoordinator.NotchMetrics(notchWidth: 190, height: 38)
+        let stripSheet = VStack(alignment: .leading, spacing: 10) {
+            NotchStrip(store: notchStore, metrics: notch)
+            Text("刘海条 · 数字在外侧、logo 贴着刘海，两边镜像")
+                .font(.system(size: 9))
+                .foregroundStyle(.white.opacity(0.6))
+        }
+        .padding(16)
+        render(stripSheet, to: base, name: "island-notch", backing: Color(hex: "3A3A3C"))
+
         // Edge dock: the strip and one callout, on a dark ground since both
         // are always dark regardless of appearance.
         L10n.override = .zhHans

@@ -87,7 +87,38 @@ final class IslandCoordinator {
     }
 
     static func size(expanded: Bool) -> NSSize {
-        expanded ? NSSize(width: 388, height: 760) : NSSize(width: 220, height: 40)
+        if expanded { return NSSize(width: 388, height: 760) }
+        if let notch = notchMetrics() {
+            return NSSize(width: notch.totalWidth, height: notch.height)
+        }
+        return NSSize(width: 220, height: 40)
+    }
+
+    /// Where the notch is, and how much room sits either side of it.
+    struct NotchMetrics {
+        let notchWidth: CGFloat
+        let height: CGFloat
+
+        /// Wide enough for "5d 17h · 70%" and a mark, narrow enough to stay in
+        /// the dead zone — past this the strip starts covering the app's own
+        /// menus on the left and the status items on the right.
+        var sideWidth: CGFloat { 132 }
+        var totalWidth: CGFloat { notchWidth + sideWidth * 2 }
+    }
+
+    /// nil on a screen with no notch, which is most external displays. The
+    /// caller falls back to the pill; a strip built around a zero-width notch
+    /// would just be a centred bar sitting on top of the menu bar's own items.
+    static func notchMetrics() -> NotchMetrics? {
+        guard let screen = hostScreen else { return nil }
+        let height = screen.safeAreaInsets.top
+        guard height > 0,
+              let left = screen.auxiliaryTopLeftArea,
+              let right = screen.auxiliaryTopRightArea
+        else { return nil }
+        let notch = screen.frame.width - left.width - right.width
+        guard notch > 40 else { return nil }
+        return NotchMetrics(notchWidth: notch, height: height)
     }
 }
 
@@ -100,18 +131,34 @@ struct IslandView: View {
         Group {
             if expanded {
                 expandedContent
+                    .background(panelShape.fill(Color.black))
+                    .clipShape(panelShape)
+            } else if let notch = notchMetrics {
+                NotchStrip(store: store, metrics: notch)
             } else {
                 compactPill
+                    .background(pillShape.fill(Color.black))
+                    .clipShape(pillShape)
             }
         }
-        .background(
-            RoundedRectangle(cornerRadius: expanded ? Design.radiusPanel + 10 : 20, style: .continuous)
-                .fill(Color.black))
-        .clipShape(
-            RoundedRectangle(cornerRadius: expanded ? Design.radiusPanel + 10 : 20, style: .continuous))
         .onHover { hovering in
             coordinator.requestExpanded(hovering) { expanded = $0 }
         }
+    }
+
+    /// Read per render rather than captured at construction: the app survives
+    /// the display arrangement changing under it, and the strip only exists on
+    /// a notched screen.
+    private var notchMetrics: IslandCoordinator.NotchMetrics? {
+        IslandCoordinator.notchMetrics()
+    }
+
+    private var panelShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: Design.radiusPanel + 10, style: .continuous)
+    }
+
+    private var pillShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: 20, style: .continuous)
     }
 
     // MARK: Compact pill
@@ -195,5 +242,131 @@ struct LiveDot: View {
     private var color: Color {
         if let hex = level.hex { return Color(hex: hex) }
         return warn ? .orange : Design.accent
+    }
+}
+
+
+// MARK: - Notch strip
+
+/// The collapsed island on a notched Mac: the figures sit in the dead space
+/// either side of the notch instead of in a pill beside it.
+///
+/// The two sides are mirrored — the figure is always on the outer edge and the
+/// mark always against the notch — so the pair reads outward from the middle
+/// rather than left-to-right across a gap you cannot draw in.
+///
+/// Only two providers fit. That is the notch's constraint, not a choice: the
+/// strip has to stay clear of the app's own menus on one side and the status
+/// items on the other. It shows the first two enabled, so the order is the
+/// user's.
+struct NotchStrip: View {
+    @ObservedObject var store: UsageStore
+    let metrics: IslandCoordinator.NotchMetrics
+
+    var body: some View {
+        let slots = Array(store.enabled.prefix(2))
+        HStack(spacing: 0) {
+            NotchSlot(store: store, id: slots.first, mirrored: true)
+                .frame(width: metrics.sideWidth)
+            // The notch itself. Painted black like the rest so the strip reads
+            // as one shape continuous with the hardware, not two tabs.
+            Color.black.frame(width: metrics.notchWidth)
+            NotchSlot(store: store, id: slots.count > 1 ? slots[1] : nil, mirrored: false)
+                .frame(width: metrics.sideWidth)
+        }
+        .frame(height: metrics.height)
+        .background(Color.black)
+        .clipShape(
+            UnevenRoundedRectangle(
+                topLeadingRadius: 0,
+                bottomLeadingRadius: 12,
+                bottomTrailingRadius: 12,
+                topTrailingRadius: 0,
+                style: .continuous))
+    }
+}
+
+struct NotchSlot: View {
+    @ObservedObject var store: UsageStore
+    let id: ProviderID?
+    let mirrored: Bool
+
+    var body: some View {
+        HStack(spacing: 5) {
+            if mirrored {
+                figure
+                separator
+                tick
+                glyph
+            } else {
+                glyph
+                tick
+                separator
+                figure
+            }
+        }
+        .padding(.horizontal, Design.space2 + 2)
+        .frame(maxWidth: .infinity, alignment: mirrored ? .trailing : .leading)
+    }
+
+    // MARK: Pieces
+
+    @ViewBuilder
+    private var glyph: some View {
+        if let id {
+            // `tint` only reaches the monochrome marks, so Claude stays orange
+            // and Gemini stays four-colour while Codex is lifted off the black.
+            ProviderGlyph(id: id, size: 14, tint: .white)
+        }
+    }
+
+    @ViewBuilder
+    private var figure: some View {
+        if let id, let percent = shownPercent {
+            Text("\(Int(percent.rounded()))%")
+                .font(.system(size: 12, weight: .semibold))
+                .monospacedDigit()
+                // Raw brand colour: every accent is required to clear 4.5:1 on
+                // black, asserted in ProviderRegistryTests.
+                .foregroundStyle(Color(hex: id.accentHex))
+        } else if id != nil {
+            Text("—")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.4))
+        }
+    }
+
+    @ViewBuilder
+    private var tick: some View {
+        if let resetsAt {
+            Text(QuotaFormat.tick(to: resetsAt))
+                .font(.system(size: 11, weight: .medium))
+                .monospacedDigit()
+                .foregroundStyle(.white.opacity(0.55))
+        }
+    }
+
+    @ViewBuilder
+    private var separator: some View {
+        if resetsAt != nil, shownPercent != nil {
+            Text("·").foregroundStyle(.white.opacity(0.3))
+        }
+    }
+
+    // MARK: Data
+
+    private var snapshot: UsageSnapshot? {
+        guard let id else { return nil }
+        return store.states[id]?.snapshot
+    }
+
+    /// Follows the same remaining/used preference as the menu-bar glyph — both
+    /// are the same glanceable role and disagreeing would be a bug report.
+    private var shownPercent: Double? {
+        snapshot?.headlinePercent.map { store.meterMode.shownPercent(fromUsed: $0) }
+    }
+
+    private var resetsAt: Date? {
+        snapshot?.headlineWindow?.resetsAt
     }
 }

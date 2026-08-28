@@ -203,6 +203,19 @@ final class ProviderRegistryTests: XCTestCase {
         }
     }
 
+    /// The notch strip, the edge dock and the desktop widget all draw on black,
+    /// and the strip paints its figure in the provider's own accent. An accent
+    /// dark enough to disappear there should fail here — where whoever picked
+    /// it can choose a lighter one — rather than be lifted at draw time, which
+    /// would ship a colour nobody chose.
+    func testEveryAccentIsLegibleOnTheDarkSurfaces() {
+        for id in ProviderID.allCases {
+            XCTAssertGreaterThanOrEqual(
+                QuotaTheme.contrastOnBlack(hex: id.accentHex), 4.5,
+                "\(id): \(id.accentHex) is too dark to read on the black surfaces")
+        }
+    }
+
     func testAutomaticProvidersHaveNoCredentialField() {
         // These read an existing CLI session; showing a paste box would be wrong.
         for id in [ProviderID.codex, .claude, .gemini] {
@@ -560,5 +573,47 @@ final class UpdateCheckTests: XCTestCase {
     func testToleratesATagPrefixAndJunk() {
         XCTAssertTrue(UpdateCheck.compare("v0.2.5", isNewerThan: "0.2.4"))
         XCTAssertFalse(UpdateCheck.compare("", isNewerThan: "0.2.4"))
+    }
+}
+
+
+final class NotchStripFormattingTests: XCTestCase {
+    override func setUp() { L10n.override = .en }
+    override func tearDown() { L10n.override = .system }
+
+    /// `countdown` is a localised phrase; the strip needs the compact form in
+    /// both languages or the Chinese one truncates mid-number.
+    func testTickIsCompactAndLanguageNeutral() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        for language in [L10n.Language.en, .zhHans] {
+            L10n.override = language
+            XCTAssertEqual(QuotaFormat.tick(to: now.addingTimeInterval(2_340), from: now), "39m")
+            XCTAssertEqual(QuotaFormat.tick(to: now.addingTimeInterval(8_040), from: now), "2h 14m")
+            XCTAssertEqual(QuotaFormat.tick(to: now.addingTimeInterval(493_200), from: now), "5d 17h")
+            XCTAssertEqual(QuotaFormat.tick(to: now.addingTimeInterval(45), from: now), "45s")
+            XCTAssertEqual(QuotaFormat.tick(to: now.addingTimeInterval(-10), from: now), "0m")
+        }
+    }
+
+    /// The strip shows one reset time, and it has to be the one belonging to
+    /// the figure beside it.
+    func testHeadlineWindowIsTheOneBehindTheHeadlinePercent() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let snapshot = UsageSnapshot(
+            windows: [
+                UsageWindow(title: "5h", usedPercent: 18, resetsAt: now.addingTimeInterval(600)),
+                UsageWindow(title: "7d", usedPercent: 88, resetsAt: now.addingTimeInterval(493_200)),
+                UsageWindow(title: "cycle", usedPercent: nil, resetsAt: now),
+            ],
+            fetchedAt: now)
+        XCTAssertEqual(snapshot.headlinePercent, 88)
+        XCTAssertEqual(snapshot.headlineWindow?.title, "7d")
+    }
+
+    func testHeadlineWindowIsNilWithoutAFigure() {
+        let snapshot = UsageSnapshot(
+            windows: [UsageWindow(title: "cycle", usedPercent: nil)],
+            fetchedAt: Date(timeIntervalSince1970: 1_700_000_000))
+        XCTAssertNil(snapshot.headlineWindow)
     }
 }

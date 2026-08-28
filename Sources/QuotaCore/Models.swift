@@ -111,6 +111,40 @@ public enum QuotaTheme {
 
     public nonisolated(unsafe) static var accentDarkHex = "E4E4E7"
     public nonisolated(unsafe) static var inkDarkHex = "18181B"
+
+    private static func channels(_ hex: String) -> (Double, Double, Double) {
+        var value: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&value)
+        return (
+            Double((value >> 16) & 0xFF) / 255,
+            Double((value >> 8) & 0xFF) / 255,
+            Double(value & 0xFF) / 255)
+    }
+
+    /// WCAG relative luminance, so the floor means the same thing for every hue
+    /// — a plain average calls yellow and blue equally bright.
+    public static func luminance(_ r: Double, _ g: Double, _ b: Double) -> Double {
+        func linear(_ c: Double) -> Double {
+            c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
+    }
+
+    public static func luminance(hex: String) -> Double {
+        let (r, g, b) = channels(hex)
+        return luminance(r, g, b)
+    }
+
+    /// WCAG contrast ratio of a colour against pure black — the ground the
+    /// notch strip, the dock and the widget all draw on.
+    ///
+    /// Every `accentHex` is required to clear 4.5:1 here (`ProviderRegistryTests`).
+    /// Enforcing it as an invariant beats lifting the colour at draw time: a
+    /// brand colour that has to be altered to be readable is the wrong brand
+    /// colour, and silently mutating it hides that from whoever picked it.
+    public static func contrastOnBlack(hex: String) -> Double {
+        (luminance(hex: hex) + 0.05) / 0.05
+    }
 }
 
 /// How much the desktop widget shows.
@@ -559,6 +593,13 @@ public struct UsageSnapshot: Sendable {
     public var headlinePercent: Double? {
         windows.compactMap(\.usedPercent).max()
     }
+
+    /// The window `headlinePercent` came from — what its reset time belongs to.
+    public var headlineWindow: UsageWindow? {
+        windows
+            .filter { $0.usedPercent != nil }
+            .max { ($0.usedPercent ?? 0) < ($1.usedPercent ?? 0) }
+    }
 }
 
 // MARK: - Errors
@@ -626,6 +667,24 @@ public enum QuotaFormat {
         if hours > 0 { return L10n.t("\(hours)h \(minutes)m", "\(hours) 小时 \(minutes) 分") }
         if minutes > 0 { return L10n.t("\(minutes)m", "\(minutes) 分钟") }
         return L10n.t("\(total)s", "\(total) 秒")
+    }
+
+    /// "39m", "2h 14m", "5d 17h" — the compact form for the notch strip.
+    ///
+    /// Not `countdown`, which returns a localised phrase ("5 天 17 小时"). The
+    /// strip has roughly 60pt per side between the notch and the menu bar's own
+    /// items; the Chinese form does not fit and would truncate mid-number.
+    public static func tick(to date: Date, from now: Date = .now) -> String {
+        let interval = date.timeIntervalSince(now)
+        guard interval > 0 else { return "0m" }
+        let total = Int(interval)
+        let days = total / 86_400
+        let hours = (total % 86_400) / 3600
+        let minutes = (total % 3600) / 60
+        if days > 0 { return "\(days)d \(hours)h" }
+        if hours > 0 { return "\(hours)h \(minutes)m" }
+        if minutes > 0 { return "\(minutes)m" }
+        return "\(total)s"
     }
 
     /// Full phrase for a window's reset time, in both languages.
