@@ -401,6 +401,25 @@ enum Snapshot {
         .environment(\.colorScheme, .dark)
         render(dockSheet, to: base, name: "edge-dock", backing: Color(hex: "3A4A5A"))
 
+        // The collapsed handle across levels — this is what sits at the screen
+        // edge most of the time, so its scale has to be readable on its own.
+        let handleSheet = HStack(spacing: 22) {
+            ForEach([0.0, 15.0, 25.0, 50.0, 75.0, 90.0, 100.0], id: \.self) { used in
+                VStack(spacing: 6) {
+                    DockHandle(
+                        fraction: CGFloat(MeterMode.remaining.shownPercent(fromUsed: used) / 100),
+                        tint: used >= 95 ? Color(hex: "DC2626")
+                            : (used >= 80 ? Color(hex: "D97706") : Color(hex: "34C759")),
+                        onLeft: false)
+                    Text("用\(Int(used))%")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(24)
+        render(handleSheet, to: base, name: "dock-handle", backing: Color(hex: "3A4A5A"))
+
         // Desktop widget at each density.
         for density in WidgetDensity.allCases {
             ConfigStore.shared.widgetDensity = density

@@ -248,36 +248,13 @@ struct EdgeDockView: View {
         }
     }
 
-    /// What the dock looks like at rest: a slim tab carrying the worst reading,
-    /// so it is both a target to aim at and worth a glance on its own.
     private var handle: some View {
-        ZStack {
-            UnevenRoundedRectangle(
-                topLeadingRadius: onLeft ? 0 : 9,
-                bottomLeadingRadius: onLeft ? 0 : 9,
-                bottomTrailingRadius: onLeft ? 9 : 0,
-                topTrailingRadius: onLeft ? 9 : 0,
-                style: .continuous)
-                .fill(Color.black.opacity(0.85))
-            GeometryReader { proxy in
-                VStack {
-                    Spacer(minLength: 0)
-                    Capsule()
-                        .fill(handleTint)
-                        .frame(width: 4, height: max(6, proxy.size.height * 0.7 * headlineFraction))
-                    Spacer(minLength: 0)
-                }
-                .frame(maxWidth: .infinity)
-            }
-            .padding(.vertical, 10)
-        }
-        .frame(
-            width: EdgeDockCoordinator.handleWidth,
-            height: EdgeDockCoordinator.handleHeight)
+        DockHandle(fraction: handleFraction, tint: handleTint, onLeft: onLeft)
     }
 
-    private var headlineFraction: CGFloat {
-        CGFloat(min(max(store.headlinePercent ?? 0, 0), 100) / 100)
+    private var handleFraction: CGFloat {
+        guard let used = store.headlinePercent else { return 0 }
+        return CGFloat(store.meterMode.shownPercent(fromUsed: used) / 100)
     }
 
     private var handleTint: Color {
@@ -342,4 +319,54 @@ struct EdgeDockView: View {
 
     }
 
+}
+
+
+/// What the dock looks like at rest: a slim tab carrying the worst reading, so
+/// it is both a target to aim at and worth a glance before it is opened.
+struct DockHandle: View {
+    let fraction: CGFloat
+    let tint: Color
+    let onLeft: Bool
+
+    var body: some View {
+        ZStack {
+            UnevenRoundedRectangle(
+                topLeadingRadius: onLeft ? 0 : 9,
+                bottomLeadingRadius: onLeft ? 0 : 9,
+                bottomTrailingRadius: onLeft ? 9 : 0,
+                topTrailingRadius: onLeft ? 9 : 0,
+                style: .continuous)
+                .fill(Color.black.opacity(0.85))
+            // Fills from the bottom against a full-height track. Growing from
+            // the centre gave the level nothing to be measured against — the
+            // bar's height was the only cue and it read as a floating mark.
+            GeometryReader { proxy in
+                ZStack(alignment: .bottom) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.16))
+                        .frame(width: 5)
+                    Capsule()
+                        .fill(tint)
+                        .frame(width: 5, height: max(4, proxy.size.height * fraction))
+                    // Quarter marks, so the reading is against a scale rather
+                    // than estimated off a bare column.
+                    VStack(spacing: 0) {
+                        ForEach(1..<4) { _ in
+                            Spacer(minLength: 0)
+                            Rectangle()
+                                .fill(Color.black.opacity(0.55))
+                                .frame(width: 5, height: 1)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .padding(.vertical, 12)
+        }
+        .frame(
+            width: EdgeDockCoordinator.handleWidth,
+            height: EdgeDockCoordinator.handleHeight)
+    }
 }
