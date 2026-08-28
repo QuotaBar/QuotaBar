@@ -470,3 +470,86 @@ struct StatusPill: View {
             Capsule().fill(colour.opacity(tone == .idle ? 0.08 : 0.14)))
     }
 }
+
+// MARK: - Sidebar rail
+
+/// The sidebar's selection: a hairline rail with a lit segment that travels to
+/// the selected row.
+///
+/// Three layers are what make it read as light rather than as a painted tick,
+/// and dropping any one of them collapses the effect:
+///
+/// - the rail, faded out at both ends so it has no hard start or stop
+/// - the segment, faded the same way along its own length
+/// - a blurred bloom behind the segment, plus a horizontal bleed spilling right
+///   under the label
+///
+/// The rail is drawn once for the whole list and sits *behind* the rows, so the
+/// bleed falls under the label the way real light would. It cannot belong to a
+/// row: the lit segment's whole job is to travel between them.
+///
+/// The travel overshoots and settles — the original is
+/// `cubic-bezier(0.37, 1.95, 0.66, 0.56)`, where the 1.95 is the overshoot.
+/// That is a spring, so it is written as one rather than approximated with a
+/// timing curve.
+struct SidebarRail: View {
+    let count: Int
+    let index: Int
+    var rowHeight: CGFloat = Design.sidebarRow
+    var tint: Color = Design.sidebarGlow
+
+    private var total: CGFloat { rowHeight * CGFloat(count) }
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            rail
+            glider.offset(y: rowHeight * CGFloat(index))
+        }
+        // Width 1 so the glow overflows instead of widening the sidebar; the
+        // rows are laid out against the rail, not against its bloom.
+        .frame(width: 1, height: total, alignment: .top)
+        .animation(.spring(response: 0.42, dampingFraction: 0.58), value: index)
+        .allowsHitTesting(false)
+    }
+
+    private var rail: some View {
+        Rectangle()
+            .fill(LinearGradient(
+                colors: [.clear, tint.opacity(0.22), .clear],
+                startPoint: .top,
+                endPoint: .bottom))
+            .frame(width: 1, height: total)
+    }
+
+    private var glider: some View {
+        ZStack(alignment: .leading) {
+            Rectangle()
+                .fill(LinearGradient(
+                    colors: [tint.opacity(0.16), .clear],
+                    startPoint: .leading,
+                    endPoint: .trailing))
+                .frame(width: 132, height: rowHeight)
+                // Feathered vertically as well as horizontally. A hard top and
+                // bottom edge on the bleed reads as a rectangle someone drew,
+                // not as light falling off the rail.
+                .mask(LinearGradient(
+                    colors: [.clear, .white, .white, .clear],
+                    startPoint: .top,
+                    endPoint: .bottom))
+
+            Capsule()
+                .fill(tint.opacity(0.85))
+                .frame(width: 3, height: rowHeight * 0.6)
+                .blur(radius: 7)
+                .offset(x: -1)
+
+            Rectangle()
+                .fill(LinearGradient(
+                    colors: [.clear, tint, .clear],
+                    startPoint: .top,
+                    endPoint: .bottom))
+                .frame(width: 1.5, height: rowHeight)
+        }
+        .frame(width: 1, height: rowHeight, alignment: .leading)
+    }
+}

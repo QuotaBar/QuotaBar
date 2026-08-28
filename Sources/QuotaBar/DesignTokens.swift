@@ -45,7 +45,18 @@ enum Design {
     /// black-on-black in light mode. Same trap as `ProviderGlyph`'s `tint`.
     static let sidebarSurface = Color.black
     static let sidebarInk = Color.white
-    static let sidebarInkDim = Color.white.opacity(0.62)
+    static let sidebarInkDim = Color.white.opacity(0.55)
+
+    /// The lit rail segment behind the selected sidebar row. One token because
+    /// it is the only hue in the window that is a free choice — it is white
+    /// rather than a colour for the same reason `accent` is graphite: the pane
+    /// beside it carries eleven provider brand colours and a twelfth competing
+    /// hue makes none of them legible.
+    static let sidebarGlow = Color.white
+    /// One nav row. Taller than a menu row on purpose — the rail segment is a
+    /// fraction of the rail's height, and at 30pt it is too short to read as a
+    /// travelling light.
+    static let sidebarRow: CGFloat = 36
 
     /// Specular edge on a glass surface, and the well behind a text field.
     /// Both are `Color.primary` derivatives so they invert with the appearance

@@ -138,9 +138,7 @@ struct SettingsView: View {
                 .padding(.horizontal, Design.space3)
                 .padding(.bottom, Design.space3)
 
-            ForEach(SettingsSection.allCases) { item in
-                sidebarItem(item)
-            }
+            nav
 
             Spacer(minLength: 0)
         }
@@ -186,6 +184,23 @@ struct SettingsView: View {
         }
     }
 
+    /// The rail sits behind the rows rather than beside them, so its bloom
+    /// spills under the label the way real light would. It is drawn once for
+    /// the whole list: the lit segment travels between rows, so it cannot
+    /// belong to any one of them.
+    private var nav: some View {
+        VStack(spacing: 0) {
+            ForEach(SettingsSection.allCases) { item in
+                sidebarItem(item)
+            }
+        }
+        .background(alignment: .topLeading) {
+            SidebarRail(
+                count: SettingsSection.allCases.count,
+                index: SettingsSection.allCases.firstIndex(of: section) ?? 0)
+        }
+    }
+
     private func sidebarItem(_ item: SettingsSection) -> some View {
         let isSelected = item == section
         return Button {
@@ -196,28 +211,24 @@ struct SettingsView: View {
                     .font(.system(size: 12, weight: .medium))
                     .frame(width: 18)
                 Text(item.title)
-                    .font(.system(size: 13))
+                    .font(.system(size: 13, weight: isSelected ? .medium : .regular))
                 Spacer(minLength: 0)
                 if item == .providers {
                     Text("\(store.enabled.count)")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(isSelected
-                            ? Design.sidebarSurface.opacity(0.55)
-                            : Design.sidebarInkDim)
+                        .foregroundStyle(Design.sidebarInkDim)
                 }
             }
-            .padding(.horizontal, Design.space2 + 2)
-            .frame(height: 30)
-            .foregroundStyle(isSelected ? Design.sidebarSurface : Design.sidebarInk)
-            .background {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: Design.radiusTile, style: .continuous)
-                        .fill(Design.sidebarInk)
-                }
-            }
+            .padding(.leading, Design.space3 + 2)
+            .padding(.trailing, Design.space2 + 2)
+            .frame(height: Design.sidebarRow)
+            // No filled block: the rail is what marks the selection, and a
+            // block would fight it. Grey to white is the second half of that.
+            .foregroundStyle(isSelected ? Design.sidebarGlow : Design.sidebarInkDim)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .animation(.easeOut(duration: 0.25), value: isSelected)
     }
 
     // MARK: Detail
