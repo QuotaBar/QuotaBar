@@ -23,9 +23,11 @@ final class EdgeDockCoordinator {
     /// One ring plus its label plus the stack spacing.
     static let cellHeight: CGFloat = 78
 
-    /// How much of the strip stays on screen when hidden — enough to be a
-    /// target, small enough not to be in the way.
-    static let peek: CGFloat = 5
+    /// Collapsed, the dock is a handle rather than a sliver of the strip.
+    /// Five points of an off-screen panel is neither visible nor clickable —
+    /// it reads as the feature not being there at all.
+    static let handleWidth: CGFloat = 18
+    static let handleHeight: CGFloat = 92
     static let width: CGFloat = 74
 
     func sync(store: UsageStore) {
@@ -162,25 +164,23 @@ final class EdgeDockCoordinator {
         if let height { lastHeight = max(80, height) }
         let config = ConfigStore.shared
         let visible = screen.visibleFrame
-        // Always-visible means never parked off-screen, whatever the pointer
-        // is doing.
+        // Always-visible means the full strip, whatever the pointer is doing.
         let out = expanded || config.dockAlwaysVisible
-        let edge = config.dockEdge
 
-        let x: CGFloat
-        switch (edge, out) {
-        case (.right, true): x = visible.maxX - Self.width - 8
-        case (.right, false): x = visible.maxX - Self.peek
-        case (.left, true): x = visible.minX + 8
-        case (.left, false): x = visible.minX + Self.peek - Self.width
-        }
+        // Both states sit flush against the edge and are fully on screen; what
+        // changes is how wide and tall the panel is.
+        let panelWidth = out ? Self.width : Self.handleWidth
+        let panelHeight = out ? lastHeight : Self.handleHeight
+        let x = config.dockEdge == .right
+            ? visible.maxX - panelWidth
+            : visible.minX
 
         // dockPosition is a fraction from the top; AppKit measures from the
-        // bottom, and the strip is kept fully on screen at either extreme.
-        let travel = max(0, visible.height - lastHeight)
-        let y = visible.maxY - lastHeight - travel * CGFloat(config.dockPosition)
+        // bottom, and the panel is kept fully on screen at either extreme.
+        let travel = max(0, visible.height - panelHeight)
+        let y = visible.maxY - panelHeight - travel * CGFloat(config.dockPosition)
         panel.setFrame(
-            NSRect(x: x, y: y, width: Self.width, height: lastHeight),
+            NSRect(x: x, y: y, width: panelWidth, height: panelHeight),
             display: true,
             animate: true)
     }
@@ -222,11 +222,19 @@ struct EdgeDockView: View {
 
     private var onLeft: Bool { store.dockEdge == .left }
 
+    private var showsStrip: Bool { expanded || coordinator.alwaysVisible }
+
     var body: some View {
-        HStack(spacing: 0) {
-            if !onLeft { Spacer(minLength: 0) }
-            strip
-            if onLeft { Spacer(minLength: 0) }
+        Group {
+            if showsStrip {
+                HStack(spacing: 0) {
+                    if !onLeft { Spacer(minLength: 0) }
+                    strip
+                    if onLeft { Spacer(minLength: 0) }
+                }
+            } else {
+                handle
+            }
         }
         .onHover { inside in
             coordinator.setExpanded(inside) { expanded = $0 }
@@ -238,6 +246,44 @@ struct EdgeDockView: View {
         .onChange(of: expanded) { _, isOpen in
             if !isOpen { coordinator.hideCallout() }
         }
+    }
+
+    /// What the dock looks like at rest: a slim tab carrying the worst reading,
+    /// so it is both a target to aim at and worth a glance on its own.
+    private var handle: some View {
+        ZStack {
+            UnevenRoundedRectangle(
+                topLeadingRadius: onLeft ? 0 : 9,
+                bottomLeadingRadius: onLeft ? 0 : 9,
+                bottomTrailingRadius: onLeft ? 9 : 0,
+                topTrailingRadius: onLeft ? 9 : 0,
+                style: .continuous)
+                .fill(Color.black.opacity(0.85))
+            GeometryReader { proxy in
+                VStack {
+                    Spacer(minLength: 0)
+                    Capsule()
+                        .fill(handleTint)
+                        .frame(width: 4, height: max(6, proxy.size.height * 0.7 * headlineFraction))
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .padding(.vertical, 10)
+        }
+        .frame(
+            width: EdgeDockCoordinator.handleWidth,
+            height: EdgeDockCoordinator.handleHeight)
+    }
+
+    private var headlineFraction: CGFloat {
+        CGFloat(min(max(store.headlinePercent ?? 0, 0), 100) / 100)
+    }
+
+    private var handleTint: Color {
+        guard store.headlinePercent != nil else { return .white.opacity(0.35) }
+        if let hex = store.alertLevel.hex { return Color(hex: hex) }
+        return Color(hex: "34C759")
     }
 
     private func presentCallout(for id: ProviderID?) {
@@ -293,7 +339,7 @@ struct EdgeDockView: View {
                     coordinator.setContentHeight(height)
                 }
             })
-        .opacity(expanded || coordinator.alwaysVisible ? 1 : 0.9)
+
     }
 
 }

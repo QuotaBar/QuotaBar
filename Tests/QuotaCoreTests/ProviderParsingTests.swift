@@ -391,3 +391,81 @@ final class CodexResetCreditsTests: XCTestCase {
         XCTAssertEqual(spark.scope, "GPT-5.3-Codex-Spark")
     }
 }
+
+final class CursorParsingTests: XCTestCase {
+    /// Recorded live from an account holding bonus credit — the case that
+    /// exposed the bug.
+    private let response = """
+    {"billingCycleStart":"2026-08-21T20:48:13.000Z",
+     "billingCycleEnd":"2026-09-21T20:48:13.000Z",
+     "membershipType":"pro_plus","limitType":"user","isUnlimited":false,
+     "autoModelSelectedDisplayMessage":"You've used 54% of your included total usage",
+     "individualUsage":{
+       "plan":{"enabled":true,"used":7000,"limit":7000,"remaining":0,
+               "breakdown":{"included":7000,"bonus":64240,"total":71240},
+               "autoPercentUsed":51.52416666666667,
+               "apiPercentUsed":85.55454545454545,
+               "totalPercentUsed":54.38167938931298},
+       "onDemand":{"enabled":true,"used":0,"limit":20000,"remaining":20000}}}
+    """
+
+    func testUsesCursorsOwnPercentageNotUsedOverLimit() throws {
+        let snapshot = try CursorProvider.parse(Data(response.utf8))
+        let plan = try XCTUnwrap(snapshot.windows.first)
+
+        // Regression: used/limit is 7000/7000 = 100%, because `limit` counts
+        // only the included allowance and ignores 64240 of bonus credit.
+        // Cursor's own page says 54%.
+        XCTAssertEqual(try XCTUnwrap(plan.usedPercent), 54.38, accuracy: 0.01)
+        XCTAssertNotEqual(plan.usedPercent, 100)
+    }
+
+    func testMoneyIsSizedAgainstTheRealTotal() throws {
+        let snapshot = try CursorProvider.parse(Data(response.utf8))
+        let plan = try XCTUnwrap(snapshot.windows.first)
+
+        // 54.38% of $712.40, not "$70.00 / $70.00".
+        XCTAssertEqual(plan.detail, "$387.42 / $712.40")
+    }
+
+    func testNamedModelUsageGetsItsOwnRow() throws {
+        let snapshot = try CursorProvider.parse(Data(response.utf8))
+
+        // 86% against a 54% headline: this is the one about to run out, so it
+        // must not be buried.
+        let api = try XCTUnwrap(snapshot.windows.first { $0.scope != nil })
+        XCTAssertEqual(try XCTUnwrap(api.usedPercent), 85.55, accuracy: 0.01)
+        XCTAssertEqual(snapshot.headlinePercent ?? 0, 85.55, accuracy: 0.01)
+    }
+
+    func testOnDemandIsUnchanged() throws {
+        let snapshot = try CursorProvider.parse(Data(response.utf8))
+        let onDemand = try XCTUnwrap(snapshot.windows.first { $0.detail == "$0.00 / $200.00" })
+        XCTAssertEqual(onDemand.usedPercent, 0)
+    }
+
+    func testPlanMetadata() throws {
+        let snapshot = try CursorProvider.parse(Data(response.utf8), account: "dev@example.com")
+        XCTAssertEqual(snapshot.planName, "Pro_Plus")
+        XCTAssertEqual(snapshot.account, "dev@example.com")
+        XCTAssertEqual(snapshot.windows.first?.resetsAt,
+                       Dates.parseAny("2026-09-21T20:48:13.000Z"))
+    }
+
+    func testFallsBackToUsedOverLimitWhenNoPercentagesArePublished() throws {
+        // An older shape, or a plan Cursor reports differently.
+        let legacy = """
+        {"membershipType":"pro","billingCycleEnd":"2026-09-21T20:48:13.000Z",
+         "individualUsage":{"plan":{"used":3500,"limit":7000}}}
+        """
+        let snapshot = try CursorProvider.parse(Data(legacy.utf8))
+        let plan = try XCTUnwrap(snapshot.windows.first)
+
+        XCTAssertEqual(plan.usedPercent, 50)
+        XCTAssertEqual(plan.detail, "$35.00 / $70.00")
+    }
+
+    func testGarbageIsRejected() {
+        XCTAssertThrowsError(try CursorProvider.parse(Data("nope".utf8)))
+    }
+}

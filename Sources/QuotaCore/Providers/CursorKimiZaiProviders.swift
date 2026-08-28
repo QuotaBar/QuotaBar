@@ -31,27 +31,45 @@ public struct CursorProvider: QuotaProvider {
         throw ProviderError.notConfigured(hint: ProviderID.cursor.setupHint)
     }
 
+    // MARK: Response shape
+
+    struct Breakdown: Decodable {
+        let included: Int?
+        let bonus: Int?
+        let total: Int?
+    }
+
+    struct Cents: Decodable {
+        let used: Int?
+        let limit: Int?
+        let remaining: Int?
+        let breakdown: Breakdown?
+        /// Cursor's own figures. `limit` covers only the *included* allowance,
+        /// so used/limit ignores bonus credit and reads 100% on an account
+        /// that Cursor itself shows as half consumed.
+        let totalPercentUsed: Double?
+        let apiPercentUsed: Double?
+        let autoPercentUsed: Double?
+    }
+
+    struct Individual: Decodable {
+        let plan: Cents?
+        let onDemand: Cents?
+    }
+
+    struct Summary: Decodable {
+        let membershipType: String?
+        let billingCycleEnd: String?
+        let individualUsage: Individual?
+    }
+
+    struct Me: Decodable {
+        let email: String?
+    }
+
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
         let cookie = try cookieHeader(config)
         let headers = ["Accept": "application/json", "Cookie": cookie]
-
-        struct Cents: Decodable {
-            let used: Int?
-            let limit: Int?
-            let remaining: Int?
-        }
-        struct Individual: Decodable {
-            let plan: Cents?
-            let onDemand: Cents?
-        }
-        struct Summary: Decodable {
-            let membershipType: String?
-            let billingCycleEnd: String?
-            let individualUsage: Individual?
-        }
-        struct Me: Decodable {
-            let email: String?
-        }
 
         let summaryURL = URL(string: "https://cursor.com/api/usage-summary")!
         let response = try await HTTP.get(summaryURL, headers: headers).requireOK()
@@ -60,15 +78,22 @@ public struct CursorProvider: QuotaProvider {
         let account = try? await HTTP.get(URL(string: "https://cursor.com/api/auth/me")!, headers: headers)
             .requireOK().json(Me.self)
 
+        return Self.snapshot(from: summary, account: account?.email)
+    }
+
+    /// Pure parse step, pinned by a recorded response.
+    public static func parse(_ data: Data, account: String? = nil) throws -> UsageSnapshot {
+        guard let summary = try? JSONDecoder().decode(Summary.self, from: data) else {
+            throw ProviderError.badResponse
+        }
+        return snapshot(from: summary, account: account)
+    }
+
+    static func snapshot(from summary: Summary, account: String?) -> UsageSnapshot {
         let cycleEnd = Dates.parseAny(summary.billingCycleEnd)
         var windows: [UsageWindow] = []
-        if let plan = summary.individualUsage?.plan, let limit = plan.limit, limit > 0 {
-            let used = plan.used ?? 0
-            windows.append(UsageWindow(
-                title: L10n.t("Monthly plan", "月度套餐"),
-                usedPercent: Double(used) / Double(limit) * 100,
-                detail: "\(QuotaFormat.dollars(cents: used)) / \(QuotaFormat.dollars(cents: limit))",
-                resetsAt: cycleEnd))
+        if let plan = summary.individualUsage?.plan {
+            windows.append(contentsOf: planWindows(plan, resetsAt: cycleEnd))
         }
         if let onDemand = summary.individualUsage?.onDemand, let limit = onDemand.limit, limit > 0 {
             let used = onDemand.used ?? 0
@@ -80,8 +105,52 @@ public struct CursorProvider: QuotaProvider {
         }
         return UsageSnapshot(
             planName: summary.membershipType?.capitalized,
-            account: account?.email,
+            account: account,
             windows: windows)
+    }
+
+    /// Cursor reports the plan three ways, and `used / limit` is the one that
+    /// lies: `limit` is the included allowance only, so an account holding
+    /// bonus credit reads 100% while Cursor's own page says 54%. Prefer the
+    /// percentages it publishes, and size the money against the real total.
+    static func planWindows(_ plan: Cents, resetsAt: Date?) -> [UsageWindow] {
+        var windows: [UsageWindow] = []
+        let total = plan.breakdown?.total ?? plan.limit
+
+        if let percent = plan.totalPercentUsed {
+            var detail: String?
+            if let total, total > 0 {
+                // The absolute spend is not published; derive it from the
+                // percentage, the only figure that accounts for bonus credit.
+                let spent = Int((percent / 100 * Double(total)).rounded())
+                detail = "\(QuotaFormat.dollars(cents: spent)) / \(QuotaFormat.dollars(cents: total))"
+            }
+            windows.append(UsageWindow(
+                title: L10n.t("Monthly plan", "月度套餐"),
+                usedPercent: percent,
+                detail: detail,
+                resetsAt: resetsAt))
+        } else if let limit = plan.limit, limit > 0 {
+            // Older shape, with no percentages to prefer.
+            let used = plan.used ?? 0
+            windows.append(UsageWindow(
+                title: L10n.t("Monthly plan", "月度套餐"),
+                usedPercent: Double(used) / Double(limit) * 100,
+                detail: "\(QuotaFormat.dollars(cents: used)) / \(QuotaFormat.dollars(cents: limit))",
+                resetsAt: resetsAt))
+        }
+
+        // Named-model usage runs down faster than the total and is usually the
+        // binding constraint, so it gets its own row rather than being buried
+        // inside the headline.
+        if let api = plan.apiPercentUsed {
+            windows.append(UsageWindow(
+                title: L10n.t("Named models", "指定模型"),
+                usedPercent: api,
+                resetsAt: resetsAt,
+                scope: L10n.t("Named models", "指定模型")))
+        }
+        return windows
     }
 }
 
