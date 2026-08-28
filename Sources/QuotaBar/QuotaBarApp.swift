@@ -8,6 +8,7 @@ struct QuotaBarApp: App {
     @StateObject private var store = UsageStore()
     private let island = IslandCoordinator()
     private let dock = EdgeDockCoordinator()
+    private let widget = DesktopWidgetCoordinator()
 
     var body: some Scene {
         MenuBarExtra {
@@ -20,6 +21,7 @@ struct QuotaBarApp: App {
                 mode: store.meterMode))
                 .onAppear { syncPresentation() }
                 .onChange(of: store.presentation) { _, _ in syncPresentation() }
+                .onChange(of: store.widgetRevision) { _, _ in widget.sync(store: store) }
         }
         .menuBarExtraStyle(.window)
 
@@ -33,6 +35,7 @@ struct QuotaBarApp: App {
     private func syncPresentation() {
         island.sync(store: store)
         dock.sync(store: store)
+        widget.sync(store: store)
     }
 }
 

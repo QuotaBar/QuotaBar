@@ -22,6 +22,16 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
     public var dockPosition: Double
     /// When false the strip hides itself until the pointer reaches the edge.
     public var dockAlwaysVisible: Bool
+    /// The desktop widget is independent of `presentation`: it sits alongside
+    /// the menu bar rather than replacing it.
+    public var widgetEnabled: Bool
+    public var widgetDensity: WidgetDensity
+    /// Position as fractions of the screen so it survives a resolution change.
+    public var widgetX: Double
+    public var widgetY: Double
+    /// Desktop level by default — a widget that floats over every window is a
+    /// different thing, and an intrusive one.
+    public var widgetAlwaysOnTop: Bool
 
     /// Only ever populated by decoding a pre-Keychain config file. `ConfigStore`
     /// drains it into the keychain on load and rewrites the file without it;
@@ -47,6 +57,11 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
         dockEdge: DockEdge = .right,
         dockPosition: Double = 0.5,
         dockAlwaysVisible: Bool = false,
+        widgetEnabled: Bool = false,
+        widgetDensity: WidgetDensity = .standard,
+        widgetX: Double = 0.82,
+        widgetY: Double = 0.12,
+        widgetAlwaysOnTop: Bool = false,
         legacyCredentials: [ProviderID: String] = [:])
     {
         self.enabled = enabled
@@ -62,6 +77,11 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
         self.dockEdge = dockEdge
         self.dockPosition = dockPosition
         self.dockAlwaysVisible = dockAlwaysVisible
+        self.widgetEnabled = widgetEnabled
+        self.widgetDensity = widgetDensity
+        self.widgetX = widgetX
+        self.widgetY = widgetY
+        self.widgetAlwaysOnTop = widgetAlwaysOnTop
         self.legacyCredentials = legacyCredentials
     }
 
@@ -69,6 +89,7 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
         case enabled, refreshMinutes, menuBarStyle, meterMode, presentation, alerts, language
         case selected, updateFeed, checksForUpdates
         case dockEdge, dockPosition, dockAlwaysVisible
+        case widgetEnabled, widgetDensity, widgetX, widgetY, widgetAlwaysOnTop
         case legacyCredentials = "credentials"
     }
 
@@ -105,6 +126,16 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
                 ?? defaults.dockPosition, 0), 1)
         dockAlwaysVisible = (try? container.decodeIfPresent(Bool.self, forKey: .dockAlwaysVisible))
             ?? defaults.dockAlwaysVisible
+        widgetEnabled = (try? container.decodeIfPresent(Bool.self, forKey: .widgetEnabled))
+            ?? defaults.widgetEnabled
+        widgetDensity = QuotaConfig.decodeEnum(from: container, forKey: .widgetDensity)
+            ?? defaults.widgetDensity
+        widgetX = min(max(
+            (try? container.decodeIfPresent(Double.self, forKey: .widgetX)) ?? defaults.widgetX, 0), 1)
+        widgetY = min(max(
+            (try? container.decodeIfPresent(Double.self, forKey: .widgetY)) ?? defaults.widgetY, 0), 1)
+        widgetAlwaysOnTop = (try? container.decodeIfPresent(Bool.self, forKey: .widgetAlwaysOnTop))
+            ?? defaults.widgetAlwaysOnTop
         legacyCredentials = QuotaConfig.decodeLegacyCredentials(from: container)
         hasLegacyCredentialKey = container.contains(.legacyCredentials)
     }
@@ -170,6 +201,11 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
         try container.encode(dockEdge, forKey: .dockEdge)
         try container.encode(dockPosition, forKey: .dockPosition)
         try container.encode(dockAlwaysVisible, forKey: .dockAlwaysVisible)
+        try container.encode(widgetEnabled, forKey: .widgetEnabled)
+        try container.encode(widgetDensity, forKey: .widgetDensity)
+        try container.encode(widgetX, forKey: .widgetX)
+        try container.encode(widgetY, forKey: .widgetY)
+        try container.encode(widgetAlwaysOnTop, forKey: .widgetAlwaysOnTop)
         // `legacyCredentials` intentionally omitted.
     }
 }
@@ -394,6 +430,43 @@ public final class ConfigStore: @unchecked Sendable {
             return config.dockAlwaysVisible
         }
         set { mutate { $0.dockAlwaysVisible = newValue } }
+    }
+
+    public var widgetEnabled: Bool {
+        get {
+            lock.lock(); defer { lock.unlock() }
+            return config.widgetEnabled
+        }
+        set { mutate { $0.widgetEnabled = newValue } }
+    }
+
+    public var widgetDensity: WidgetDensity {
+        get {
+            lock.lock(); defer { lock.unlock() }
+            return config.widgetDensity
+        }
+        set { mutate { $0.widgetDensity = newValue } }
+    }
+
+    public var widgetAlwaysOnTop: Bool {
+        get {
+            lock.lock(); defer { lock.unlock() }
+            return config.widgetAlwaysOnTop
+        }
+        set { mutate { $0.widgetAlwaysOnTop = newValue } }
+    }
+
+    public var widgetOrigin: (x: Double, y: Double) {
+        get {
+            lock.lock(); defer { lock.unlock() }
+            return (config.widgetX, config.widgetY)
+        }
+        set {
+            mutate {
+                $0.widgetX = min(max(newValue.x, 0), 1)
+                $0.widgetY = min(max(newValue.y, 0), 1)
+            }
+        }
     }
 
     public var language: L10n.Language {

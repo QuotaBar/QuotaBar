@@ -113,6 +113,26 @@ public enum QuotaTheme {
     public nonisolated(unsafe) static var inkDarkHex = "18181B"
 }
 
+/// How much the desktop widget shows.
+public enum WidgetDensity: String, Codable, CaseIterable, Identifiable, Sendable {
+    /// Rings only — the smallest thing that still says which provider.
+    case compact
+    /// Rings with their figures.
+    case standard
+    /// Adds a row per quota window.
+    case detailed
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .compact: L10n.t("Compact", "紧凑")
+        case .standard: L10n.t("Standard", "标准")
+        case .detailed: L10n.t("Detailed", "详细")
+        }
+    }
+}
+
 /// Which screen edge the dock attaches to.
 public enum DockEdge: String, Codable, CaseIterable, Identifiable, Sendable {
     case right

@@ -400,6 +400,17 @@ enum Snapshot {
         .padding(20)
         .environment(\.colorScheme, .dark)
         render(dockSheet, to: base, name: "edge-dock", backing: Color(hex: "3A4A5A"))
+
+        // Desktop widget at each density.
+        for density in WidgetDensity.allCases {
+            ConfigStore.shared.widgetDensity = density
+            let card = DesktopWidgetView(
+                store: makeStore(selected: nil),
+                coordinator: DesktopWidgetCoordinator())
+                .padding(24)
+            render(card, to: base, name: "widget-\(density.rawValue)",
+                   backing: Color(hex: "2E3B4E"))
+        }
         L10n.override = ConfigStore.shared.language
 
         writeMenuBarIcons(to: base)

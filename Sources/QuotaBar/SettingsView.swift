@@ -121,6 +121,32 @@ struct SettingsView: View {
                 }
             }
 
+            Section(L10n.t("Desktop widget", "桌面小工具")) {
+                Toggle(L10n.t("Show on the desktop", "在桌面显示"), isOn: Binding(
+                    get: { store.widgetEnabled },
+                    set: { store.setWidgetEnabled($0) }))
+                Picker(L10n.t("Density", "信息密度"), selection: Binding(
+                    get: { store.widgetDensity },
+                    set: { store.setWidgetDensity($0) }))
+                {
+                    ForEach(WidgetDensity.allCases) { density in
+                        Text(density.displayName).tag(density)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .disabled(!store.widgetEnabled)
+                Toggle(L10n.t("Keep above other windows", "置于其他窗口之上"), isOn: Binding(
+                    get: { store.widgetAlwaysOnTop },
+                    set: { store.setWidgetAlwaysOnTop($0) }))
+                    .disabled(!store.widgetEnabled)
+                Text(L10n.t(
+                    "Sits on the desktop, below your windows, unless kept above. Drag it to move; the position is remembered.",
+                    "默认位于桌面、在窗口之下（可改为置顶）。拖动即可移动，位置会被记住。"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Section(L10n.t("Alerts", "提醒")) {
                 Toggle(L10n.t("Notify when approaching limits", "接近额度上限时通知"), isOn: Binding(
                     get: { store.alertSettings.enabled },

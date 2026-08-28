@@ -482,3 +482,76 @@ final class DockSettingsTests: XCTestCase {
         XCTAssertEqual(store.refreshMinutes, 9, "the rest of the file still loads")
     }
 }
+
+final class DesktopWidgetSettingsTests: XCTestCase {
+    private var fileURL: URL!
+
+    override func setUpWithError() throws {
+        fileURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("quotabar-widget-\(UUID().uuidString)")
+            .appendingPathComponent("config.json")
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent())
+    }
+
+    func testOffByDefaultAndNotOnTop() {
+        let store = ConfigStore(fileURL: fileURL, credentials: MemoryCredentialStorage())
+        XCTAssertFalse(store.widgetEnabled)
+        XCTAssertEqual(store.widgetDensity, .standard)
+        XCTAssertFalse(store.widgetAlwaysOnTop, "a widget that floats over every window is intrusive")
+    }
+
+    func testRoundTrips() {
+        let keychain = MemoryCredentialStorage()
+        let first = ConfigStore(fileURL: fileURL, credentials: keychain)
+        first.widgetEnabled = true
+        first.widgetDensity = .detailed
+        first.widgetAlwaysOnTop = true
+        first.widgetOrigin = (x: 0.25, y: 0.75)
+
+        let second = ConfigStore(fileURL: fileURL, credentials: keychain)
+        XCTAssertTrue(second.widgetEnabled)
+        XCTAssertEqual(second.widgetDensity, .detailed)
+        XCTAssertTrue(second.widgetAlwaysOnTop)
+        XCTAssertEqual(second.widgetOrigin.x, 0.25, accuracy: 0.001)
+        XCTAssertEqual(second.widgetOrigin.y, 0.75, accuracy: 0.001)
+    }
+
+    func testOriginIsClampedBothWays() throws {
+        let store = ConfigStore(fileURL: fileURL, credentials: MemoryCredentialStorage())
+        store.widgetOrigin = (x: 3, y: -2)
+        XCTAssertEqual(store.widgetOrigin.x, 1, accuracy: 0.001)
+        XCTAssertEqual(store.widgetOrigin.y, 0, accuracy: 0.001)
+
+        // And on the way in, so a hand-edited file cannot park it off-screen.
+        try FileManager.default.createDirectory(
+            at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try #"{"enabled":["codex"],"widgetX":9,"widgetY":-9}"#
+            .write(to: fileURL, atomically: true, encoding: .utf8)
+        let reloaded = ConfigStore(fileURL: fileURL, credentials: MemoryCredentialStorage())
+        XCTAssertEqual(reloaded.widgetOrigin.x, 1, accuracy: 0.001)
+        XCTAssertEqual(reloaded.widgetOrigin.y, 0, accuracy: 0.001)
+    }
+
+    func testUnknownDensityFallsBack() throws {
+        try FileManager.default.createDirectory(
+            at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try #"{"enabled":["codex"],"widgetDensity":"enormous","refreshMinutes":11}"#
+            .write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let store = ConfigStore(fileURL: fileURL, credentials: MemoryCredentialStorage())
+        XCTAssertEqual(store.widgetDensity, .standard)
+        XCTAssertEqual(store.refreshMinutes, 11, "the rest of the file still loads")
+    }
+
+    func testTheWidgetIsIndependentOfPresentation() {
+        // It sits alongside the menu bar rather than replacing it, so enabling
+        // it must not disturb the presentation mode.
+        let store = ConfigStore(fileURL: fileURL, credentials: MemoryCredentialStorage())
+        store.presentation = .island
+        store.widgetEnabled = true
+        XCTAssertEqual(store.presentation, .island)
+    }
+}

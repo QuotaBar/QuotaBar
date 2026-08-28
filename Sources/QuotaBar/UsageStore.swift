@@ -319,6 +319,28 @@ final class UsageStore: ObservableObject {
 
     var checksForUpdates: Bool { config.checksForUpdates }
     var dockEdge: DockEdge { config.dockEdge }
+    var widgetEnabled: Bool { config.widgetEnabled }
+    var widgetDensity: WidgetDensity { config.widgetDensity }
+    var widgetAlwaysOnTop: Bool { config.widgetAlwaysOnTop }
+
+    /// Bumped so the coordinators re-evaluate; the widget is independent of
+    /// `presentation`, so it needs its own signal.
+    @Published var widgetRevision = 0
+
+    func setWidgetEnabled(_ on: Bool) {
+        config.widgetEnabled = on
+        widgetRevision &+= 1
+    }
+
+    func setWidgetDensity(_ density: WidgetDensity) {
+        config.widgetDensity = density
+        widgetRevision &+= 1
+    }
+
+    func setWidgetAlwaysOnTop(_ on: Bool) {
+        config.widgetAlwaysOnTop = on
+        widgetRevision &+= 1
+    }
     var dockAlwaysVisible: Bool { config.dockAlwaysVisible }
 
     func setDockEdge(_ edge: DockEdge) {
