@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import QuotaCore
 
@@ -11,6 +12,14 @@ struct MenuContentView: View {
         MenuContentBody(store: store, scrollable: scrollable)
             .padding(Design.space3)
             .frame(width: 380)
+            // Refuse vertical compression. Two things depend on it: the VStack
+            // stops overlapping its own children when the window is too short —
+            // which is how the footer came to be drawn on top of the last quota
+            // row — and the measurement below becomes the height the content
+            // *wants* rather than the height it was squeezed into. Without it
+            // the two are circular: the window constrains the content, the
+            // content reports the constrained size, and the resize is a no-op.
+            .fixedSize(horizontal: false, vertical: true)
             .tint(Design.accent)
             // An opaque backing, resolved in the same appearance as the text
             // on top of it. Without one the panel sits directly on the menu
@@ -18,6 +27,50 @@ struct MenuContentView: View {
             // match the one the content resolves in — light material under
             // dark-mode content renders the whole panel washed-out grey.
             .background(Design.panelBackground)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.onChange(of: proxy.size.height, initial: true) { _, height in
+                        MenuPanel.fit(contentHeight: height)
+                    }
+                })
+    }
+}
+
+/// Resizes the `MenuBarExtra` popover to the height its content actually needs.
+///
+/// SwiftUI measures that popover **once**, on the first render — which happens
+/// before any provider has answered, when the detail section is sitting on its
+/// 210pt floor. The window is 418pt from then on, for every provider, forever:
+/// reopening it does not re-measure. Real content is 429pt (a failed provider)
+/// to 624pt (the overview), so the VStack was always over-committed and the
+/// footer was drawn on top of the last quota row.
+///
+/// The panel is identified by its level. `.popUpMenu` is the popover's own
+/// level and nothing else the app creates uses it — the dock, island and widget
+/// are all `.statusBar`, and Settings is `.normal`.
+@MainActor
+enum MenuPanel {
+    static func fit(contentHeight: CGFloat) {
+        guard contentHeight > 1 else { return }
+        DispatchQueue.main.async {
+            guard let panel = NSApp.windows.first(where: { $0.level == .popUpMenu })
+            else { return }
+            // A panel taller than the screen is worse than a short one, so the
+            // request is clamped to what is actually below the menu bar. On any
+            // display this app is usable on, the content fits well inside that.
+            let available = (panel.screen ?? NSScreen.main)?.visibleFrame.height
+                ?? contentHeight
+            let target = min(contentHeight, available)
+            var frame = panel.frame
+            guard abs(frame.height - target) > 0.5 else { return }
+            // Popovers hang from the menu bar, so the top edge is the anchor —
+            // growing from the bottom-left origin AppKit uses would push the
+            // panel up under the menu bar.
+            let top = frame.maxY
+            frame.size.height = target
+            frame.origin.y = top - target
+            panel.setFrame(frame, display: true)
+        }
     }
 }
 
