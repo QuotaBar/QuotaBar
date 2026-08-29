@@ -4,3 +4,4 @@ QuotaBar.app
 *.icns
 .DS_Store
 dist/
+.claude/

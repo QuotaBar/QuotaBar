@@ -16,7 +16,7 @@ used and when each window resets. Eleven providers, no servers, no accounts.
 
 [Download](https://github.com/gentpan/quotabar/releases/latest) ·
 [Website](web/) ·
-[Architecture](CLAUDE.md)
+[Architecture](ARCHITECTURE.md)
 
 </div>
 
@@ -189,7 +189,7 @@ same assistant turn into every session file that replays it (deduplicated on
 - `web/` — the marketing site. Static, no build step.
 
 Adding a provider, and every design decision worth knowing before changing one:
-[CLAUDE.md](CLAUDE.md).
+[ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Credits
 
