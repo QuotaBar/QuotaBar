@@ -44,6 +44,9 @@ BUILD_DATE="$(date '+%Y-%m-%d %H:%M')"
   "$APP/Contents/Info.plist" >/dev/null 2>&1 \
   || /usr/libexec/PlistBuddy -c "Set :QBBuildDate $BUILD_DATE" "$APP/Contents/Info.plist"
 cp -R Sources/QuotaBar/Resources/logos "$APP/Contents/Resources/logos"
+# Info.plist's ATSApplicationFontsPath points here; without the copy the
+# wordmark silently falls back to the system font.
+cp -R Sources/QuotaBar/Resources/fonts "$APP/Contents/Resources/fonts"
 
 # Build AppIcon.icns from Assets/icon.png
 WORK="$(mktemp -d)"

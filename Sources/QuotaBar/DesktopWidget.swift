@@ -149,7 +149,7 @@ struct DesktopWidgetView: View {
     private var header: some View {
         HStack(spacing: Design.space2) {
             Text("QuotaBar")
-                .font(.system(size: 11, weight: .semibold))
+                .font(Design.wordmark(size: 11))
                 .foregroundStyle(.white.opacity(0.65))
             Spacer(minLength: Design.space3)
             if let updated = latestFetch {

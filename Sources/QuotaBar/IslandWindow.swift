@@ -199,7 +199,7 @@ struct IslandView: View {
         VStack(spacing: 0) {
             HStack {
                 Text("QuotaBar")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(Design.wordmark(size: 12, weight: .bold))
                     .foregroundStyle(.white.opacity(0.7))
                 Spacer()
                 SettingsLink {

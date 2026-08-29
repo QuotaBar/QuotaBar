@@ -87,6 +87,18 @@ enum Design {
         adaptive(light: QuotaTheme.inkHex, dark: QuotaTheme.inkDarkHex)
     }
 
+    /// The wordmark's face. Sora ships inside the bundle, in
+    /// `Resources/fonts`, declared by `ATSApplicationFontsPath` in Info.plist.
+    ///
+    /// `Font.custom` falls back to the system font on its own when the family
+    /// is not registered, which is exactly what the dev loop needs: it runs a
+    /// bare binary with no bundle, so there is nothing to register a font from.
+    /// Only ever used for the word "QuotaBar" — body text stays on the system
+    /// face, which is what a macOS app should read as.
+    static func wordmark(size: CGFloat, weight: Font.Weight = .semibold) -> Font {
+        Font.custom("Sora", size: size).weight(weight)
+    }
+
     private static func adaptive(light: String, dark: String) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua

@@ -159,7 +159,7 @@ struct SettingsView: View {
         HStack(spacing: Design.space2 + 2) {
             appIcon
             Text("QuotaBar")
-                .font(.system(size: 15, weight: .semibold))
+                .font(Design.wordmark(size: 16))
                 .foregroundStyle(Design.sidebarInk)
             Spacer(minLength: 0)
         }
@@ -1011,8 +1011,14 @@ struct AboutPane: View {
                         .frame(width: 52, height: 52)
                 }
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("QuotaBar \(SettingsView.version)")
-                        .font(.system(size: 15, weight: .semibold))
+                    HStack(alignment: .firstTextBaseline, spacing: Design.space2) {
+                        Text("QuotaBar")
+                            .font(Design.wordmark(size: 17))
+                        Text(SettingsView.version)
+                            .font(.system(size: 12))
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
                     Text(L10n.t(
                         "Every AI coding limit, in your menu bar.",
                         "把每个 AI 编码服务的额度都放进菜单栏。"))
