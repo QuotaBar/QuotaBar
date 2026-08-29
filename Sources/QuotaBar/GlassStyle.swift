@@ -150,31 +150,19 @@ extension View {
 /// Runs the content to the top edge of the settings window.
 ///
 /// `Settings { }` hands out no `NSWindow`, so this rides along in the view tree
-/// and configures whichever window it lands in, once. Everything it sets is a
-/// no-op if the window never materialises — the snapshot renderer has no window
-/// at all and must not trap here.
+/// and configures whichever window it lands in.
+///
+/// It has to hook `viewDidMoveToWindow`, not `makeNSView`. The first version
+/// configured from make/update and gave up when `view.window` was still nil —
+/// which is exactly the case in the real Settings scene, where the view is
+/// built before it is attached and no further update ever arrives. It worked in
+/// the debug window (`--settings-window`), whose window exists before the
+/// hosting view is installed, and silently did nothing in the one users open.
 struct WindowChrome: NSViewRepresentable {
-    final class Coordinator {
-        var configured = false
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        apply(view, context.coordinator)
-        return view
-    }
-
-    func updateNSView(_ view: NSView, context: Context) {
-        apply(view, context.coordinator)
-    }
-
-    private func apply(_ view: NSView, _ coordinator: Coordinator) {
-        guard !coordinator.configured else { return }
-        DispatchQueue.main.async {
-            guard !coordinator.configured, let window = view.window else { return }
-            coordinator.configured = true
+    final class Anchor: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window else { return }
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
             window.styleMask.insert(.fullSizeContentView)
@@ -187,8 +175,16 @@ struct WindowChrome: NSViewRepresentable {
             // window background uncovered again, it reads as part of the
             // sidebar rather than as a second title bar.
             window.backgroundColor = .black
+            // `fullSizeContentView` arrives after the hosting view has already
+            // been laid out against the old, titlebar-inset content rect. Ask
+            // for a fresh pass so the content actually reaches the top edge.
+            window.contentView?.needsLayout = true
+            window.contentView?.layoutSubtreeIfNeeded()
         }
     }
+
+    func makeNSView(context: Context) -> NSView { Anchor(frame: .zero) }
+    func updateNSView(_ view: NSView, context: Context) {}
 }
 
 // MARK: - Form primitives
