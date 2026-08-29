@@ -105,22 +105,27 @@ struct SettingsView: View {
             sidebar
             detail
         }
-        // Tall enough that all eleven providers fit without scrolling while
-        // they are collapsed — the list is the pane people open this for.
-        .frame(width: 840, height: 700)
+        // Ideal 840x700 — tall enough that all eleven providers fit without
+        // scrolling while collapsed, which is the pane people open this for —
+        // but allowed to fill. A fixed height leaves the content 28pt short of
+        // a `fullSizeContentView` window and the titlebar's own background
+        // shows through as a band across the top of the pane.
+        .frame(
+            minWidth: 840, idealWidth: 840, maxWidth: .infinity,
+            minHeight: 700, idealHeight: 700, maxHeight: .infinity)
         .background(backdrop)
+        // `NSHostingView` honours the window's safe area, and a
+        // `fullSizeContentView` window's safe area excludes the titlebar. That
+        // inset is why the content began 28pt down and the window's own
+        // background showed through above it as a second bar.
+        .ignoresSafeArea()
         .background(chrome)
         .environment(\.glassDisabled, isRendering)
         .tint(Design.accent)
     }
 
-    @ViewBuilder
     private var backdrop: some View {
-        if isRendering {
-            Design.panelBackground
-        } else {
-            VisualEffectBackground()
-        }
+        Design.settingsBackground
     }
 
     @ViewBuilder
@@ -141,6 +146,8 @@ struct SettingsView: View {
             nav
 
             Spacer(minLength: 0)
+
+            buildStamp
         }
         .padding(Design.space2)
         .padding(.top, Design.titlebarInset)
@@ -149,18 +156,32 @@ struct SettingsView: View {
     }
 
     private var identity: some View {
-        HStack(spacing: Design.space2) {
+        HStack(spacing: Design.space2 + 2) {
             appIcon
-            VStack(alignment: .leading, spacing: 0) {
-                Text("QuotaBar")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Design.sidebarInk)
-                Text(Self.version)
-                    .font(.system(size: 10))
-                    .foregroundStyle(Design.sidebarInkDim)
-            }
+            Text("QuotaBar")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Design.sidebarInk)
             Spacer(minLength: 0)
         }
+    }
+
+    /// Version and packaging time, at the foot of the sidebar rather than under
+    /// the name. It answers "is this the build I just made" during a dev loop
+    /// and "when did the updater last replace this" afterwards — a reference,
+    /// not part of the app's identity, so it sits where references go.
+    private var buildStamp: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(Self.version)
+            if let built = Self.buildDate {
+                Text(built)
+            }
+        }
+        .font(.system(size: 10))
+        .monospacedDigit()
+        .foregroundStyle(Design.sidebarInkDim)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Design.space3 + 2)
+        .padding(.bottom, Design.space2)
     }
 
     @ViewBuilder
@@ -171,11 +192,11 @@ struct SettingsView: View {
             Image(nsImage: image)
                 .resizable()
                 .scaledToFit()
-                .frame(width: 26, height: 26)
+                .frame(width: 28, height: 28)
         } else {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(Design.sidebarInk)
-                .frame(width: 26, height: 26)
+                .frame(width: 28, height: 28)
                 .overlay {
                     Image(systemName: "chart.bar.fill")
                         .font(.system(size: 12, weight: .semibold))
@@ -276,6 +297,12 @@ struct SettingsView: View {
         case .updates: UpdatesPane(store: store)
         case .about: AboutPane()
         }
+    }
+
+    /// Stamped into Info.plist by `package_app.sh`; absent in the dev loop,
+    /// which runs a bare binary with no bundle at all.
+    static var buildDate: String? {
+        Bundle.main.object(forInfoDictionaryKey: "QBBuildDate") as? String
     }
 
     static var version: String {

@@ -39,6 +39,19 @@ enum Design {
     static let surfaceStrong = Color.primary.opacity(0.08)
     static let track = Color.primary.opacity(0.15)
 
+    /// The settings window's content pane. Opaque, and deliberately not a
+    /// vibrancy view: the titlebar composites its own material over anything
+    /// translucent beneath it, which laid a 28pt lighter band across the top of
+    /// the pane. The black sidebar beside it showed no such band, because an
+    /// opaque fill blocks that compositing — so the pane gets one too, and the
+    /// window reads as a single surface. The light value is what the vibrancy
+    /// resolved to, so nothing else shifts.
+    static var settingsBackground: Color {
+        // Dark is lifted off pure black on purpose: the sidebar beside it *is*
+        // pure black, and at 1C1C1E the two were a hairline apart.
+        adaptive(light: "E9E8E8", dark: "242426")
+    }
+
     /// The settings sidebar is an always-dark surface, like the dock and the
     /// widget. Its colours are therefore pinned, not adaptive: `Color.primary`
     /// and `Design.accent` resolve against the *system* appearance and both go

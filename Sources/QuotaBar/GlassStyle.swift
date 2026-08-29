@@ -147,26 +147,6 @@ extension View {
 
 // MARK: - Window chrome
 
-/// Vibrant backdrop. `behindWindow` blending is what makes the glass above it
-/// have something to refract.
-struct VisualEffectBackground: NSViewRepresentable {
-    var material: NSVisualEffectView.Material = .underWindowBackground
-    var blending: NSVisualEffectView.BlendingMode = .behindWindow
-
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = material
-        view.blendingMode = blending
-        view.state = .active
-        return view
-    }
-
-    func updateNSView(_ view: NSVisualEffectView, context: Context) {
-        view.material = material
-        view.blendingMode = blending
-    }
-}
-
 /// Runs the content to the top edge of the settings window.
 ///
 /// `Settings { }` hands out no `NSWindow`, so this rides along in the view tree
@@ -202,6 +182,11 @@ struct WindowChrome: NSViewRepresentable {
             // Without this the system still draws a hairline under the
             // titlebar, which cuts across the sidebar and the first card.
             window.titlebarSeparatorStyle = .none
+            // Black, to match the sidebar. The content fills the window, so
+            // this should never show — but if AppKit ever leaves a strip of
+            // window background uncovered again, it reads as part of the
+            // sidebar rather than as a second title bar.
+            window.backgroundColor = .black
         }
     }
 }

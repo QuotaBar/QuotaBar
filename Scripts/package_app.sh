@@ -34,6 +34,15 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/QuotaBar"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+# Stamp when this bundle was actually assembled. The version alone does not
+# answer "is this the build I just made?" during a dev loop, and it does not
+# answer "when did the updater last replace this?" afterwards. Written here
+# rather than baked into the source plist so it cannot go stale, and before
+# signing so the signature covers it.
+BUILD_DATE="$(date '+%Y-%m-%d %H:%M')"
+/usr/libexec/PlistBuddy -c "Add :QBBuildDate string $BUILD_DATE" \
+  "$APP/Contents/Info.plist" >/dev/null 2>&1 \
+  || /usr/libexec/PlistBuddy -c "Set :QBBuildDate $BUILD_DATE" "$APP/Contents/Info.plist"
 cp -R Sources/QuotaBar/Resources/logos "$APP/Contents/Resources/logos"
 
 # Build AppIcon.icns from Assets/icon.png
