@@ -25,8 +25,7 @@ struct ProviderRing: View {
     /// reading yet gets the neutral track only.
     private var tint: Color {
         guard percent != nil else { return .secondary }
-        if let hex = level.hex { return Color(hex: hex) }
-        return Color(hex: "34C759")
+        return Color(hex: UsageTint.hex(used: percent ?? 0, alerts: alerts))
     }
 
     var body: some View {
@@ -161,7 +160,6 @@ struct ProviderCallout: View {
     }
 
     private func meterTint(_ percent: Double) -> Color {
-        if let hex = alerts.level(for: percent).hex { return Color(hex: hex) }
-        return Color(hex: "34C759")
+        return Color(hex: UsageTint.hex(used: percent, alerts: alerts))
     }
 }

@@ -465,8 +465,8 @@ enum Snapshot {
                 VStack(spacing: 6) {
                     DockHandle(
                         fraction: CGFloat(MeterMode.remaining.shownPercent(fromUsed: used) / 100),
-                        tint: used >= 95 ? Color(hex: "DC2626")
-                            : (used >= 80 ? Color(hex: "D97706") : Color(hex: "34C759")),
+                        tint: Color(hex: UsageTint.hex(
+                            used: used, alerts: store.alertSettings)),
                         onLeft: false)
                         // The dock draws this black itself; the handle no
                         // longer carries its own, so the sheet supplies it.

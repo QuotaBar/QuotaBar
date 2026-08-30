@@ -29,6 +29,23 @@ public enum AlertLevel: Int, Comparable, Sendable, Codable {
     }
 }
 
+/// The colour a usage figure is drawn in, everywhere it appears.
+///
+/// One function because this mapping was copied into seven views plus a
+/// divergent eighth in the snapshot renderer, which had `80` and `95` written
+/// into it while the real thing reads the user's own thresholds — so the
+/// snapshots could disagree with the app.
+///
+/// Keyed off **used** percent, never the displayed figure. The dock handle fills
+/// with whatever `MeterMode` says, so in remaining mode a long bar means plenty
+/// left; the colour still has to come from usage or a nearly-empty quota would
+/// be drawn full and green.
+public enum UsageTint {
+    public static func hex(used: Double, alerts: AlertSettings) -> String {
+        alerts.level(for: used).hex ?? "34C759"
+    }
+}
+
 public struct AlertSettings: Codable, Equatable, Sendable {
     public var enabled: Bool
     public var warning: Int

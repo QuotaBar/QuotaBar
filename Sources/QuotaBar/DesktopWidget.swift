@@ -257,7 +257,6 @@ struct DesktopWidgetView: View {
     }
 
     private func tint(_ percent: Double) -> Color {
-        if let hex = store.alertSettings.level(for: percent).hex { return Color(hex: hex) }
-        return Color(hex: "34C759")
+        return Color(hex: UsageTint.hex(used: percent, alerts: store.alertSettings))
     }
 }

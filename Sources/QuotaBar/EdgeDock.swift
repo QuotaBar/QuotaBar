@@ -386,8 +386,8 @@ struct EdgeDockView: View {
 
     private var handleTint: Color {
         guard store.headlinePercent != nil else { return .white.opacity(0.35) }
-        if let hex = store.alertLevel.hex { return Color(hex: hex) }
-        return Color(hex: "34C759")
+        return Color(hex: UsageTint.hex(
+            used: store.headlinePercent ?? 0, alerts: store.alertSettings))
     }
 
     private func presentCallout(for id: ProviderID?) {

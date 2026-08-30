@@ -555,3 +555,41 @@ final class DesktopWidgetSettingsTests: XCTestCase {
         XCTAssertEqual(store.presentation, .island)
     }
 }
+
+/// The usage colour was copied into seven views plus a divergent eighth in the
+/// snapshot renderer, which had 80 and 95 written into it while the real thing
+/// reads the user's thresholds. These pin the single mapping they now share.
+final class UsageTintTests: XCTestCase {
+    private let defaults = AlertSettings(enabled: true, warning: 80, critical: 95)
+
+    func testFollowsTheUsersThresholdsNotHardcodedOnes() {
+        let custom = AlertSettings(enabled: true, warning: 50, critical: 70)
+        // 60 is calm at the defaults and already a warning at these.
+        XCTAssertEqual(UsageTint.hex(used: 60, alerts: defaults), "34C759")
+        XCTAssertEqual(UsageTint.hex(used: 60, alerts: custom), "D97706")
+    }
+
+    func testBandsAreInclusiveAtTheThreshold() {
+        XCTAssertEqual(UsageTint.hex(used: 79.9, alerts: defaults), "34C759")
+        XCTAssertEqual(UsageTint.hex(used: 80, alerts: defaults), "D97706")
+        XCTAssertEqual(UsageTint.hex(used: 94.9, alerts: defaults), "D97706")
+        XCTAssertEqual(UsageTint.hex(used: 95, alerts: defaults), "DC2626")
+    }
+
+    func testOutOfRangeInputStillYieldsAColour() {
+        XCTAssertEqual(UsageTint.hex(used: 0, alerts: defaults), "34C759")
+        XCTAssertEqual(UsageTint.hex(used: -5, alerts: defaults), "34C759")
+        XCTAssertEqual(UsageTint.hex(used: 150, alerts: defaults), "DC2626")
+    }
+
+    /// Every colour it can return has to be readable on the always-dark
+    /// surfaces — the dock, the widget and the notch strip all draw on black.
+    func testEveryTintIsLegibleOnBlack() {
+        for used in stride(from: 0.0, through: 100.0, by: 5) {
+            let hex = UsageTint.hex(used: used, alerts: defaults)
+            XCTAssertGreaterThanOrEqual(
+                QuotaTheme.contrastOnBlack(hex: hex), 3.0,
+                "\(used)% -> \(hex) is too dark for the black surfaces")
+        }
+    }
+}
