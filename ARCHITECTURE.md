@@ -276,6 +276,60 @@ The desktop widget defaults to desktop level — above the icons, below every
 window. Floating it over the user's work is a different and more intrusive
 thing, so it is opt-in.
 
+### The usage ramp
+
+`UsageRamp.hex(used:)` is the one place a usage percentage becomes a colour on
+the always-dark surfaces — the dock's rings and handle, the desktop widget, the
+notch strip, the hover callout. It replaced a three-step green/amber/red mapping
+that had been copied into six views, plus a seventh copy in the snapshot
+renderer with `80` and `95` written into it while every other copy read the
+user's own thresholds.
+
+**Anchored to fixed percentages, not to `AlertSettings`.** Colour answers "how
+hot am I" and has to mean the same thing on two machines and in two
+screenshots; the thresholds answer "interrupt me" and keep driving
+notifications and the menu-bar glyph's monochrome/tinted gate. Binding the two
+together made one number two colours depending on a setting.
+
+Nine stops five points apart spanning 50→90, flat outside that, with straight
+sRGB mixing in between. Mixing sRGB across the *whole* green→red span would cut
+through the neutral axis and go muddy at the midpoint; across one 5pt step the
+worst departure from the continuous OKLCH path is ΔE00 ≈ 1.6, under the ~2.3
+just-noticeable difference. Ten-point stops break 3 and band visibly.
+
+Three properties are load-bearing and each has a test:
+
+- **Relative luminance falls the whole way**, 0.423 → 0.167. That is the
+  "deeper" the ramp was asked for, and it is the only channel a red-green
+  colourblind viewer keeps — a hue sweep alone is the classic failure case.
+  Between stops the fall is not quite strict: rounding to 8 bits per channel
+  puts a ~4.2e-3 ceiling on a reversal, so the test allows 0.005 rather than
+  asserting strict monotonicity. The cause is rounding and nothing subtler.
+- **Every colour clears 4.3:1 on black and 3.4:1 on the panel.** The ring's
+  own track is a different matter: white at 14% over the disc fill composites
+  to `#353535`, and the red end sits at 2.54:1 against it. Left alone
+  deliberately — dimming the track to win that ratio would weaken the arc-length
+  channel, which is the more reliable one, and WCAG contrast is a
+  luminance-only metric that understates a saturated red against a neutral grey.
+  The boundary carrying the reading is arc against panel.
+- **The colour keys off used percent, never the displayed figure.** The dock
+  handle fills by `MeterMode`, so in remaining mode a long bar means plenty
+  left. Hand the ramp `shownPercent` and a nearly-empty quota draws full and
+  green. There is no `Optional` overload either: no reading is not 0% used, and
+  0 is the brightest green on the scale — call sites guard and keep their own
+  neutral.
+
+The middle of the ramp is olive (`#A8A81E` at 65%). Any ramp whose luminance
+falls the whole way has to pass through it: sRGB's chroma ceiling in the yellow
+band is 0.135 against the 0.194 the ends carry. Avoiding it needs a luminance
+bump at yellow, which is the opposite of "deeper". Do not "fix" the dip.
+
+The menu panel and the menu-bar glyph deliberately stay on the discrete levels.
+The panel's bars fall back to the *provider's brand colour* below the warning
+threshold rather than to green, which is a different mapping; and the glyph is
+monochrome until a threshold on purpose, because the menu bar is shared space.
+`--snapshot` writes `usage-ramp.png` for inspecting the ramp itself.
+
 ### The wordmark
 
 The word "QuotaBar" is set in Sora; everything else stays on the system face,

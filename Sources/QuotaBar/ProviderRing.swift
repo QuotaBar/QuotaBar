@@ -24,8 +24,9 @@ struct ProviderRing: View {
     /// Green until the warning band, then the alert colour. A provider with no
     /// reading yet gets the neutral track only.
     private var tint: Color {
-        guard percent != nil else { return .secondary }
-        return Color(hex: UsageTint.hex(used: percent ?? 0, alerts: alerts))
+        // No reading is not 0% used — 0 is the brightest green on the ramp.
+        guard let percent else { return .secondary }
+        return Color(hex: UsageRamp.hex(used: percent))
     }
 
     var body: some View {
@@ -160,6 +161,6 @@ struct ProviderCallout: View {
     }
 
     private func meterTint(_ percent: Double) -> Color {
-        return Color(hex: UsageTint.hex(used: percent, alerts: alerts))
+        return Color(hex: UsageRamp.hex(used: percent))
     }
 }

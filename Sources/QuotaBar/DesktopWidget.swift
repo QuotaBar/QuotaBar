@@ -257,6 +257,6 @@ struct DesktopWidgetView: View {
     }
 
     private func tint(_ percent: Double) -> Color {
-        return Color(hex: UsageTint.hex(used: percent, alerts: store.alertSettings))
+        return Color(hex: UsageRamp.hex(used: percent))
     }
 }

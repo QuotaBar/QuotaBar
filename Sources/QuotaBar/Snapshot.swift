@@ -408,6 +408,41 @@ enum Snapshot {
         }
         L10n.override = ConfigStore.shared.language
 
+        // The usage ramp itself. The handle sheet above samples 0/15/25/50/
+        // 75/90/100, which steps straight over the slope — this walks it.
+        L10n.override = .zhHans
+        let rampSheet = VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 0) {
+                ForEach(Array(stride(from: 30.0, through: 100.0, by: 2.5)), id: \.self) { used in
+                    Rectangle()
+                        .fill(Color(hex: UsageRamp.hex(used: used)))
+                        .frame(width: 16, height: 46)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            HStack(spacing: 0) {
+                ForEach([30, 40, 50, 60, 70, 80, 90, 100], id: \.self) { used in
+                    VStack(spacing: 3) {
+                        Circle()
+                            .fill(Color(hex: UsageRamp.hex(used: Double(used))))
+                            .frame(width: 26, height: 26)
+                        Text("\(used)%")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.white.opacity(0.7))
+                        Text(UsageRamp.hex(used: Double(used)))
+                            .font(.system(size: 8, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.4))
+                    }
+                    .frame(width: 71)
+                }
+            }
+            Text("用量色标 · 50% 以下与 90% 以上是平的 · 亮度全程递减")
+                .font(.system(size: 9))
+                .foregroundStyle(.white.opacity(0.6))
+        }
+        .padding(16)
+        render(rampSheet, to: base, name: "usage-ramp", backing: Color(hex: "000000"))
+
         // Notch strip: the collapsed island on a notched Mac. Rendered against
         // a fake notch, since the CI runner has no display at all.
         L10n.override = .zhHans
@@ -465,8 +500,7 @@ enum Snapshot {
                 VStack(spacing: 6) {
                     DockHandle(
                         fraction: CGFloat(MeterMode.remaining.shownPercent(fromUsed: used) / 100),
-                        tint: Color(hex: UsageTint.hex(
-                            used: used, alerts: store.alertSettings)),
+                        tint: Color(hex: UsageRamp.hex(used: used)),
                         onLeft: false)
                         // The dock draws this black itself; the handle no
                         // longer carries its own, so the sheet supplies it.

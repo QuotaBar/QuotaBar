@@ -143,7 +143,14 @@ public enum QuotaTheme {
     /// brand colour that has to be altered to be readable is the wrong brand
     /// colour, and silently mutating it hides that from whoever picked it.
     public static func contrastOnBlack(hex: String) -> Double {
-        (luminance(hex: hex) + 0.05) / 0.05
+        contrast(hex, against: "000000")
+    }
+
+    /// WCAG contrast ratio between two colours.
+    public static func contrast(_ a: String, against b: String) -> Double {
+        let ya = luminance(hex: a)
+        let yb = luminance(hex: b)
+        return (max(ya, yb) + 0.05) / (min(ya, yb) + 0.05)
     }
 }
 

@@ -385,9 +385,9 @@ struct EdgeDockView: View {
     }
 
     private var handleTint: Color {
-        guard store.headlinePercent != nil else { return .white.opacity(0.35) }
-        return Color(hex: UsageTint.hex(
-            used: store.headlinePercent ?? 0, alerts: store.alertSettings))
+        // No reading is not 0% used — 0 is the brightest green on the ramp.
+        guard let used = store.headlinePercent else { return .white.opacity(0.35) }
+        return Color(hex: UsageRamp.hex(used: used))
     }
 
     private func presentCallout(for id: ProviderID?) {
