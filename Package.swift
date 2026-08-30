@@ -13,7 +13,7 @@ let package = Package(
         .executableTarget(
             name: "QuotaBar",
             dependencies: ["QuotaCore"],
-            resources: [.copy("Resources/logos")],
+            resources: [.copy("Resources/logos"), .copy("Resources/fonts")],
             swiftSettings: [.swiftLanguageMode(.v5)]),
         .testTarget(
             name: "QuotaCoreTests",

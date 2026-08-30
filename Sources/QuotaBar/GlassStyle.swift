@@ -164,8 +164,16 @@ struct WindowChrome: NSViewRepresentable {
             super.viewDidMoveToWindow()
             guard let window else { return }
             window.titlebarAppearsTransparent = true
-            window.titleVisibility = .hidden
+            // `title = ""` rather than `titleVisibility = .hidden`: on macOS 26
+            // hiding the title collapses the whole titlebar, and the close,
+            // minimise and zoom buttons go with it. Emptying the string leaves
+            // the titlebar — and its buttons — in place with nothing written on
+            // it, which is all this ever wanted.
+            window.title = ""
             window.styleMask.insert(.fullSizeContentView)
+            // A Settings scene ships with close only. The window is big enough
+            // to be worth getting out of the way, so give it minimise too.
+            window.styleMask.insert(.miniaturizable)
             window.isMovableByWindowBackground = true
             // Without this the system still draws a hairline under the
             // titlebar, which cuts across the sidebar and the first card.
@@ -180,6 +188,47 @@ struct WindowChrome: NSViewRepresentable {
             // for a fresh pass so the content actually reaches the top edge.
             window.contentView?.needsLayout = true
             window.contentView?.layoutSubtreeIfNeeded()
+
+            // Put the titlebar back on top of the content.
+            //
+            // The traffic lights were not hidden and not transparent — the
+            // runtime said `hidden=false alpha=1.0 frame={{9,6},{14,16}}`. They
+            // were *covered*: the window's theme frame lists its children back
+            // to front, and it read
+            // ["NSTitlebarContainerView", "AppKitWindowHostingView<…>"], so the
+            // hosting view sat above the titlebar once the content filled the
+            // window. Raising every sibling that is not the content view lifts
+            // the titlebar container back over it without naming a private
+            // class.
+            // Deferred: this fires while the view is still being installed, and
+            // SwiftUI puts its hosting view back on top afterwards if the
+            // reorder happens now.
+            DispatchQueue.main.async { [weak window] in
+                guard let window, let themeFrame = window.contentView?.superview else { return }
+                for sibling in themeFrame.subviews where sibling !== window.contentView {
+                    themeFrame.addSubview(sibling, positioned: .above, relativeTo: nil)
+                }
+                // Hide the titlebar's own backdrop, keep its buttons.
+                //
+                // Raising the container also raised NSTitlebarBackgroundView —
+                // and the NSVisualEffectView inside it — over the content,
+                // which is the lighter strip. The three widgets are siblings of
+                // that view, not children, so hiding it alone leaves them.
+                //
+                // Matching a private class name is deliberate here and fails
+                // safe: if AppKit renames it the strip comes back, which is a
+                // cosmetic regression, not a crash.
+                func hideBackdrop(_ v: NSView) {
+                    if String(describing: type(of: v)).contains("TitlebarBackgroundView") {
+                        v.isHidden = true
+                        return
+                    }
+                    v.subviews.forEach(hideBackdrop)
+                }
+                for sibling in themeFrame.subviews where sibling !== window.contentView {
+                    hideBackdrop(sibling)
+                }
+            }
         }
     }
 

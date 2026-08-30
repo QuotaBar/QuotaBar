@@ -428,6 +428,32 @@ top of the pane. `.ignoresSafeArea()` on the settings root is what fills it. The
 window's `backgroundColor` is also black, so if AppKit ever leaves a strip
 uncovered again it reads as sidebar rather than as a title bar.
 
+The traffic lights need two more things once the content fills the window, and
+both were found by dumping the window's view tree rather than guessing — three
+rounds of plausible-sounding guesses (the safe area, `titleVisibility`, raising
+the button's own superview) all missed.
+
+The buttons are never hidden. The runtime reported
+`hidden=false alpha=1.0 frame={{9,6},{14,16}}` while nothing was on screen: they
+were *covered*. A window's theme frame lists its children back to front, and it
+read `["NSTitlebarContainerView", "AppKitWindowHostingView<…>"]` — the hosting
+view sat above the titlebar. Raising every sibling that is not the content view
+puts it back, and it has to be **deferred one runloop turn**, because
+`viewDidMoveToWindow` fires while the view is still being installed and SwiftUI
+re-raises its own view afterwards.
+
+Raising the container brings its backdrop with it, which is a lighter strip over
+the content — the same band by another route. Inside is
+`NSTitlebarView → NSTitlebarBackgroundView → NSVisualEffectView`, and the three
+`_NSTheme*Widget` buttons are siblings of `NSTitlebarBackgroundView`, not
+children. So hiding that one view removes the strip and keeps the buttons.
+Matching a private class name is deliberate and fails safe: a rename brings the
+strip back, not a crash.
+
+`titleVisibility = .hidden` is *not* used — on macOS 26 it collapses the whole
+titlebar and takes the buttons with it. `title = ""` empties the label and
+leaves the titlebar in place.
+
 The pane is a flat fill, not an `NSVisualEffectView`. Vibrancy there bought a
 faint desktop tint under the glass and cost the seam above.
 
