@@ -82,8 +82,14 @@ final class ExperiencePrefsTests: XCTestCase {
     }
 
     func testIslandChartCycles() {
-        XCTAssertEqual(IslandChartStyle.spark.next, .bar)
+        XCTAssertEqual(IslandChartStyle.numeric.next, .bar)
         XCTAssertEqual(IslandChartStyle.bar.next, .ring)
+    }
+
+    /// The sparkline style is gone; a Mac that had it picked opens on stepped.
+    func testRemovedSparklineChartFallsBackToStepped() throws {
+        let prefs = try JSONDecoder().decode(ExperiencePrefs.self, from: Data(#"{"islandChart":"spark"}"#.utf8))
+        XCTAssertEqual(prefs.islandChart, .stepped)
     }
 }
 

@@ -507,16 +507,6 @@ private struct IslandTile: View {
         case .bar:
             Meter(percent: percent, tint: accent, style: .continuous, height: 10, track: .white.opacity(0.10))
                 .transition(.chartSwap)
-        case .spark:
-            let values = store.history[id] ?? []
-            if values.count > 1 {
-                // Plotted the way the figure and the bars read, used or
-                // remaining; without the caption, which crowded the reset line.
-                SparklineView(values: values.map { store.meterMode.shownPercent(fromUsed: $0) }, accent: accent, height: 22, showsCaption: false)
-                    .transition(.chartSwap)
-            } else {
-                Meter(percent: percent, tint: accent, style: .continuous, height: 10, track: .white.opacity(0.10))
-            }
         default:
             Meter(percent: percent, tint: accent, style: .stepped, height: 13, track: .white.opacity(0.10))
                 .transition(.chartSwap)

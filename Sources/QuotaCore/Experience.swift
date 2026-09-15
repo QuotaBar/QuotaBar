@@ -105,13 +105,15 @@ public enum SpendMetric: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
-/// How the island's panel draws a quota window, after codex-island's five.
+/// How the island's panel draws a quota window, after codex-island's five —
+/// less its sparkline, which the owner dropped: a refresh-by-refresh line
+/// hardly moves inside a window and read as a flat bar. A saved "spark"
+/// decodes to the default.
 public enum IslandChartStyle: String, Codable, CaseIterable, Identifiable, Sendable {
     case bar
     case ring
     case stepped
     case numeric
-    case spark
 
     public var id: String { rawValue }
 
@@ -121,7 +123,6 @@ public enum IslandChartStyle: String, Codable, CaseIterable, Identifiable, Senda
         case .ring: L10n.t("Ring", "圆环")
         case .stepped: L10n.t("Stepped", "阶梯")
         case .numeric: L10n.t("Numeric", "数字")
-        case .spark: L10n.t("Sparkline", "趋势线")
         }
     }
 

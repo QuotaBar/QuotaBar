@@ -3,6 +3,14 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
+## Unreleased
+
+### 2026-09-16
+
+#### Style
+
+- The open island drops its Sparkline chart style: readings within one window change so little between refreshes that the line came out flat. Bar, Ring, Stepped and Numeric remain, and a Mac that had Sparkline picked switches to Stepped.
+
 ## 0.5.6 · 2026-09-16
 
 ### 2026-09-16
