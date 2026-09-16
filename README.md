@@ -50,9 +50,18 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.7** (2026-09-16) · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.8** (2026-09-16) · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-09-16</b> · 0.5.8 · 1 fixed</summary>
+
+**Fixed**
+
+- The update window cut off long release notes: it was a fixed 420pt tall, so a long list pushed the version title off the top and Later and Install and Relaunch off the bottom, and each change stopped at three lines with an ellipsis. The window now follows its content, every change shows in full, and a long list scrolls inside the window with the title and buttons always in view. An older build updating to this one still shows its old window; updates after this one use the new one.
+
+</details>
+
+<details>
 <summary><b>2026-09-16</b> · 0.5.7 · 2 added · 3 style · 1 fixed</summary>
 
 **Added**
@@ -95,27 +104,6 @@ Latest release **0.5.7** (2026-09-16) · [full changelog](CHANGELOG.en.md)
 - The medium Ring gauge desktop card ran its account row about 23pt past the card's bottom edge; its ring and gaps are a little smaller at that size and everything fits.
 - In the Provider grid desktop card a balance tile such as DeepSeek's was shorter than the quota tiles beside it; the balance now takes the percentage's size and the tiles match.
 - The classic desktop widget and the edge dock's rings always showed used, against the remaining reading of the bars beside them and the menu bar; they now follow Fill basis in Appearance.
-
-</details>
-
-<details>
-<summary><b>2026-09-15</b> · 0.5.6 · 1 added · 5 style · 1 fixed</summary>
-
-**Added**
-
-- With the island or the edge dock folded, a quota down to its last 15% makes the outline flash, brightening and dimming, as codex-island does: amber within 15%, red within 5%, and it stops once the quota refills. It goes by the whole percentage shown on screen and ignores the alert thresholds and the notification switch; with Reduce Animations on, the outline stays lit instead of flashing.
-
-**Style**
-
-- The open island no longer draws a halo, an orbiting light or a drop shadow round the panel, and its window is no bigger than the panel, so a window screenshot has no blank band at the sides and bottom; the folded island keeps its glow.
-- "Synced N minutes ago" showed twice in the open island, at the top and again at the bottom; it is now bottom right only, with a new Refresh now button beside it that turns into a spinner and "Refreshing…" while it works. The page dots stay centred.
-- The open island is one height throughout: switching between Bar, Stepped, Trend, Numeric and Ring, or between the Quota, Usage and Overview pages, no longer changes it. The height is set by the tallest content, about 26pt less than before, so there is no band of black under the bars; shorter styles are centred in it, which also moves the rings clear of the provider's title. The overview's spend bars and share button sit a little closer so three tools fit.
-- The island's Trend style drops the "trend · last N refreshes" caption that crowded the reset line, and the line now follows the used-or-remaining switch, reading the same way as the figure and the bars.
-- The QuotaBar wordmark at the top left of the open island has the app's mark before it, in the same white as the text.
-
-**Fixed**
-
-- Quitting now saves the local Quota Run records at once. A change used to be written five seconds later, and quitting within those five seconds lost it.
 
 </details>
 
