@@ -50,9 +50,29 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.6** (2026-09-16) · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.7** (2026-09-16) · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-09-16</b> · 0.5.7 · 2 added · 3 style · 1 fixed</summary>
+
+**Added**
+
+- The notch island and the edge dock can be on at the same time. Presentation used to offer one of menu bar only, island or dock, so turning the dock on turned the island off; now each has its own card and switch, both can be on, either, or neither, and the menu-bar item always stays. With both on, split your providers between them under What each place shows, say Claude and Codex on the island and Cursor and Gemini on the dock. Limit resets play on both. After updating, the choice you had carries over unchanged.
+- In the open island, press and drag sideways to turn the page: left for the next page, right for the one before. The content follows the pointer a little and turns once you let go far enough, so there is no need to aim at the small dots.
+
+**Style**
+
+- The edge dock's folded handle — its fill and its low-quota flash — follows only the providers shown on the dock, not ones kept on the island alone.
+- The island no longer opens the moment the pointer touches it: it opens after the pointer rests on it for half a second, or at once on a click, so passing over it on the way to the menu bar leaves it closed. Moving away from the open island still closes it.
+- The open island drops its Sparkline chart style: readings within one window change so little between refreshes that the line came out flat. Bar, Ring, Stepped and Numeric remain, and a Mac that had Sparkline picked switches to Stepped.
+
+**Fixed**
+
+- Antigravity read "login expired, open Antigravity once to refresh" from an hour after signing in, and opening or restarting Antigravity changed nothing: the sign-in token it saves is written once and never again. While Antigravity runs, the quota now comes from the app's own quota service on this Mac, with no token: Gemini, and Claude and GPT, each with its 5-hour and weekly limits, reset times and the plan. With Antigravity closed, the newer of the tokens it saved in the keychain and on disk is read. An expired token now says what is true: open Antigravity when it isn't running, or try again or restart it when it is. ([#4](https://github.com/gentpan/QuotaBar/issues/4))
+
+</details>
+
+<details>
 <summary><b>2026-09-16</b> · 0.5.6 · 12 style · 3 fixed</summary>
 
 **Style**
@@ -96,15 +116,6 @@ Latest release **0.5.6** (2026-09-16) · [full changelog](CHANGELOG.en.md)
 **Fixed**
 
 - Quitting now saves the local Quota Run records at once. A change used to be written five seconds later, and quitting within those five seconds lost it.
-
-</details>
-
-<details>
-<summary><b>2026-09-15</b> · 0.5.5 · 1 style</summary>
-
-**Style**
-
-- The usage share card's address, bottom right, is Quota Run's: signed in to Quota Run with Sign it on, it is your profile, quota.run/@username; signed out it is quota.run alone with the signature before it, rather than a quota.bar/name address that leads nowhere. Signed in, the share window says which profile the card shows in place of the signature field.
 
 </details>
 
