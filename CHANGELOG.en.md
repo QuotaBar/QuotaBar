@@ -3,6 +3,14 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
+## Unreleased
+
+### 2026-09-16
+
+#### Fixed
+
+- The update window cut off long release notes: it was a fixed 420pt tall, so a long list pushed the version title off the top and Later and Install and Relaunch off the bottom, and each change stopped at three lines with an ellipsis. The window now follows its content, every change shows in full, and a long list scrolls inside the window with the title and buttons always in view. An older build updating to this one still shows its old window; updates after this one use the new one.
+
 ## 0.5.7 · 2026-09-16
 
 ### 2026-09-16

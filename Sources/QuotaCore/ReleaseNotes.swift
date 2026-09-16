@@ -24,7 +24,6 @@ public struct ReleaseNotes: Equatable, Sendable {
     public var groups: [Group]
 
     public var isEmpty: Bool { intro == nil && groups.allSatisfy(\.items.isEmpty) }
-    public var itemCount: Int { groups.reduce(0) { $0 + $1.items.count } }
 
     public init(intro: String? = nil, groups: [Group] = []) {
         self.intro = intro

@@ -38,7 +38,7 @@ final class ReleaseNotesTests: XCTestCase {
         let notes = ReleaseNotes.parse(body, chinese: false)
         XCTAssertEqual(notes.groups.map(\.kind), [.added, .fixed])
         XCTAssertEqual(notes.groups.last?.items, [#""Check now" did nothing with automatic checks off."#])
-        XCTAssertEqual(notes.itemCount, 2)
+        XCTAssertEqual(notes.groups.flatMap(\.items).count, 2)
     }
 
     /// 0.5.0's hand-written body: an intro, then topic headings.

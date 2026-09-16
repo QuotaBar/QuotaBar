@@ -40,10 +40,32 @@ enum UpdateWindow {
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
         window.isReleasedWhenClosed = false
-        let host = NSHostingView(rootView: UpdateCard(store: store))
+        // The window is as tall as the card: it was made at 420pt and never
+        // followed, so a long list of changes pushed the title off the top
+        // and the Install button off the bottom.
+        let host = NSHostingView(rootView: UpdateCard(store: store, onHeight: { [weak window] height in
+            fit(window, toHeight: height)
+        }))
         host.sizingOptions = [.preferredContentSize]
         window.contentView = host
         return window
+    }
+
+    /// Resizes the window to the card's height, keeping its top edge where it
+    /// is and its bottom on the screen.
+    private static func fit(_ window: NSWindow?, toHeight height: CGFloat) {
+        guard let window, height > 0 else { return }
+        let content = window.contentRect(forFrameRect: window.frame)
+        guard abs(content.height - height.rounded(.up)) >= 1 else { return }
+        var frame = window.frameRect(forContentRect: NSRect(
+            x: content.minX, y: content.maxY - height.rounded(.up),
+            width: content.width, height: height.rounded(.up)))
+        if let visible = (window.screen ?? NSScreen.main)?.visibleFrame, frame.minY < visible.minY {
+            frame.origin.y = visible.minY
+        }
+        // No animation: the first fits land while the window is appearing,
+        // and animated they read as the card jumping.
+        window.setFrame(frame, display: true, animate: false)
     }
 }
 
@@ -54,11 +76,15 @@ struct UpdateCard: View {
     @ObservedObject var store: UsageStore
     /// Off for off-screen renders, which draw a ScrollView's content as nothing.
     var scrollable = true
-    @State private var showsAll = false
+    /// The card's height whenever it changes, for the window to follow.
+    var onHeight: ((CGFloat) -> Void)? = nil
+    /// The whole list of changes, measured, for the scroll area's height.
+    @State private var notesHeight: CGFloat = 0
 
     static let width: CGFloat = 460
-    /// How many changes show before "Show all".
-    private static let preview = 6
+    /// The changes scroll past this height, so the card stays on a laptop
+    /// screen with the title and the buttons in view.
+    private static let notesMaxHeight: CGFloat = 320
 
     var body: some View {
         VStack(alignment: .leading, spacing: Design.space4) {
@@ -84,6 +110,9 @@ struct UpdateCard: View {
         .padding(.bottom, Design.space6)
         .frame(width: Self.width, alignment: .topLeading)
         .fixedSize(horizontal: false, vertical: true)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+            onHeight?(height)
+        }
     }
 
     // MARK: Header
@@ -143,25 +172,20 @@ struct UpdateCard: View {
                 Text(L10n.t("See the changelog for this version.", "这个版本的更新内容见更新日志。"))
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
-            } else if scrollable, showsAll {
-                ScrollView { noteList(parsed, limit: nil) }
-                    .scrollIndicators(.never)
-                    .frame(maxHeight: 300)
+            } else if scrollable {
+                // Every change in full; past the cap the list scrolls. The
+                // list is measured so a short one takes only its own height.
+                ScrollView {
+                    noteList(parsed)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                            notesHeight = height
+                        }
+                }
+                .frame(height: min(max(notesHeight, 1), Self.notesMaxHeight))
             } else {
-                noteList(parsed, limit: showsAll ? nil : Self.preview)
+                noteList(parsed)
             }
             HStack(spacing: Design.space3) {
-                if parsed.itemCount > Self.preview {
-                    Button(showsAll
-                           ? L10n.t("Show fewer", "收起")
-                           : L10n.t("Show all \(parsed.itemCount) changes", "显示全部 \(parsed.itemCount) 项"))
-                    {
-                        withAnimation(Motion.animation(Motion.spring)) { showsAll.toggle() }
-                    }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.accentColor)
-                }
                 Spacer(minLength: 0)
                 Button {
                     NSWorkspace.shared.open(URL(string: L10n.isChinese ? "https://quota.bar/zh/changelog.html" : "https://quota.bar/changelog.html")!)
@@ -178,15 +202,10 @@ struct UpdateCard: View {
         .background(RoundedRectangle(cornerRadius: Design.radiusCard, style: .continuous).fill(Design.surface))
     }
 
-    /// The changes, a badge per group, the first `limit` of them.
-    private func noteList(_ notes: ReleaseNotes, limit: Int?) -> some View {
-        var remaining = limit ?? Int.max
-        var shown: [(ReleaseNotes.Group, [String])] = []
-        for group in notes.groups where remaining > 0 {
-            let items = Array(group.items.prefix(remaining))
-            remaining -= items.count
-            shown.append((group, items))
-        }
+    /// The changes, a badge per group, each in full: cut at three lines, a
+    /// long entry ended mid-sentence.
+    private func noteList(_ notes: ReleaseNotes) -> some View {
+        let shown = notes.groups.map { ($0, $0.items) }
         return VStack(alignment: .leading, spacing: Design.space3) {
             if let intro = notes.intro {
                 Text(intro).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
@@ -198,7 +217,6 @@ struct UpdateCard: View {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             Text("•").foregroundStyle(.tertiary)
                             Text(Self.linked(item))
-                                .lineLimit(showsAll ? nil : 3)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         .font(.system(size: 12))
