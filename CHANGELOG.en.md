@@ -15,7 +15,7 @@ Server moves, the website, and build or release scripts don't change the app its
 #### Style
 
 - The edge dock's folded handle — its fill and its low-quota flash — follows only the providers shown on the dock, not ones kept on the island alone.
-- The island no longer opens the moment the pointer touches it: it opens after the pointer rests on it for a second, or at once on a click, so passing over it on the way to the menu bar leaves it closed. Moving away from the open island still closes it.
+- The island no longer opens the moment the pointer touches it: it opens after the pointer rests on it for half a second, or at once on a click, so passing over it on the way to the menu bar leaves it closed. Moving away from the open island still closes it.
 - The open island drops its Sparkline chart style: readings within one window change so little between refreshes that the line came out flat. Bar, Ring, Stepped and Numeric remain, and a Mac that had Sparkline picked switches to Stepped.
 
 #### Fixed

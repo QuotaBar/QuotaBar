@@ -337,8 +337,9 @@ struct IslandView: View {
 
     /// How long the pointer rests on the closed island before it opens. It
     /// used to open on contact, so a pointer passing on its way to the menu
-    /// bar grew and shrank the panel; a click opens it at once.
-    static let hoverDelay: Duration = .seconds(1)
+    /// bar grew and shrank the panel; a click opens it at once. Half a
+    /// second, the owner's pick after trying a full one.
+    static let hoverDelay: Duration = .milliseconds(500)
 
     var body: some View {
         ZStack(alignment: .top) {
