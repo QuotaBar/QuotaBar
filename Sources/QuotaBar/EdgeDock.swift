@@ -674,11 +674,17 @@ struct EdgeDockView: View {
         DockHandle(fraction: handleFraction, tint: handleTint, onLeft: onLeft)
     }
 
-    /// The worst reading among the dock's own providers. With the island on
-    /// too, the two can carry different services, and a provider that is
-    /// only on the island should not fill or flash the dock's handle.
+    /// The reading the folded handle fills and flashes on: the provider
+    /// picked in the dock (the green dot) when it is on the dock, as the menu
+    /// bar follows it too; with none picked, the worst of the dock's own
+    /// providers. Taking the worst regardless of the pick drew a full red,
+    /// flashing handle for a nearly spent Cursor while Antigravity, the pick,
+    /// had plenty left.
     private var handleUsed: Double? {
-        store.dockProviders.compactMap { store.headlinePercent(for: $0) }.max()
+        if let picked = store.selected, store.dockProviders.contains(picked) {
+            return store.headlinePercent(for: picked)
+        }
+        return store.dockProviders.compactMap { store.headlinePercent(for: $0) }.max()
     }
 
     private var handleFraction: CGFloat {

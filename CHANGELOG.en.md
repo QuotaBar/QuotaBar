@@ -3,6 +3,14 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
+## Unreleased
+
+### 2026-09-16
+
+#### Fixed
+
+- The edge dock's folded handle ignored the provider picked on the dock: with Antigravity picked (the green dot under its ring), the handle still showed the dock's most spent provider, such as Cursor, as a full red bar and flashed. The handle's fill, colour and low-quota flash now follow the picked provider, and don't flash when it has plenty left; only with nothing picked do they follow the dock's tightest provider.
+
 ## 0.5.8 · 2026-09-16
 
 ### 2026-09-16
