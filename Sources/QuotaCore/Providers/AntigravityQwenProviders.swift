@@ -14,19 +14,22 @@ public struct AntigravityProvider: QuotaProvider {
     static let base = "https://cloudcode-pa.googleapis.com/v1internal"
 
     public func isConfigured(config: ConfigStore) -> Bool {
-        LocalCredentials.antigravityToken() != nil
+        AntigravityLocal.isInstalled || LocalCredentials.antigravityToken() != nil
     }
 
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
+        // While the app runs, its own language server has the quota, and
+        // needs no token: the one on disk is an hour old at most (issue #4).
+        let local = await AntigravityLocal.read()
+        if case let .quota(snapshot) = local { return snapshot }
+
         guard let token = LocalCredentials.antigravityToken() else {
             throw ProviderError.notConfigured(hint: ProviderID.antigravity.setupHint)
         }
-        // The token cannot be refreshed from here; the app does that
-        // whenever it runs.
+        // Written at sign-in and never refreshed; refreshing it would take the
+        // app's own OAuth client.
         guard !token.isExpired() else {
-            throw ProviderError.notConfigured(hint: L10n.t(
-                "Antigravity's sign-in has expired — open Antigravity once and it refreshes.",
-                "Antigravity 的登录已过期：打开一次 Antigravity 就会刷新。"))
+            throw ProviderError.notConfigured(hint: Self.expiredTokenHint(local))
         }
         let headers = [
             "Authorization": "Bearer \(token.accessToken)",
@@ -50,6 +53,21 @@ public struct AntigravityProvider: QuotaProvider {
             quotas = Self.quotas(from: try response.json(UserQuota.self))
         }
         return try Self.snapshot(quotas, plan: assist?.currentTier?.name)
+    }
+
+    /// Said when the language server gave nothing and the saved token has
+    /// run out. Open, the app would have answered, so the fault is its
+    /// service, not the sign-in; closed, opening it is the whole fix. The
+    /// hint this replaced sent people to open an app already open.
+    static func expiredTokenHint(_ local: AntigravityLocal.Reading) -> String {
+        if case .noAnswer = local {
+            return L10n.t(
+                "Antigravity is open but its quota service did not answer, and the sign-in token it saved has expired. Try again in a moment, or restart Antigravity.",
+                "Antigravity 正在运行，但它的额度服务没有应答，保存的登录令牌也已过期。稍后再刷新，或重启 Antigravity。")
+        }
+        return L10n.t(
+            "Antigravity isn't running, and the sign-in token it saved has expired. Open Antigravity and the quota shows again; no need to sign in.",
+            "Antigravity 没有运行，保存的登录令牌也已过期。打开 Antigravity 就能重新读到额度，不用重新登录。")
     }
 
     // MARK: Response shapes

@@ -477,16 +477,46 @@ public enum LocalCredentials {
         }
     }
 
-    /// `~/.gemini/jetski-standalone-oauth-token`: `{"token": {"access_token",
-    /// "expiry", "refresh_token", ...}, "auth_method"}`. The app refreshes it
-    /// while it runs; this only reads. Refreshing it here would need the
-    /// app's own OAuth client, which is its to keep.
+    /// Antigravity's sign-in token, from wherever it was saved last.
+    ///
+    /// Two copies of `{"token": {"access_token", "expiry", "refresh_token",
+    /// ...}, "auth_method"}`: the login keychain's `gemini` / `antigravity`
+    /// item, and `~/.gemini/jetski-standalone-oauth-token`. Antigravity 2.14
+    /// writes the keychain at every sign-in and the file only sometimes, and
+    /// refreshes neither while it runs (issue #4), so whichever runs out
+    /// later is the one. Only read: refreshing it would need the app's own
+    /// OAuth client, which is its to keep. While the app is open its
+    /// language server is asked instead; see `AntigravityLocal`.
     public static func antigravityToken() -> AntigravityToken? {
-        let url = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".gemini/jetski-standalone-oauth-token")
-        guard let data = try? Data(contentsOf: url),
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let url = home.appendingPathComponent(".gemini/jetski-standalone-oauth-token")
+        let fromFile = (try? Data(contentsOf: url))
+            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            .flatMap(antigravityToken(in:))
+        let fromKeychain = antigravityKeychainSecret().flatMap(antigravityToken(keychainSecret:))
+        return [fromKeychain, fromFile].compactMap { $0 }
+            .max { ($0.expiry ?? .distantPast) < ($1.expiry ?? .distantPast) }
+    }
+
+    /// The keychain item is written by go-keyring, which goes through
+    /// `/usr/bin/security`; the item trusts that tool, so reading it the same
+    /// way asks nothing of the owner — measured on Antigravity 2.14.0.
+    static func antigravityKeychainSecret() -> String? {
+        guard let result = ToolRunner.run(
+            "/usr/bin/security", ["find-generic-password", "-s", "gemini", "-a", "antigravity", "-w"], timeout: 5),
+            result.status == 0
         else { return nil }
+        let secret = String(decoding: result.output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        return secret.isEmpty ? nil : secret
+    }
+
+    /// go-keyring stores `go-keyring-base64:` and the JSON in base64; an
+    /// older value may be the JSON itself.
+    static func antigravityToken(keychainSecret secret: String) -> AntigravityToken? {
+        let prefix = "go-keyring-base64:"
+        let data = secret.hasPrefix(prefix)
+            ? Data(base64Encoded: String(secret.dropFirst(prefix.count)))
+            : Data(secret.utf8)
+        guard let data, let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         return antigravityToken(in: root)
     }
 

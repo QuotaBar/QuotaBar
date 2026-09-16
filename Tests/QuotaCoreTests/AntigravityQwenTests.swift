@@ -1,7 +1,7 @@
 import XCTest
 @testable import QuotaCore
 
-/// Shapes recorded from CodexBar's fixtures for the same endpoints; the
+/// Shapes recorded from CodexBar's fixtures for the cloud endpoints; the
 /// live services have not been exercised from here (Antigravity's token on
 /// this Mac had expired, Qwen Cloud has no account), so these pin the
 /// parsers, not the wire.

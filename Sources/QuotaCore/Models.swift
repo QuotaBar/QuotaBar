@@ -491,8 +491,8 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
             "Sign in with the grok CLI or paste a token in Settings.",
             "用 grok CLI 登录，或在设置中粘贴 token。")
         case .antigravity: return L10n.t(
-            "Open Antigravity and sign in once; its token is read from ~/.gemini.",
-            "打开 Antigravity 并登录一次，令牌会从 ~/.gemini 读取。")
+            "Open Antigravity and sign in. While it runs, the quota is read from the app itself; closed, from the sign-in token it saved, which lasts an hour.",
+            "打开 Antigravity 并登录。它运行时直接向它读取额度；关着时读它保存的登录令牌，令牌只有一小时有效。")
         case .volcengine: return L10n.t(
             "Install arkcli and run `arkcli auth login`.",
             "安装 arkcli 并运行 `arkcli auth login` 登录。")

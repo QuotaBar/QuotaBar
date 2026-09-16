@@ -11,6 +11,10 @@ Server moves, the website, and build or release scripts don't change the app its
 
 - The open island drops its Sparkline chart style: readings within one window change so little between refreshes that the line came out flat. Bar, Ring, Stepped and Numeric remain, and a Mac that had Sparkline picked switches to Stepped.
 
+#### Fixed
+
+- Antigravity read "login expired, open Antigravity once to refresh" from an hour after signing in, and opening or restarting Antigravity changed nothing: the sign-in token it saves is written once and never again. While Antigravity runs, the quota now comes from the app's own quota service on this Mac, with no token: Gemini, and Claude and GPT, each with its 5-hour and weekly limits, reset times and the plan. With Antigravity closed, the newer of the tokens it saved in the keychain and on disk is read. An expired token now says what is true: open Antigravity when it isn't running, or try again or restart it when it is. (#4)
+
 ## 0.5.6 · 2026-09-16
 
 ### 2026-09-16
