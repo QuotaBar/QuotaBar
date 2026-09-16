@@ -11,30 +11,18 @@ struct PresentationPane: View {
     @State private var screens = NSScreen.screens
 
     var body: some View {
-        SettingsCard(L10n.t("Where the panel lives", "面板位置")) {
-            SettingRow(L10n.t("Style", "样式")) {
-                GlassSegmented(
-                    options: Presentation.allCases.map { (value: $0, label: $0.displayName) },
-                    selection: store.presentation,
-                    onSelect: { store.setPresentation($0) })
-            }
-
-            // Only a question on a Mac with more than one display.
-            if screens.count > 1 {
-                SettingRow(
-                    L10n.t("Screen", "屏幕"),
-                    caption: L10n.t(
-                        "Automatic follows the menu bar's screen; the island, the screen with the notch. Desktop cards go along.",
-                        "自动跟随菜单栏所在的屏幕，刘海岛跟随带刘海的屏幕。桌面卡片同屏。"))
-                {
-                    GlassSegmented(
-                        options: ScreenChoice.options,
-                        selection: ScreenChoice.selection,
-                        onSelect: { store.setDisplayScreen($0) })
-                }
-            }
-
-            if store.presentation == .island {
+        // Each place its own card and its own switch, as the desktop cards
+        // below have: they used to be one choice, so the island and the dock
+        // could not be on together — people who use several services wanted
+        // two on the island and two more on the dock.
+        SettingsCard(L10n.t("Notch island", "刘海岛")) {
+            SettingToggle(
+                L10n.t("Show at the notch", "在刘海显示"),
+                caption: L10n.t(
+                    "Providers either side of the notch at the top of the screen; hover to open the full panel.",
+                    "在屏幕顶部刘海两侧显示服务商，悬停展开完整面板。"),
+                isOn: Binding(get: { store.showsIsland }, set: { store.setShowsIsland($0) }))
+            if store.showsIsland {
                 SettingRow(
                     L10n.t("Per side", "每侧显示"),
                     caption: L10n.t(
@@ -46,32 +34,40 @@ struct PresentationPane: View {
                         selection: store.islandSlots,
                         onSelect: { store.setIslandSlots($0) })
                 }
-            SettingToggle(
-                L10n.t("Glow", "光晕"), caption: L10n.t("A halo that turns amber or red near the limit, and a light that orbits the outline.", "轮廓外的柔光，接近上限时变琥珀或红色，另有一道光沿轮廓环绕。"),
-                isOn: Binding(
-                    get: { store.experience.islandGlow },
-                    set: { value in store.updateExperience { $0.islandGlow = value } }))
-            SettingToggle(
-                L10n.t("Low power", "低功耗"), caption: L10n.t("Glow only while refreshing, hovered or alerting.", "只在刷新、悬停或告警时发光。"),
-                isOn: Binding(
-                    get: { store.experience.lowPowerGlow },
-                    set: { value in store.updateExperience { $0.lowPowerGlow = value } }))
-            .disabled(!store.experience.islandGlow)
-            .opacity(!store.experience.islandGlow ? 0.45 : 1)
-            SettingToggle(
-                L10n.t("Open when a limit nears", "越线时自动弹出"), caption: L10n.t("Opens for four seconds when a window crosses its warning.", "额度第一次超过告警线时展开 4 秒。"),
-                isOn: Binding(
-                    get: { store.experience.islandAutoPeek },
-                    set: { value in store.updateExperience { $0.islandAutoPeek = value } }))
-            SettingRow(L10n.t("Chart", "图表样式"), caption: L10n.t("⌘-click the open panel to cycle.", "在展开的面板上按住 ⌘ 点击也能切换。")) {
-                GlassSegmented(
-                    options: IslandChartStyle.allCases.map { (value: $0, label: $0.displayName) },
-                    selection: store.experience.islandChart,
-                    onSelect: { value in store.updateExperience { $0.islandChart = value } })
+                SettingToggle(
+                    L10n.t("Glow", "光晕"), caption: L10n.t("A halo that turns amber or red near the limit, and a light that orbits the outline.", "轮廓外的柔光，接近上限时变琥珀或红色，另有一道光沿轮廓环绕。"),
+                    isOn: Binding(
+                        get: { store.experience.islandGlow },
+                        set: { value in store.updateExperience { $0.islandGlow = value } }))
+                SettingToggle(
+                    L10n.t("Low power", "低功耗"), caption: L10n.t("Glow only while refreshing, hovered or alerting.", "只在刷新、悬停或告警时发光。"),
+                    isOn: Binding(
+                        get: { store.experience.lowPowerGlow },
+                        set: { value in store.updateExperience { $0.lowPowerGlow = value } }))
+                .disabled(!store.experience.islandGlow)
+                .opacity(!store.experience.islandGlow ? 0.45 : 1)
+                SettingToggle(
+                    L10n.t("Open when a limit nears", "越线时自动弹出"), caption: L10n.t("Opens for four seconds when a window crosses its warning.", "额度第一次超过告警线时展开 4 秒。"),
+                    isOn: Binding(
+                        get: { store.experience.islandAutoPeek },
+                        set: { value in store.updateExperience { $0.islandAutoPeek = value } }))
+                SettingRow(L10n.t("Chart", "图表样式"), caption: L10n.t("⌘-click the open panel to cycle.", "在展开的面板上按住 ⌘ 点击也能切换。")) {
+                    GlassSegmented(
+                        options: IslandChartStyle.allCases.map { (value: $0, label: $0.displayName) },
+                        selection: store.experience.islandChart,
+                        onSelect: { value in store.updateExperience { $0.islandChart = value } })
+                }
             }
-            }
+        }
 
-            if store.presentation == .edgeDock {
+        SettingsCard(L10n.t("Edge dock", "边缘停靠条")) {
+            SettingToggle(
+                L10n.t("Show at the screen edge", "在屏幕边缘显示"),
+                caption: L10n.t(
+                    "A strip of rings against the left or right edge of the screen; reach the edge to open it.",
+                    "贴在屏幕左侧或右侧边缘的一列圆环，鼠标移到边缘即展开。"),
+                isOn: Binding(get: { store.showsDock }, set: { store.setShowsDock($0) }))
+            if store.showsDock {
                 SettingRow(
                     L10n.t("Docked edge", "停靠边缘"),
                     caption: L10n.t(
@@ -90,9 +86,25 @@ struct PresentationPane: View {
                         set: { store.setDockAlwaysVisible($0) }))
             }
         }
-
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
             screens = NSScreen.screens
+        }
+
+        // Only a question on a Mac with more than one display.
+        if screens.count > 1 {
+            SettingsCard(L10n.t("Screen", "屏幕")) {
+                SettingRow(
+                    L10n.t("Show on", "显示在"),
+                    caption: L10n.t(
+                        "Automatic follows the menu bar's screen; the island, the screen with the notch. Desktop cards go along.",
+                        "自动跟随菜单栏所在的屏幕，刘海岛跟随带刘海的屏幕。桌面卡片同屏。"))
+                {
+                    GlassSegmented(
+                        options: ScreenChoice.options,
+                        selection: ScreenChoice.selection,
+                        onSelect: { store.setDisplayScreen($0) })
+                }
+            }
         }
 
         SettingsCard(
@@ -101,6 +113,11 @@ struct PresentationPane: View {
                 "Hiding a provider only takes it off that place: it is still read, still alerts, and still counts in spend. Turning it off in Providers stops reading it.",
                 "隐藏只是不在那里显示：该服务商仍会读取数据、发提醒、计入花费。在「服务商」里停用才会停止读取。"))
         {
+            if store.showsIsland && store.showsDock {
+                SettingFootnote(L10n.t(
+                    "With the island and the dock both on, split your services between them here — say Claude and Codex on the island, Cursor and Gemini on the dock.",
+                    "刘海岛和停靠条都打开时，可以在这里把服务商分开放，比如刘海岛放 Claude、Codex，停靠条放 Cursor、Gemini。"))
+            }
             if store.enabled.isEmpty {
                 SettingFootnote(L10n.t("No providers are on.", "还没有开启服务商。"))
             } else {

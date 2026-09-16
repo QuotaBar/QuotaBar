@@ -164,7 +164,8 @@ final class ConfigStoreTests: XCTestCase {
         first.widgetScope = .pinned
         first.displayScreen = "37D8832A-2D66-02CA-B9F7-8F30A301B230"
         first.setHeadlineWindow("Fable · 周窗口", for: .claude)
-        first.presentation = .island
+        first.showsIsland = true
+        first.showsDock = true
         first.language = .zhHans
         first.setEnabled(.gemini, true)
 
@@ -181,7 +182,8 @@ final class ConfigStoreTests: XCTestCase {
         XCTAssertEqual(second.displayScreen, "37D8832A-2D66-02CA-B9F7-8F30A301B230")
         XCTAssertEqual(second.headlineWindow(for: .claude), "Fable · 周窗口")
         XCTAssertNil(second.headlineWindow(for: .codex))
-        XCTAssertEqual(second.presentation, .island)
+        XCTAssertTrue(second.showsIsland)
+        XCTAssertTrue(second.showsDock)
         XCTAssertEqual(second.language, .zhHans)
         XCTAssertTrue(second.isEnabled(.gemini))
         L10n.override = .system
@@ -366,7 +368,8 @@ final class ConfigResilienceTests: XCTestCase {
         // The point of the test: nothing else was reset.
         XCTAssertEqual(config.enabled, [.claude])
         XCTAssertEqual(config.refreshMinutes, 15)
-        XCTAssertEqual(config.presentation, .island)
+        XCTAssertTrue(config.showsIsland)
+        XCTAssertFalse(config.showsDock)
         XCTAssertEqual(config.language, .zhHans)
         XCTAssertEqual(config.alerts.warning, 70)
         XCTAssertEqual(config.alerts.critical, 90)
@@ -390,8 +393,39 @@ final class ConfigResilienceTests: XCTestCase {
 
         XCTAssertEqual(config.menuBarStyle, defaults.menuBarStyle)
         XCTAssertEqual(config.meterMode, defaults.meterMode)
-        XCTAssertEqual(config.presentation, defaults.presentation)
+        XCTAssertEqual(config.showsIsland, defaults.showsIsland)
+        XCTAssertEqual(config.showsDock, defaults.showsDock)
         XCTAssertEqual(config.language, defaults.language)
+    }
+
+    /// A file from before the two switches opens showing what it showed.
+    func testTheOldThreeWayChoiceBecomesTheSwitches() throws {
+        let island = try decode(#"{"presentation":"island"}"#)
+        XCTAssertTrue(island.showsIsland)
+        XCTAssertFalse(island.showsDock)
+        let dock = try decode(#"{"presentation":"edgeDock"}"#)
+        XCTAssertFalse(dock.showsIsland)
+        XCTAssertTrue(dock.showsDock)
+        let menuBar = try decode(#"{"presentation":"menuBar"}"#)
+        XCTAssertFalse(menuBar.showsIsland)
+        XCTAssertFalse(menuBar.showsDock)
+        // Once the switches are written they win over the old key.
+        let both = try decode(#"{"presentation":"island","showsIsland":true,"showsDock":true}"#)
+        XCTAssertTrue(both.showsIsland)
+        XCTAssertTrue(both.showsDock)
+    }
+
+    /// The old key is still written, so an older build on the same file shows
+    /// one of the two: the island when it is on.
+    func testTheSwitchesStillWriteTheOldChoice() throws {
+        var config = QuotaConfig()
+        config.showsDock = true
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(config)) as? [String: Any]
+        XCTAssertEqual(json?["presentation"] as? String, "edgeDock")
+        config.showsIsland = true
+        json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(config)) as? [String: Any]
+        XCTAssertEqual(json?["presentation"] as? String, "island")
+        XCTAssertEqual(json?["showsDock"] as? Bool, true)
     }
 
     func testWrongTypesFallBackPerField() throws {
@@ -584,10 +618,20 @@ final class DesktopWidgetSettingsTests: XCTestCase {
 
     func testTheWidgetIsIndependentOfPresentation() {
         // It sits alongside the menu bar rather than replacing it, so enabling
-        // it must not disturb the presentation mode.
+        // it must not disturb the island or the dock.
         let store = ConfigStore(fileURL: fileURL, credentials: MemoryCredentialStorage())
-        store.presentation = .island
+        store.showsIsland = true
         store.widgetEnabled = true
-        XCTAssertEqual(store.presentation, .island)
+        XCTAssertTrue(store.showsIsland)
+    }
+
+    func testTheIslandAndTheDockCanBothBeOn() {
+        let store = ConfigStore(fileURL: fileURL, credentials: MemoryCredentialStorage())
+        store.showsIsland = true
+        store.showsDock = true
+        XCTAssertTrue(store.showsIsland)
+        XCTAssertTrue(store.showsDock)
+        store.showsIsland = false
+        XCTAssertTrue(store.showsDock, "turning one off leaves the other alone")
     }
 }

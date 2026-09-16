@@ -215,7 +215,9 @@ final class Coordinators {
     private let dock = EdgeDockCoordinator()
     private let widget = DesktopWidgetCoordinator()
 
-    private var presentation: Presentation?
+    /// The island and dock switches as last applied; nil forces the next sync
+    /// to apply them.
+    private var surfaces: (island: Bool, dock: Bool)?
     private var widgetRevision = -1
     private var dockRevision = -1
     private var islandRevision = -1
@@ -230,11 +232,10 @@ final class Coordinators {
         store.onResets = { [weak self, weak store] events, before in
             guard let self, let store else { return }
             self.status.playReset(from: before)
-            switch store.presentation {
-            case .island: self.island.playReset(events, store: store)
-            case .edgeDock: self.dock.playReset(events, store: store)
-            case .menuBar: break
-            }
+            // Both, when both are on: each plays the resets of the
+            // providers it shows.
+            if store.showsIsland { self.island.playReset(events, store: store) }
+            if store.showsDock { self.dock.playReset(events, store: store) }
         }
         sync(store: store)
         // A display plugged in or pulled: whatever screen each surface now
@@ -251,8 +252,9 @@ final class Coordinators {
         }
     }
 
-    /// Only one alternate presentation is live at a time; the menu-bar item
-    /// stays regardless, as the settings entry point.
+    /// The island and the dock follow their own switches and can be on
+    /// together; the menu-bar item stays regardless, as the settings entry
+    /// point.
     private var privacyMasked = false
     private var experienceRevision = -1
 
@@ -263,9 +265,9 @@ final class Coordinators {
                 island.hide()
                 dock.hide()
                 widget.hide()
-                presentation = nil
+                surfaces = nil
             } else {
-                presentation = nil
+                surfaces = nil
                 widgetRevision = -1
             }
         }
@@ -282,8 +284,8 @@ final class Coordinators {
             .map { store.alertSettings.level(for: $0) }
             .max() ?? .none
         island.noteSeverity(severity, enabled: store.experience.islandAutoPeek)
-        if store.presentation != presentation {
-            presentation = store.presentation
+        if surfaces?.island != store.showsIsland || surfaces?.dock != store.showsDock {
+            surfaces = (store.showsIsland, store.showsDock)
             island.sync(store: store)
             dock.sync(store: store)
             widget.sync(store: store)

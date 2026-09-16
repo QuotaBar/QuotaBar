@@ -7,7 +7,12 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
     public var menuBarIconMode: MenuBarIconMode
     public var meterMode: MeterMode
     public var meterStyle: MeterStyle
-    public var presentation: Presentation
+    /// The notch island and the edge dock, each on or off. They used to be one
+    /// three-way choice — menu bar, island or dock — so turning one on turned
+    /// the other off; people who use several services wanted two on the
+    /// island and two more on the dock. The menu-bar item is always there.
+    public var showsIsland: Bool
+    public var showsDock: Bool
     public var alerts: AlertSettings
     public var language: L10n.Language
     /// Which provider the panel — and therefore the menu-bar glyph — is
@@ -27,8 +32,8 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
     public var islandSlots: Int
     /// When false the strip hides itself until the pointer reaches the edge.
     public var dockAlwaysVisible: Bool
-    /// The desktop widget is independent of `presentation`: it sits alongside
-    /// the menu bar rather than replacing it.
+    /// The desktop widget is independent of the island and the dock: it sits
+    /// alongside the menu bar rather than replacing it.
     public var widgetEnabled: Bool
     public var widgetDensity: WidgetDensity
     /// Position as fractions of the screen so it survives a resolution change.
@@ -70,7 +75,8 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
         menuBarIconMode: MenuBarIconMode = .meter,
         meterMode: MeterMode = .remaining,
         meterStyle: MeterStyle = .stepped,
-        presentation: Presentation = .menuBar,
+        showsIsland: Bool = false,
+        showsDock: Bool = false,
         alerts: AlertSettings = AlertSettings(),
         language: L10n.Language = .system,
         selected: ProviderID? = nil,
@@ -101,7 +107,8 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
         self.menuBarIconMode = menuBarIconMode
         self.meterMode = meterMode
         self.meterStyle = meterStyle
-        self.presentation = presentation
+        self.showsIsland = showsIsland
+        self.showsDock = showsDock
         self.alerts = alerts
         self.language = language
         self.selected = selected
@@ -127,8 +134,13 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
         self.legacyCredentials = legacyCredentials
     }
 
+    /// The three-way choice an older build reads.
+    var legacyPresentation: Presentation {
+        showsIsland ? .island : (showsDock ? .edgeDock : .menuBar)
+    }
+
     private enum CodingKeys: String, CodingKey {
-        case enabled, refreshMinutes, menuBarStyle, menuBarIconMode, meterMode, meterStyle, presentation, alerts, language
+        case enabled, refreshMinutes, menuBarStyle, menuBarIconMode, meterMode, meterStyle, presentation, showsIsland, showsDock, alerts, language
         case selected, updateFeed, checksForUpdates, updatePolicy
         case dockEdge, dockPosition, dockAlwaysVisible, islandSlots
         case widgetEnabled, widgetDensity, widgetX, widgetY, widgetAlwaysOnTop, widgetScope, islandPin, dockPin, widgetPin
@@ -155,8 +167,13 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
         menuBarIconMode = QuotaConfig.decodeEnum(from: container, forKey: .menuBarIconMode) ?? defaults.menuBarIconMode
         meterMode = QuotaConfig.decodeEnum(from: container, forKey: .meterMode) ?? defaults.meterMode
         meterStyle = QuotaConfig.decodeEnum(from: container, forKey: .meterStyle) ?? defaults.meterStyle
-        presentation = QuotaConfig.decodeEnum(from: container, forKey: .presentation)
-            ?? defaults.presentation
+        // A file from before the two switches carries only the three-way
+        // choice; it opens showing exactly what it showed.
+        let legacy: Presentation? = QuotaConfig.decodeEnum(from: container, forKey: .presentation)
+        showsIsland = (try? container.decodeIfPresent(Bool.self, forKey: .showsIsland))
+            ?? legacy.map { $0 == .island } ?? defaults.showsIsland
+        showsDock = (try? container.decodeIfPresent(Bool.self, forKey: .showsDock))
+            ?? legacy.map { $0 == .edgeDock } ?? defaults.showsDock
         alerts = ((try? container.decodeIfPresent(AlertSettings.self, forKey: .alerts))
             ?? defaults.alerts).normalized()
         language = QuotaConfig.decodeEnum(from: container, forKey: .language) ?? defaults.language
@@ -270,7 +287,11 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
         try container.encode(menuBarIconMode, forKey: .menuBarIconMode)
         try container.encode(meterStyle, forKey: .meterStyle)
         try container.encode(meterMode, forKey: .meterMode)
-        try container.encode(presentation, forKey: .presentation)
+        try container.encode(showsIsland, forKey: .showsIsland)
+        try container.encode(showsDock, forKey: .showsDock)
+        // Still written, for an older build opened on the same file: it can
+        // show one of the two, and the island wins as it is the one on top.
+        try container.encode(legacyPresentation, forKey: .presentation)
         try container.encode(alerts, forKey: .alerts)
         try container.encode(language, forKey: .language)
         try container.encodeIfPresent(selected, forKey: .selected)
@@ -485,12 +506,20 @@ public final class ConfigStore: @unchecked Sendable {
         set { mutate { $0.refreshMinutes = QuotaConfig.clampRefresh(newValue) } }
     }
 
-    public var presentation: Presentation {
+    public var showsIsland: Bool {
         get {
             lock.lock(); defer { lock.unlock() }
-            return config.presentation
+            return config.showsIsland
         }
-        set { mutate { $0.presentation = newValue } }
+        set { mutate { $0.showsIsland = newValue } }
+    }
+
+    public var showsDock: Bool {
+        get {
+            lock.lock(); defer { lock.unlock() }
+            return config.showsDock
+        }
+        set { mutate { $0.showsDock = newValue } }
     }
 
     public var alerts: AlertSettings {

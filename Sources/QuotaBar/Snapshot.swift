@@ -480,6 +480,10 @@ enum Snapshot {
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
 
         let store = makeStore(selected: nil)
+        // Both on, so the Presentation page shows the island's and the dock's
+        // options together. The store's own values only: nothing is saved.
+        store.showsIsland = true
+        store.showsDock = true
         for language in [L10n.Language.en, .zhHans] {
             L10n.override = language
             let suffix = language == .en ? "en" : "zh"
@@ -531,6 +535,15 @@ enum Snapshot {
                     .padding(Design.space4),
                 to: base,
                 name: "settings-alerts-full-\(language == .en ? "en" : "zh")",
+                dark: false)
+            // Presentation too: the island's and the dock's cards, both on.
+            write(
+                VStack(alignment: .leading, spacing: Design.space3) { PresentationPane(store: store) }
+                    .environment(\.glassDisabled, true)
+                    .frame(width: 620)
+                    .padding(Design.space4),
+                to: base,
+                name: "settings-presentation-full-\(language == .en ? "en" : "zh")",
                 dark: false)
         }
 

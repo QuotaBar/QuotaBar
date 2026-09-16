@@ -29,9 +29,17 @@ struct FeedbackPane: View {
     private var diagnostics: [String: String] {
         [
             L10n.t("Providers", "服务商"): store.enabled.map(\.displayName).joined(separator: ", "),
-            L10n.t("Presentation", "展示方式"): store.presentation.displayName,
+            L10n.t("Presentation", "展示方式"): presentationSummary,
             L10n.t("Menu bar", "菜单栏"): store.menuBarIconMode.displayName,
         ]
+    }
+
+    /// "Notch island + Edge dock", one of them, or the menu bar alone.
+    private var presentationSummary: String {
+        var parts: [String] = []
+        if store.showsIsland { parts.append(L10n.t("Notch island", "刘海岛")) }
+        if store.showsDock { parts.append(L10n.t("Edge dock", "边缘停靠条")) }
+        return parts.isEmpty ? L10n.t("Menu bar only", "仅菜单栏") : parts.joined(separator: " + ")
     }
 
     private var canSend: Bool {

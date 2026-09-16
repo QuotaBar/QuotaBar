@@ -79,7 +79,7 @@ final class IslandCoordinator {
     }
 
     func sync(store: UsageStore) {
-        if store.presentation == .island {
+        if store.showsIsland {
             show(store: store)
         } else {
             hide()

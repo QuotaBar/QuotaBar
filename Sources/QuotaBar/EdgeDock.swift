@@ -90,7 +90,7 @@ final class EdgeDockCoordinator {
     }
 
     func sync(store: UsageStore) {
-        if store.presentation == .edgeDock {
+        if store.showsDock {
             show(store: store)
         } else {
             hide()
@@ -674,19 +674,25 @@ struct EdgeDockView: View {
         DockHandle(fraction: handleFraction, tint: handleTint, onLeft: onLeft)
     }
 
+    /// The worst reading among the dock's own providers. With the island on
+    /// too, the two can carry different services, and a provider that is
+    /// only on the island should not fill or flash the dock's handle.
+    private var handleUsed: Double? {
+        store.dockProviders.compactMap { store.headlinePercent(for: $0) }.max()
+    }
+
     private var handleFraction: CGFloat {
-        guard let used = store.headlinePercent else { return 0 }
+        guard let used = handleUsed else { return 0 }
         return CGFloat(store.meterMode.shownPercent(fromUsed: used) / 100)
     }
 
-    /// The handle carries the worst reading overall, so it flashes on that.
     private var lowQuota: AlertLevel {
-        LowQuota.level(used: store.headlinePercent)
+        LowQuota.level(used: handleUsed)
     }
 
     private var handleTint: Color {
         // No reading is not 0% used — 0 is the brightest green on the ramp.
-        guard let used = store.headlinePercent else { return .white.opacity(0.35) }
+        guard let used = handleUsed else { return .white.opacity(0.35) }
         return Color(hex: UsageRamp.hex(used: used))
     }
 

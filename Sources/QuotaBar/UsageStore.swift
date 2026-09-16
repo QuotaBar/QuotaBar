@@ -50,7 +50,9 @@ final class UsageStore: ObservableObject {
     @Published var menuBarIconMode: MenuBarIconMode
     @Published var meterMode: MeterMode
     @Published var meterStyle: MeterStyle
-    @Published var presentation: Presentation
+    /// The notch island and the edge dock, each on its own switch.
+    @Published var showsIsland: Bool
+    @Published var showsDock: Bool
     @Published var alertSettings: AlertSettings
     @Published var language: L10n.Language
     @Published var cost: CostSummary = .empty
@@ -192,7 +194,8 @@ final class UsageStore: ObservableObject {
         self.menuBarIconMode = ConfigStore.shared.menuBarIconMode
         self.meterMode = ConfigStore.shared.meterMode
         self.meterStyle = ConfigStore.shared.meterStyle
-        self.presentation = .menuBar
+        self.showsIsland = false
+        self.showsDock = false
         self.alertSettings = ConfigStore.shared.alerts
         self.language = ConfigStore.shared.language
         self.experience = ConfigStore.shared.experience
@@ -207,7 +210,8 @@ final class UsageStore: ObservableObject {
         self.menuBarIconMode = ConfigStore.shared.menuBarIconMode
         self.meterMode = ConfigStore.shared.meterMode
         self.meterStyle = ConfigStore.shared.meterStyle
-        self.presentation = ConfigStore.shared.presentation
+        self.showsIsland = ConfigStore.shared.showsIsland
+        self.showsDock = ConfigStore.shared.showsDock
         self.alertSettings = ConfigStore.shared.alerts
         self.language = ConfigStore.shared.language
         self.experience = ConfigStore.shared.experience
@@ -689,7 +693,7 @@ final class UsageStore: ObservableObject {
     var widgetAlwaysOnTop: Bool { config.widgetAlwaysOnTop }
 
     /// Bumped so the coordinators re-evaluate; the widget is independent of
-    /// `presentation`, so it needs its own signal.
+    /// the island and dock switches, so it needs its own signal.
     @Published var widgetRevision = 0
 
     func setWidgetEnabled(_ on: Bool) {
@@ -806,7 +810,7 @@ final class UsageStore: ObservableObject {
     }
 
     /// Bumped when a setting moves the dock, so the coordinator re-places
-    /// the window. Re-assigning `presentation` to itself did nothing: SwiftUI's
+    /// the window. Re-assigning `showsDock` to itself did nothing: SwiftUI's
     /// `onChange` compares values, and an unchanged value is not a change —
     /// the strip mirrored its corners for the new edge and stayed put.
     @Published var dockRevision = 0
@@ -958,9 +962,14 @@ final class UsageStore: ObservableObject {
         config.meterStyle = style
     }
 
-    func setPresentation(_ presentation: Presentation) {
-        self.presentation = presentation
-        config.presentation = presentation
+    func setShowsIsland(_ on: Bool) {
+        showsIsland = on
+        config.showsIsland = on
+    }
+
+    func setShowsDock(_ on: Bool) {
+        showsDock = on
+        config.showsDock = on
     }
 
     func setLanguage(_ language: L10n.Language) {
