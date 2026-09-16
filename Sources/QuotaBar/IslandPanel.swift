@@ -69,6 +69,9 @@ struct IslandPanel: View {
     }
 
     private var page: Page { bridge.page }
+    /// How far the pointer has dragged the open panel sideways; the pages
+    /// follow it a little, then turn once it lets go past the line.
+    @State private var dragX: CGFloat = 0
 
     /// Left takes the first `slots` enabled providers, right the next.
     private var left: [ProviderID] { Array(store.islandProviders.prefix(store.islandSlots)) }
@@ -98,6 +101,7 @@ struct IslandPanel: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .offset(x: dragX)
             .padding(.top, IslandPanelLayout.bodyTop)
             .padding(.bottom, IslandPanelLayout.bodyBottom)
             .contentShape(Rectangle())
@@ -112,6 +116,25 @@ struct IslandPanel: View {
         }
         .padding(.horizontal, IslandPanelLayout.horizontalInset)
         .frame(maxWidth: .infinity, alignment: .top)
+        // Press and drag sideways to turn the page — the dots are small to
+        // aim at. Left for the next page, right for the one before, as a
+        // two-finger swipe goes. Simultaneous, so a click on a chip or a dot
+        // is still a click.
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 8)
+                .onChanged { value in
+                    guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                    // The page follows at a third of the pointer, and no
+                    // further than 40pt: a hint of where it is going.
+                    dragX = max(-40, min(40, value.translation.width / 3))
+                }
+                .onEnded { value in
+                    let width = value.translation.width
+                    if abs(width) > 60, abs(width) > abs(value.translation.height) {
+                        bridge.turnPage(width < 0 ? 1 : -1, store: store)
+                    }
+                    withAnimation(Motion.animation(Motion.pageSwipe)) { dragX = 0 }
+                })
     }
 
     // MARK: Header

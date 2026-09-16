@@ -42,6 +42,18 @@ final class IslandCoordinator {
         @Published var banner: ResetBanner?
         @Published var occluded = false
         @Published var page: IslandPanel.Page = .quota
+
+        /// One page on or back, stopping at either end: a swipe, a
+        /// shift-scroll or a drag across the open panel.
+        @MainActor
+        func turnPage(_ step: Int, store: UsageStore?) {
+            let pages = IslandPanel.Page.allCases
+            guard let index = pages.firstIndex(of: page) else { return }
+            let next = min(max(index + step, 0), pages.count - 1)
+            guard next != index else { return }
+            if pages[next] != .quota { store?.wantLedger() }
+            withAnimation(Motion.animation(Motion.pageSwipe)) { page = pages[next] }
+        }
     }
 
     let bridge = Bridge()
@@ -320,6 +332,13 @@ struct IslandView: View {
     @State private var contentVisible = false
     @State private var hovering = false
     @State private var peekTask: Task<Void, Never>?
+    /// Opens the island once the pointer has rested on it.
+    @State private var dwellTask: Task<Void, Never>?
+
+    /// How long the pointer rests on the closed island before it opens. It
+    /// used to open on contact, so a pointer passing on its way to the menu
+    /// bar grew and shrank the panel; a click opens it at once.
+    static let hoverDelay: Duration = .seconds(1)
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -363,8 +382,29 @@ struct IslandView: View {
         .onHover { inside in
             hovering = inside
             peekTask?.cancel()
-            setExpanded(inside)
+            dwellTask?.cancel()
+            guard inside else {
+                setExpanded(false)
+                return
+            }
+            // Back on an open island — or one still closing — keeps it open.
+            if expanded {
+                setExpanded(true)
+                return
+            }
+            dwellTask = Task { @MainActor in
+                try? await Task.sleep(for: Self.hoverDelay)
+                guard !Task.isCancelled, hovering else { return }
+                setExpanded(true)
+            }
         }
+        // A click opens the closed island without the wait. Simultaneous, so
+        // the open panel's own buttons and chips still take their clicks.
+        .simultaneousGesture(TapGesture().onEnded {
+            guard !expanded else { return }
+            dwellTask?.cancel()
+            setExpanded(true)
+        })
         .animation(Motion.animation(IslandCoordinator.frameCurve(expanded: expanded))) { content in
             content
                 .padding(.horizontal, IslandCoordinator.margin(expanded: expanded))
@@ -814,11 +854,6 @@ final class IslandHostingView<Content: View>: NSHostingView<Content> {
 
 extension IslandCoordinator {
     func turnPage(_ step: Int) {
-        let pages = IslandPanel.Page.allCases
-        guard let index = pages.firstIndex(of: bridge.page) else { return }
-        let next = min(max(index + step, 0), pages.count - 1)
-        guard next != index else { return }
-        if pages[next] != .quota { store?.wantLedger() }
-        withAnimation(Motion.animation(Motion.pageSwipe)) { bridge.page = pages[next] }
+        bridge.turnPage(step, store: store)
     }
 }

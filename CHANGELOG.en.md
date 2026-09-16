@@ -10,10 +10,12 @@ Server moves, the website, and build or release scripts don't change the app its
 #### Added
 
 - The notch island and the edge dock can be on at the same time. Presentation used to offer one of menu bar only, island or dock, so turning the dock on turned the island off; now each has its own card and switch, both can be on, either, or neither, and the menu-bar item always stays. With both on, split your providers between them under What each place shows, say Claude and Codex on the island and Cursor and Gemini on the dock. Limit resets play on both. After updating, the choice you had carries over unchanged.
+- In the open island, press and drag sideways to turn the page: left for the next page, right for the one before. The content follows the pointer a little and turns once you let go far enough, so there is no need to aim at the small dots.
 
 #### Style
 
 - The edge dock's folded handle — its fill and its low-quota flash — follows only the providers shown on the dock, not ones kept on the island alone.
+- The island no longer opens the moment the pointer touches it: it opens after the pointer rests on it for a second, or at once on a click, so passing over it on the way to the menu bar leaves it closed. Moving away from the open island still closes it.
 
 - The open island drops its Sparkline chart style: readings within one window change so little between refreshes that the line came out flat. Bar, Ring, Stepped and Numeric remain, and a Mac that had Sparkline picked switches to Stepped.
 
