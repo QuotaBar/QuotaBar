@@ -554,21 +554,4 @@ enum ShareStudio {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
-
-    /// Once per app version, when there was usage this week, the studio
-    /// opens by itself — codex-island's nudge. Never on a first launch.
-    private static var nudgeChecked = false
-
-    static func openOnceAfterUpdate(store: UsageStore) {
-        guard !nudgeChecked else { return }
-        nudgeChecked = true
-        guard let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
-              !ConfigStore.shared.wasFreshInstall,
-              store.experience.shareCardShownForVersion != version
-        else { return }
-        let week = ShareRange.week.interval(firstDay: nil)
-        guard store.archive.summary(from: week.0, to: week.1).hasData else { return }
-        store.updateExperience { $0.shareCardShownForVersion = version }
-        open(store: store)
-    }
 }

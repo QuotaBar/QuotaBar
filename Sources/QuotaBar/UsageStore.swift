@@ -853,7 +853,6 @@ final class UsageStore: ObservableObject {
         isComputingCost = false
         isComputingLedger = false
         isUpdatingArchive = false
-        ShareStudio.openOnceAfterUpdate(store: self)
     }
 
     /// Everything local-log shaped, re-derived from the archive.

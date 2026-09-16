@@ -11,6 +11,10 @@ Server moves, the website, and build or release scripts don't change the app its
 
 - The edge dock's folded handle ignored the provider picked on the dock: with Antigravity picked (the green dot under its ring), the handle still showed the dock's most spent provider, such as Cursor, as a full red bar and flashed. The handle's fill, colour and low-quota flash now follow the picked provider, and don't flash when it has plenty left; only with nothing picked do they follow the dock's tightest provider.
 
+#### Removed
+
+- The Share Usage Card window no longer opens by itself after an update. It used to open once on the first launch of each new version with usage that week, so several updates in a row opened it every time and looked like something had gone wrong. The card is still one click away in the menu panel, the share icon on the island's overview page, and Settings → Usage.
+
 ## 0.5.8 · 2026-09-16
 
 ### 2026-09-16

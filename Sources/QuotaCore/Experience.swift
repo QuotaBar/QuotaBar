@@ -284,8 +284,6 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
     /// rather than the address. On unless turned off: the image is made to
     /// be posted, and the address is the one thing on it nobody meant to.
     public var shareMasksAccount: Bool = true
-    /// The app version the weekly card last opened itself for.
-    public var shareCardShownForVersion: String = ""
 
     public init() {}
 
@@ -297,7 +295,7 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
         case hideWhenSharing, hotkey, paceAlerts, localAPI, proxy, betaUpdates
         case resetEffects, resetNotify, resetCreditNotify, resetCreditNotified, hiddenProviders, cardWindows, hiddenWindows
         case spendBudget, budgetNotified, balanceFloor, balanceFloorNotified, balanceChart, weeklyDigest, weeklyDigestSent
-        case shareSignature, shareShowsSignature, shareMasksAccount, shareCardShownForVersion
+        case shareSignature, shareShowsSignature, shareMasksAccount
     }
 
     public init(from decoder: Decoder) throws {
@@ -356,7 +354,6 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
         shareSignature = value(.shareSignature, d.shareSignature)
         shareShowsSignature = value(.shareShowsSignature, d.shareShowsSignature)
         shareMasksAccount = value(.shareMasksAccount, d.shareMasksAccount)
-        shareCardShownForVersion = value(.shareCardShownForVersion, d.shareCardShownForVersion)
     }
 }
 
