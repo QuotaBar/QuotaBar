@@ -1,4 +1,5 @@
 import AppKit
+import ObjectiveC
 import SwiftUI
 import Foundation
 import QuotaCore
@@ -38,15 +39,36 @@ enum Diagnostics {
 
     @MainActor
     private static func build(section: SettingsSection, expanded: ProviderID?) {
+        // `QUOTABAR_OFFSCREEN=1`: for a website screenshot (`screencapture -l`)
+        // while someone is using the Mac — placed past the left edge of every
+        // screen and never activated, so it neither shows up nor takes focus.
+        let offscreen = ProcessInfo.processInfo.environment["QUOTABAR_OFFSCREEN"] == "1"
         // An accessory app is never activated as a side effect, and this one
         // wants to be looked at.
-        NSApp.setActivationPolicy(.regular)
-        let window = NSWindow(
+        if !offscreen { NSApp.setActivationPolicy(.regular) }
+        if offscreen { CaptureWindow.answerActive() }
+        let windowClass: NSWindow.Type = offscreen ? CaptureWindow.self : NSWindow.self
+        let window = windowClass.init(
             contentRect: NSRect(x: 0, y: 0, width: 840, height: 700),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false)
-        window.contentView = NSHostingView(rootView: SettingsView(store: UsageStore(), section: section, expanded: expanded))
+        let store = UsageStore()
+        // `QUOTABAR_LANG=en|zh` picks the interface language for the shot, after
+        // the store has applied the saved one.
+        switch ProcessInfo.processInfo.environment["QUOTABAR_LANG"] {
+        case "en": L10n.override = .en
+        case "zh": L10n.override = .zhHans
+        default: break
+        }
+        if offscreen {
+            // Never key, so SwiftUI would draw inactive (grey) switches; the shot
+            // is of the window in use.
+            window.contentView = NSHostingView(rootView: SettingsView(store: store, section: section, expanded: expanded)
+                .environment(\.controlActiveState, .key))
+        } else {
+            window.contentView = NSHostingView(rootView: SettingsView(store: store, section: section, expanded: expanded))
+        }
         window.isReleasedWhenClosed = false
         // Floating, because the point of this flag is to look at the window:
         // activating an accessory process does not reliably outrank whatever
@@ -61,11 +83,62 @@ enum Diagnostics {
                 y: visible.midY - window.frame.height / 2))
         }
         debugWindow = window
+        if offscreen {
+            paintTrafficLights(in: window)
+            let left = NSScreen.screens.map(\.frame.minX).min() ?? 0
+            window.level = .normal
+            window.setFrameOrigin(NSPoint(x: left - window.frame.width - 4000, y: 0))
+            window.orderFrontRegardless()
+            FileHandle.standardOutput.write(Data("settings window number: \(window.windowNumber)\n".utf8))
+            return
+        }
         window.makeKeyAndOrderFront(nil)
         // Same ordering rule as `SettingsWindow.focus()`: activating before the
         // window is on screen does nothing.
         DispatchQueue.main.async { NSApp.activate(ignoringOtherApps: true) }
         FileHandle.standardOutput.write(Data("settings window: \(window.frame)\n".utf8))
+    }
+
+    /// The close, minimise and zoom buttons draw grey in a window that is not
+    /// key, and this one never is: the same three dots in their active colours,
+    /// where the buttons are.
+    @MainActor
+    private static func paintTrafficLights(in window: NSWindow) {
+        let colours: [(NSWindow.ButtonType, NSColor)] = [
+            (.closeButton, NSColor(srgbRed: 1.00, green: 0.37, blue: 0.34, alpha: 1)),
+            (.miniaturizeButton, NSColor(srgbRed: 1.00, green: 0.74, blue: 0.18, alpha: 1)),
+            (.zoomButton, NSColor(srgbRed: 0.16, green: 0.78, blue: 0.25, alpha: 1)),
+        ]
+        for (type, colour) in colours {
+            guard let button = window.standardWindowButton(type), let parent = button.superview else { continue }
+            let dot = NSView(frame: button.frame.insetBy(dx: (button.frame.width - 12) / 2, dy: (button.frame.height - 12) / 2))
+            dot.wantsLayer = true
+            dot.layer?.backgroundColor = colour.cgColor
+            dot.layer?.cornerRadius = 6
+            dot.layer?.borderWidth = 0.5
+            dot.layer?.borderColor = NSColor.black.withAlphaComponent(0.12).cgColor
+            button.isHidden = true
+            parent.addSubview(dot)
+        }
+    }
+
+    /// Draws as the frontmost window without ever being made key, for the
+    /// off-screen website shot.
+    private final class CaptureWindow: NSWindow {
+        override var isKeyWindow: Bool { true }
+        override var isMainWindow: Bool { true }
+
+        /// Controls ask the window whether to draw in their active colours
+        /// through AppKit's own `_hasActiveAppearance…`; answered yes here,
+        /// looked up by name so nothing else in the app depends on them.
+        static func answerActive() {
+            let always: @convention(block) (AnyObject) -> Bool = { _ in true }
+            for name in ["_hasActiveAppearance", "_hasActiveAppearanceIgnoringKeyFocus", "_hasKeyAppearance", "_hasMainAppearance"] {
+                let selector = NSSelectorFromString(name)
+                guard class_getInstanceMethod(NSWindow.self, selector) != nil else { continue }
+                class_addMethod(CaptureWindow.self, selector, imp_implementationWithBlock(always), "B@:")
+            }
+        }
     }
 
     static func printWindows() {

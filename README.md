@@ -50,9 +50,22 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.8** (2026-09-16) · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.8** (2026-09-16) · **2** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-09-16</b> · Unreleased · 1 fixed · 1 removed</summary>
+
+**Fixed**
+
+- The edge dock's folded handle ignored the provider picked on the dock: with Antigravity picked (the green dot under its ring), the handle still showed the dock's most spent provider, such as Cursor, as a full red bar and flashed. The handle's fill, colour and low-quota flash now follow the picked provider, and don't flash when it has plenty left; only with nothing picked do they follow the dock's tightest provider.
+
+**Removed**
+
+- The Share Usage Card window no longer opens by itself after an update. It used to open once on the first launch of each new version with usage that week, so several updates in a row opened it every time and looked like something had gone wrong. The card is still one click away in the menu panel, the share icon on the island's overview page, and Settings → Usage.
+
+</details>
+
+<details>
 <summary><b>2026-09-16</b> · 0.5.8 · 1 fixed</summary>
 
 **Fixed**
@@ -78,32 +91,6 @@ Latest release **0.5.8** (2026-09-16) · [full changelog](CHANGELOG.en.md)
 **Fixed**
 
 - Antigravity read "login expired, open Antigravity once to refresh" from an hour after signing in, and opening or restarting Antigravity changed nothing: the sign-in token it saves is written once and never again. While Antigravity runs, the quota now comes from the app's own quota service on this Mac, with no token: Gemini, and Claude and GPT, each with its 5-hour and weekly limits, reset times and the plan. With Antigravity closed, the newer of the tokens it saved in the keychain and on disk is read. An expired token now says what is true: open Antigravity when it isn't running, or try again or restart it when it is. ([#4](https://github.com/gentpan/QuotaBar/issues/4))
-
-</details>
-
-<details>
-<summary><b>2026-09-16</b> · 0.5.6 · 12 style · 3 fixed</summary>
-
-**Style**
-
-- On the island's overview page the Share usage card button moves to the top right corner as the share icon alone; nothing sits under the spend bars.
-- The island overview's spend bars per tool are stepped, like the quota page's; with three tools the bars and gaps are a little shorter, so the panel stays the same height.
-- In the open island the quota tiles and the usage page's figures sit about 2pt lower, a little further from the provider's title and closer to the footer rule, so the blank above and below them is about even; the panel keeps its height.
-- Usage and spend split by tool now say "Codex" rather than "Codex CLI", OpenAI's own name for it.
-- The website, GitHub, X and email links in Settings → About drop their names and arrows: the icon and the address, nothing more.
-- The Quota Run settings page's subtitle uses the same word for records as the rest of the page (Chinese only).
-- Every segmented switch in Settings is sized by how many options it holds, 100pt each, so the switches in a card line up; a longer label, as in English, widens its switch to fit instead of being cut off.
-- Check now in Settings → Updates is an outlined button like Refresh now; the filled style is kept for steps that change something, such as installing, saving or signing in.
-- The acknowledgements list in Settings → About drops its arrows, like the links above it.
-- The Closest to the limit desktop card lists from just under its title, rather than centring the list and leaving a gap above it.
-- The open island shows the plan's own windows and leaves out a single model's limit such as GPT-5.3-Codex-Spark: Codex Plus shows its 5-hour and weekly bars, Pro its weekly bar alone, as codex-island does. A provider that only reports per-model limits still shows them.
-- In the open island a provider with a single window, such as Codex Pro's week, has its bar across the whole column, ending where a pair of tiles ends; Ring and Numeric tiles sit against the left edge under the provider's title rather than centred.
-
-**Fixed**
-
-- The medium Ring gauge desktop card ran its account row about 23pt past the card's bottom edge; its ring and gaps are a little smaller at that size and everything fits.
-- In the Provider grid desktop card a balance tile such as DeepSeek's was shorter than the quota tiles beside it; the balance now takes the percentage's size and the tiles match.
-- The classic desktop widget and the edge dock's rings always showed used, against the remaining reading of the bars beside them and the menu bar; they now follow Fill basis in Appearance.
 
 </details>
 
