@@ -18,6 +18,15 @@ final class BrowserLogin: NSObject, WKNavigationDelegate, NSWindowDelegate {
         /// Store every cookie for the domain as a Cookie header, for the
         /// consoles that want the whole session rather than one token.
         var wholeHeader = false
+        /// Store the one cookie as `name=value`, so it can never be taken
+        /// for an API key the provider also accepts.
+        var named = false
+        /// Sites the same sign-in may land on instead.
+        var otherDomains: [String] = []
+
+        func matches(_ cookieDomain: String) -> Bool {
+            ([domain] + otherDomains).contains { cookieDomain.contains($0) }
+        }
     }
 
     static func target(for id: ProviderID) -> Target? {
@@ -25,7 +34,10 @@ final class BrowserLogin: NSObject, WKNavigationDelegate, NSWindowDelegate {
         case .cursor:
             Target(url: URL(string: "https://cursor.com/dashboard")!, cookie: "WorkosCursorSessionToken", domain: "cursor.com")
         case .kimi:
-            Target(url: URL(string: "https://www.kimi.com/code/console")!, cookie: "kimi-auth", domain: "kimi.com")
+            // Signing in on kimi.com may end on kimi.ai for a Global account;
+            // the provider finds the edition from the cookie either way.
+            Target(url: URL(string: "https://www.kimi.com/code/console")!, cookie: "kimi-auth", domain: "kimi.com",
+                   named: true, otherDomains: ["kimi.ai"])
         case .alibaba:
             Target(url: URL(string: "https://bailian.console.aliyun.com/cn-beijing/?tab=model#/efm/coding_plan")!,
                    cookie: "login_aliyunid_ticket", domain: "aliyun.com", wholeHeader: true)
@@ -109,14 +121,16 @@ final class BrowserLogin: NSObject, WKNavigationDelegate, NSWindowDelegate {
         guard !finished, let webView else { return }
         let cookies = await webView.configuration.websiteDataStore.httpCookieStore.allCookies()
         guard let match = cookies.first(where: {
-            $0.name == target.cookie && $0.domain.contains(target.domain) && !$0.value.isEmpty
+            $0.name == target.cookie && target.matches($0.domain) && !$0.value.isEmpty
         }) else { return }
         if target.wholeHeader {
             let header = cookies
-                .filter { $0.domain.contains(target.domain) && !$0.value.isEmpty }
+                .filter { target.matches($0.domain) && !$0.value.isEmpty }
                 .map { "\($0.name)=\($0.value)" }
                 .joined(separator: "; ")
             finish(with: header)
+        } else if target.named {
+            finish(with: "\(match.name)=\(match.value)")
         } else {
             finish(with: match.value)
         }

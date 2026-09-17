@@ -149,6 +149,7 @@ enum Diagnostics {
                 do {
                     let snapshot = try await ProviderRegistry.make(id).fetch(config: config)
                     if let plan = snapshot.planName { out += "  plan: \(plan)\n" }
+                    if let source = snapshot.sourceLabel { out += "  source: \(source)\(snapshot.editionLabel.map { " · \($0)" } ?? "")\n" }
                     if let credits = snapshot.resetCredits {
                         out += "  resetCredits: \(credits.available) available, \(credits.totalEarned.map(String.init) ?? "?") given\n"
                         for credit in credits.credits {
@@ -224,10 +225,18 @@ enum Diagnostics {
                 let seconds = Int(date.timeIntervalSinceNow)
                 return seconds > 0 ? "\(seconds / 60)m \(seconds % 60)s left" : "\(-seconds / 60)m ago"
             } ?? "no expiry"
-            return "Kimi     \(state) (\(expiry)) · \(kimi.fileName) → \(kimi.baseURL.host ?? "")\n"
+            let mode = kimi.isLegacy ? "older Python CLI sign-in (~/.kimi)" : "Kimi Code sign-in"
+            return "Kimi     \(state) (\(expiry)) · \(mode) · \(kimi.edition.rawValue) edition · \(kimi.fileName) → \(kimi.baseURL.host ?? "")\n"
         }
         if let kimi = LocalCredentials.kimiCodeSession() {
-            out += kimiLine(kimi.isExpired() ? "expired, Kimi Code renews it when used" : "available", kimi)
+            out += kimiLine(kimi.isExpired() ? "expired" : "available", kimi)
+            // Read only: says whether a read would renew, and never renews.
+            let renewable: String
+            switch KimiCodeRenewal.renewability(of: kimi) {
+            case .renewable: renewable = "yes"
+            case let .readOnly(reason): renewable = "no (\(reason))"
+            }
+            out += "         renewable by QuotaBar: \(renewable)\n"
         } else if let ended = LocalCredentials.kimiCodeSessions().first {
             out += kimiLine("signed out, cannot be renewed", ended)
         } else {
@@ -373,6 +382,7 @@ enum Diagnostics {
         var out = "\(id.displayName)\n"
         if let snapshot = item.1 {
             out += "  plan: \(snapshot.planName ?? "—")\n"
+            if let source = snapshot.sourceLabel { out += "  source: \(source)\(snapshot.editionLabel.map { " · \($0)" } ?? "")\n" }
             for window in snapshot.windows {
                 let used = window.usedPercent.map { QuotaFormat.percent($0) + " used" } ?? "—"
                 let reset = window.resetsAt.map { " · " + QuotaFormat.resetLabel(to: $0) } ?? ""

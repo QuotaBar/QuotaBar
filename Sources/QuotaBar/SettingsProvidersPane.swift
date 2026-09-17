@@ -165,7 +165,7 @@ struct ProviderSettingsRow: View {
             // Open, the header carries the row's two quick actions, so they
             // need no line of their own: the console link beside the name,
             // the connection test ahead of the status columns.
-            if isExpanded, let url = id.dashboardURL {
+            if isExpanded, let url = store.dashboardURL(for: id) {
                 Button {
                     NSWorkspace.shared.open(url)
                 } label: {
@@ -274,7 +274,7 @@ struct ProviderSettingsRow: View {
                 if let percent = snapshot.headlinePercent {
                     testPhase = .ok(
                         "\(connected) — \(QuotaFormat.percent(percent))"
-                            + (snapshot.planName.map { " · \($0)" } ?? ""))
+                            + (snapshot.chipLabel.map { " · \($0)" } ?? ""))
                 } else if let first = snapshot.windows.first {
                     testPhase = .ok("\(connected) — \(first.detail ?? first.title)")
                 } else {
@@ -366,6 +366,24 @@ private struct CredentialEditor: View {
                         secure: true,
                         reveal: $reveal,
                         onSubmit: save)
+                }
+            }
+
+            // Which of several ways in the next refresh takes, and for which
+            // edition — only for providers that have more than one.
+            if let source = store.sourceInfo[id] {
+                SettingRow(L10n.t("In use", "当前使用")) {
+                    VStack(alignment: .leading, spacing: Design.space1) {
+                        Text(source.summary)
+                            .foregroundStyle(.secondary)
+                        if let note = source.note {
+                            Text(note)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .font(.system(size: 11))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, Design.rowLabelInset + 2)
                 }
             }
 

@@ -84,7 +84,11 @@ public enum ResetDetector {
     /// The CLI was signed in to another account between the two readings.
     /// Its figures and reset times are simply someone else's — a drop there
     /// is not a reset. Unknown on either side counts as the same account.
+    /// Another edition of a service with separate regional accounts, or
+    /// another kind of credential, counts as another account too.
     public static func accountChanged(from previous: UsageSnapshot, to current: UsageSnapshot) -> Bool {
+        if let before = previous.edition, let after = current.edition, before != after { return true }
+        if let before = previous.source, let after = current.source, before != after { return true }
         guard let before = previous.account?.lowercased(), let after = current.account?.lowercased(),
               !before.isEmpty, !after.isEmpty
         else { return false }

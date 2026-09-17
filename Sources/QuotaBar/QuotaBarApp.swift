@@ -72,10 +72,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
+    /// A Kimi Code renewal with its request out holds the only copy of a
+    /// refresh token the server may already have rotated: quitting starts no
+    /// new renewal or retry, and waits for the reply to be saved — at most
+    /// the request's own 30 seconds, and a little more.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let renewal = KimiCodeRenewal.shared
+        renewal.stop()
+        guard renewal.hasRequestOut else { return .terminateNow }
+        Task.detached {
+            await renewal.waitForRequests(timeout: 35)
+            await MainActor.run { NSApp.reply(toApplicationShouldTerminate: true) }
+        }
+        return .terminateLater
+    }
+
     /// The run ledger saves five seconds after a change; quitting inside
-    /// that window would drop the change without this.
+    /// that window would drop the change without this. Quitting mid-renewal
+    /// gives Kimi Code its lock back at once rather than after it goes stale
+    /// — only after the renewal's reply is saved (`applicationShouldTerminate`).
     func applicationWillTerminate(_ notification: Notification) {
         RunLedgerStore.shared.flush()
+        KimiCodeLock.releaseAll()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -173,6 +191,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.terminate(nil)
         }
 
+        // From here on this is the app itself, which runs on and can see a
+        // Kimi Code renewal through; the one-off commands above only read.
+        KimiCodeRenewal.allowInThisProcess()
         let store = UsageStore()
         self.store = store
         SettingsWindow.configure(store: store)

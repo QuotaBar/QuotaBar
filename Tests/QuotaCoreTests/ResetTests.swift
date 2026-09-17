@@ -40,6 +40,28 @@ final class ResetDetectorTests: XCTestCase {
         XCTAssertFalse(ResetDetector.accountChanged(from: before, to: UsageSnapshot(planName: nil, account: nil, windows: [], fetchedAt: now)))
     }
 
+    /// Kimi Code switched from the China edition to the Global one, or from
+    /// the sign-in on this Mac to a pasted key: another account's figures,
+    /// not a reset.
+    func testSwitchingEditionOrCredentialIsNotAReset() {
+        func reading(_ used: Double, reset: TimeInterval, edition: String?, source: String?) -> UsageSnapshot {
+            UsageSnapshot(windows: [UsageWindow(title: "5h", usedPercent: used, resetsAt: now.addingTimeInterval(reset), windowSeconds: 18_000)],
+                          fetchedAt: now, edition: edition, source: source)
+        }
+        let china = reading(95, reset: -60, edition: "china", source: "signIn")
+        let global = reading(5, reset: 16_200, edition: "global", source: "signIn")
+        XCTAssertTrue(ResetDetector.accountChanged(from: china, to: global))
+        XCTAssertTrue(ResetDetector.events(provider: .kimi, previous: china, current: global, now: now).isEmpty)
+        let key = reading(5, reset: 16_200, edition: "china", source: "apiKey")
+        XCTAssertTrue(ResetDetector.accountChanged(from: china, to: key))
+        // The same edition and credential: an ordinary reset.
+        let rolled = reading(5, reset: 16_200, edition: "china", source: "signIn")
+        XCTAssertFalse(ResetDetector.accountChanged(from: china, to: rolled))
+        XCTAssertEqual(ResetDetector.events(provider: .kimi, previous: china, current: rolled, now: now).count, 1)
+        // Unknown on one side: the same account.
+        XCTAssertFalse(ResetDetector.accountChanged(from: reading(95, reset: -60, edition: nil, source: nil), to: global))
+    }
+
     /// A drop with the same reset time is a top-up or a correction.
     func testDropWithoutTimeRunningOutIsNotAReset() {
         let reset = now.addingTimeInterval(3_600)

@@ -194,89 +194,373 @@ public struct CursorProvider: QuotaProvider {
     }
 }
 
-// MARK: - Kimi Code (Kimi Code's own sign-in → coding/v1/usages, or a kimi-auth cookie → kimi.com billing RPC)
+// MARK: - Kimi Code (its own sign-in or an API key → coding/v1/usages, or a kimi-auth cookie → kimi.com / kimi.ai billing RPC)
 
 public struct KimiProvider: QuotaProvider {
     public let id = ProviderID.kimi
 
-    /// Two sources, decided the way Cursor, Grok and OpenCode Go decide: a
-    /// pasted kimi-auth cookie wins, because pasting one is a deliberate
-    /// override and clearing it goes back to the sign-in on this Mac.
-    /// Without one, the session the Kimi Code app and CLI share is read.
-    /// A session whose access token has expired still counts as configured
-    /// while Kimi Code can renew it: the card then says how to bring it back,
-    /// rather than sending the owner to set up a sign-in that is already
-    /// there. One it can no longer renew does not count; see
-    /// `LocalCredentials.kimiCodeSession()`.
+    /// This Mac, or a test's throwaway directories and scripted network.
+    let environment: KimiCodeEnvironment
+
+    public init() {
+        environment = .live
+    }
+
+    init(environment: KimiCodeEnvironment) {
+        self.environment = environment
+    }
+
+    /// One card, three sources, decided on every refresh in this order:
+    ///
+    /// 1. **Something pasted in Settings.** Pasting is a deliberate override,
+    ///    as for Cursor, Grok and OpenCode Go, and clearing it goes back to
+    ///    the sign-in on this Mac. What it is follows from its shape
+    ///    (`KimiPastedCredential`): a kimi-auth cookie — a bare JWT,
+    ///    `kimi-auth=…`, a Cookie header — reads the billing gateway of
+    ///    www.kimi.com, or of www.kimi.ai if kimi.com refuses it; a single
+    ///    word is a Kimi Code API key, sent to the China edition's Code API
+    ///    and to the Global one only if China refuses it. Once an edition has
+    ///    answered, only that edition is asked.
+    /// 2. **The Kimi Code sign-in on this Mac**, which the app and the `kimi`
+    ///    CLI share, for whichever edition it signed in to. When its access
+    ///    token is about to run out the running app renews it, under Kimi
+    ///    Code's own lock (`KimiCodeRenewal`). The older Python CLI's file is
+    ///    only read.
+    /// 3. Neither: not configured.
+    ///
+    /// A sign-in whose access token has expired counts as configured while
+    /// it can still be renewed; one that cannot does not.
     public func isConfigured(config: ConfigStore) -> Bool {
-        config.credential(for: .kimi) != nil || LocalCredentials.kimiCodeSession() != nil
+        config.credential(for: .kimi) != nil || Self.localSession(environment) != nil
     }
 
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
-        if let token = config.credential(for: .kimi) {
-            do {
-                return try await Self.fetchWeb(token: token)
-            } catch ProviderError.unauthorized {
-                // Signing in to Kimi Code again would change nothing while
-                // the cookie is there, which is what `.unauthorized` suggests.
-                throw ProviderError.sessionExpired(
-                    Self.rejectedCookieHint(signedInLocally: LocalCredentials.kimiCodeSession() != nil))
+        let env = environment
+        if let pasted = config.credential(for: .kimi) {
+            let signedInLocally = Self.localSession(env) != nil
+            switch KimiPastedCredential.classify(pasted) {
+            case let .cookie(token):
+                return try await Self.fetchCookie(token, signedInLocally: signedInLocally, env)
+            case .cookieWithoutToken:
+                throw ProviderError.sessionExpired(Self.cookieWithoutTokenHint)
+            case .unrecognized:
+                throw ProviderError.sessionExpired(Self.unrecognizedPasteHint)
+            case let .apiKey(key):
+                return try await Self.fetchAPIKey(key, signedInLocally: signedInLocally, env)
             }
         }
-        guard let session = LocalCredentials.kimiCodeSession() else {
-            if !LocalCredentials.kimiCodeSessions().isEmpty {
-                throw ProviderError.sessionExpired(Self.signInAgainHint)
+        return try await Self.fetchLocal(env)
+    }
+
+    static func localSession(_ env: KimiCodeEnvironment) -> LocalCredentials.KimiCodeSession? {
+        LocalCredentials.kimiCodeSession(codeHome: env.codeHome, legacyHome: env.legacyHome, now: env.now())
+    }
+
+    /// For Settings: which source the next refresh uses and for which
+    /// edition, and the console that goes with it.
+    public func sourceInfo(config: ConfigStore) -> ProviderSourceInfo? {
+        let env = environment
+        let session = Self.localSession(env)
+        if let pasted = config.credential(for: .kimi) {
+            let note = session.map {
+                L10n.t(
+                    "Clear it to use the Kimi Code sign-in on this Mac (\($0.edition.label)).",
+                    "清除后改用本机 Kimi Code 登录（\($0.edition.label)）。")
+            }
+            switch KimiPastedCredential.classify(pasted) {
+            case let .cookie(token):
+                return Self.pastedSource(.cookie, secret: token, note: note, env)
+            case .cookieWithoutToken:
+                return ProviderSourceInfo(
+                    summary: L10n.t("A Cookie header with no kimi-auth cookie in it", "Cookie 头里没有 kimi-auth cookie"),
+                    note: note)
+            case .unrecognized:
+                return ProviderSourceInfo(
+                    summary: L10n.t("Neither a Kimi Code API key nor a kimi-auth cookie", "既不是 Kimi Code API Key，也不是 kimi-auth cookie"),
+                    note: note)
+            case let .apiKey(key):
+                return Self.pastedSource(.apiKey, secret: key, note: note, env)
+            }
+        }
+        guard let session else { return nil }
+        let name = session.isLegacy
+            ? L10n.t("Older Kimi CLI sign-in (~/.kimi)", "旧版 Kimi CLI 登录（~/.kimi）")
+            : L10n.t("Kimi Code sign-in on this Mac", "Kimi Code 本机登录")
+        var note: String?
+        if case let .readOnly(reason) = KimiCodeRenewal.renewability(of: session, codeHome: env.codeHome, now: env.now()) {
+            note = Self.readOnlyNote(reason)
+        }
+        return ProviderSourceInfo(
+            summary: "\(name) · \(session.edition.longLabel)",
+            note: note,
+            consoleURL: session.edition.consoleURL)
+    }
+
+    /// "API key · Global (kimi.ai)": the edition this run of the app found,
+    /// else the one the last reading kept on disk found with the same kind
+    /// of credential, else not known yet.
+    static func pastedSource(_ source: KimiSource, secret: String, note: String?, _ env: KimiCodeEnvironment) -> ProviderSourceInfo {
+        let last = env.lastReading().flatMap { $0.source == source.rawValue ? $0.edition : nil }
+        guard let edition = pastedEditions.edition(for: secret) ?? last.flatMap(KimiEdition.init(rawValue:)) else {
+            return ProviderSourceInfo(
+                summary: L10n.t("\(source.label) · edition found on the first refresh", "\(source.label) · 首次刷新后识别版本"),
+                note: note)
+        }
+        return ProviderSourceInfo(
+            summary: "\(source.label) · \(edition.longLabel)",
+            note: note,
+            consoleURL: edition.consoleURL)
+    }
+
+    // MARK: Kimi Code API key
+
+    /// Which edition each pasted API key or cookie belongs to, by
+    /// fingerprint, for this run of the app: only that edition is asked
+    /// from then on, and Settings can say which. Never the secret itself,
+    /// and never on disk.
+    final class EditionMemo: @unchecked Sendable {
+        private let lock = NSLock()
+        private var editions: [String: KimiEdition] = [:]
+
+        func edition(for key: String) -> KimiEdition? {
+            lock.withLock { editions[KimiPastedCredential.fingerprint(key)] }
+        }
+
+        func remember(_ edition: KimiEdition, for key: String) {
+            lock.withLock { editions[KimiPastedCredential.fingerprint(key)] = edition }
+        }
+
+        /// The edition that answered before, alone: a key or cookie belongs
+        /// to one edition, so a refusal there is final and the other is not
+        /// asked. China, then Global, while none has answered.
+        func order(for key: String) -> [KimiEdition] {
+            edition(for: key).map { [$0] } ?? [.china, .global]
+        }
+    }
+
+    static let pastedEditions = EditionMemo()
+
+    /// `GET <edition>/usages` with the key as the Bearer — the endpoint
+    /// Kimi Code's own sign-in reads, which takes API keys too. A key
+    /// belongs to one edition and the other refuses it with a 401, so only
+    /// a 401 moves on to the other edition. Any other answer — no plan, a
+    /// rate limit, a server or network error — is that edition's, and the
+    /// key goes no further.
+    static func fetchAPIKey(_ key: String, signedInLocally: Bool, _ env: KimiCodeEnvironment) async throws -> UsageSnapshot {
+        for edition in pastedEditions.order(for: key) {
+            let response = try await env.send("GET", edition.usagesURL, [
+                "Authorization": "Bearer \(key)",
+                "Accept": "application/json",
+                "User-Agent": "QuotaBar",
+            ], nil, 20)
+            switch response.status {
+            case 401:
+                continue
+            case 402, 403:
+                // Recognised, with nothing to read: this edition is the key's.
+                pastedEditions.remember(edition, for: key)
+                throw ProviderError.noPlan(apiKeyNoPlanHint(edition))
+            default:
+                var snapshot = try parseCodeUsage(response.requireOK().data)
+                snapshot.edition = edition.rawValue
+                snapshot.source = KimiSource.apiKey.rawValue
+                pastedEditions.remember(edition, for: key)
+                return snapshot
+            }
+        }
+        throw ProviderError.sessionExpired(rejectedAPIKeyHint(signedInLocally: signedInLocally))
+    }
+
+    static func apiKeyNoPlanHint(_ edition: KimiEdition) -> String {
+        L10n.t(
+            "Kimi Code \(edition.label) (\(edition.site)) accepted the API key, but this account has no Kimi Code plan to read.",
+            "Kimi Code \(edition.label)（\(edition.site)）认可这个 API Key，但这个账号没有可读取的 Kimi Code 套餐。")
+    }
+
+    static func rejectedAPIKeyHint(signedInLocally: Bool) -> String {
+        signedInLocally
+            ? L10n.t(
+                "Kimi rejected the API key pasted in Settings. Check it in the Kimi Code console of your edition (kimi.com or kimi.ai), or clear it to use the Kimi Code sign-in on this Mac.",
+                "Kimi 拒绝了设置里粘贴的 API Key。请在你所用版本的 Kimi Code 控制台（kimi.com 或 kimi.ai）检查，或清除它以改用本机 Kimi Code 登录。")
+            : L10n.t(
+                "Kimi rejected the API key pasted in Settings. Check it in the Kimi Code console of your edition (kimi.com or kimi.ai), or paste a new one.",
+                "Kimi 拒绝了设置里粘贴的 API Key。请在你所用版本的 Kimi Code 控制台（kimi.com 或 kimi.ai）检查，或粘贴新的 Key。")
+    }
+
+    // MARK: kimi-auth cookie
+
+    /// The cookie reads the billing gateway of the site it came from:
+    /// www.kimi.com, then www.kimi.ai when kimi.com refuses it. It is only
+    /// ever sent to those two sites, never to a Code API host.
+    static func fetchCookie(_ token: String, signedInLocally: Bool, _ env: KimiCodeEnvironment) async throws -> UsageSnapshot {
+        for edition in pastedEditions.order(for: token) {
+            do {
+                var snapshot = try await fetchWeb(token: token, edition: edition, send: env.send)
+                snapshot.edition = edition.rawValue
+                snapshot.source = KimiSource.cookie.rawValue
+                pastedEditions.remember(edition, for: token)
+                return snapshot
+            } catch ProviderError.unauthorized {
+                continue
+            }
+        }
+        // Signing in to Kimi Code again would change nothing while the
+        // cookie is there, which is what `.unauthorized` suggests.
+        throw ProviderError.sessionExpired(rejectedCookieHint(signedInLocally: signedInLocally))
+    }
+
+    static var cookieWithoutTokenHint: String {
+        L10n.t(
+            "The Cookie header pasted in Settings has no kimi-auth cookie in it. Paste the kimi-auth value from kimi.com or kimi.ai, or a Kimi Code API key.",
+            "设置里粘贴的 Cookie 头里没有 kimi-auth cookie。请粘贴 kimi.com 或 kimi.ai 的 kimi-auth 值，或 Kimi Code API Key。")
+    }
+
+    static var unrecognizedPasteHint: String {
+        L10n.t(
+            "What is pasted in Settings for Kimi Code is neither a Kimi Code API key nor a kimi-auth cookie. Paste the key on its own, or the kimi-auth cookie's value.",
+            "设置里为 Kimi Code 粘贴的内容既不是 Kimi Code API Key，也不是 kimi-auth cookie。请只粘贴 Key 本身，或 kimi-auth cookie 的值。")
+    }
+
+    // MARK: Kimi Code sign-in
+
+    /// `GET <base>/usages` with the sign-in's access token — the call Kimi
+    /// Code's own usage panel makes, and all it sends. The server allows no
+    /// grace: a token a minute past its expiry gets a 401. So a token about
+    /// to run out is renewed first, and a 401 on one that should still be
+    /// good is answered with one renewal and one more try.
+    static func fetchLocal(_ env: KimiCodeEnvironment) async throws -> UsageSnapshot {
+        let now = env.now()
+        guard let session = localSession(env) else {
+            if !LocalCredentials.kimiCodeSessions(codeHome: env.codeHome, legacyHome: env.legacyHome).isEmpty {
+                throw ProviderError.sessionExpired(signInAgainHint)
             }
             throw ProviderError.notConfigured(hint: ProviderID.kimi.setupHint)
         }
-        return try await Self.fetchCode(session: session)
-    }
-
-    // MARK: Kimi Code session
-
-    /// `GET <base>/usages` with the access token — the call Kimi Code's own
-    /// usage panel makes, and all it sends.
-    static func fetchCode(session: LocalCredentials.KimiCodeSession, now: Date = Date()) async throws -> UsageSnapshot {
-        // Never renewed here; see `LocalCredentials.kimiCodeSession()`. The
-        // server allows no grace either: a token a minute past its expiry
-        // gets a 401, so asking would only turn a known answer into a vaguer one.
-        guard !session.isExpired(now: now) else {
-            throw ProviderError.sessionExpired(session.canRenew(now: now) ? expiredSessionHint : signInAgainHint)
+        let renewability = KimiCodeRenewal.renewability(of: session, codeHome: env.codeHome, now: now)
+        var token = session.accessToken
+        var renewed = false
+        if session.isDueForRenewal(now: now) {
+            if case let .renewable(context) = renewability, env.mayRenew {
+                do {
+                    token = try await renew(context, rejected: nil, env)
+                    renewed = true
+                } catch ProviderError.unavailable(_) where !session.isExpired(now: env.now()) {
+                    // Kimi Code busy renewing, or the sign-in server away: the
+                    // token still has a little while, enough for this one read.
+                }
+            } else if session.isExpired(now: now) {
+                // Known without asking: no request goes out.
+                throw renewability.isRenewable
+                    ? ProviderError.unavailable(readOnlyRunHint)
+                    : ProviderError.sessionExpired(expiredHint(renewability))
+            }
         }
-        let response = try await HTTP.get(session.usageURL, headers: [
-            "Authorization": "Bearer \(session.accessToken)",
-            "Accept": "application/json",
-            "User-Agent": "QuotaBar",
-        ])
+        var response = try await usages(session.usageURL, token: token, env)
+        if response.status == 401, !renewed, env.mayRenew, case let .renewable(context) = renewability {
+            token = try await renew(context, rejected: token, env)
+            response = try await usages(session.usageURL, token: token, env)
+        }
         switch response.status {
         case 401:
-            throw ProviderError.sessionExpired(rejectedSessionHint)
+            if renewability.isRenewable, !env.mayRenew { throw ProviderError.unavailable(readOnlyRunHint) }
+            throw ProviderError.sessionExpired(renewability.isRenewable ? rejectedSessionHint : expiredHint(renewability))
         case 402, 403:
             // Kimi Code's own panel offers the subscription page for these.
             throw ProviderError.noPlan(L10n.t(
                 "Signed in to Kimi Code, but this account has no Kimi Code plan.",
                 "已登录 Kimi Code，但这个账号没有订阅 Kimi Code 套餐。"))
         default:
-            return try parseCodeUsage(response.requireOK().data)
+            var snapshot = try parseCodeUsage(response.requireOK().data)
+            snapshot.edition = session.edition.rawValue
+            snapshot.source = (session.isLegacy ? KimiSource.legacySignIn : .signIn).rawValue
+            return snapshot
         }
     }
 
-    /// Only for a token Kimi Code can still renew; see `signInAgainHint`.
-    /// QuotaBar notices the renewal within a minute (`UsageStore`), so the
-    /// quota does show again without waiting for the next refresh.
-    static var expiredSessionHint: String {
-        L10n.t(
-            "The sign-in token Kimi Code saved on this Mac has expired. It lasts 15 minutes, and Kimi Code renews it only while in use: use Kimi Code once, in the app or with `kimi`, and the quota shows again. No need to sign in again.",
-            "Kimi Code 在本机保存的登录令牌已过期。令牌只有 15 分钟有效，Kimi Code 只在使用时才续期：在应用里或用 `kimi` 用一次 Kimi Code，额度就会重新显示，不用重新登录。")
+    private static func usages(_ url: URL, token: String, _ env: KimiCodeEnvironment) async throws -> HTTPResponse {
+        try await env.send("GET", url, [
+            "Authorization": "Bearer \(token)",
+            "Accept": "application/json",
+            "User-Agent": "QuotaBar",
+        ], nil, 20)
+    }
+
+    private static func renew(_ context: KimiCodeRenewal.Context, rejected: String?, _ env: KimiCodeEnvironment) async throws -> String {
+        do {
+            return try await env.renewal.accessToken(context, rejected: rejected, environment: env).accessToken
+        } catch let failure as KimiCodeRenewal.Failure {
+            switch failure {
+            case .signInAgain: throw ProviderError.sessionExpired(signInAgainHint)
+            case .busy: throw ProviderError.unavailable(renewalBusyHint)
+            case let .unavailable(detail): throw ProviderError.unavailable(renewalFailedHint(detail))
+            }
+        }
+    }
+
+    /// The access token has run out and QuotaBar may not renew it, said
+    /// with the reason and what brings it back.
+    static func expiredHint(_ renewability: KimiCodeRenewability) -> String {
+        guard case let .readOnly(reason) = renewability else { return rejectedSessionHint }
+        switch reason {
+        case .cannotRenew:
+            return signInAgainHint
+        case .olderCLI:
+            return L10n.t(
+                "The sign-in the older Kimi CLI saved in ~/.kimi has expired, and QuotaBar only reads that one. Sign in to the Kimi Code app or the current `kimi` CLI, and QuotaBar keeps that sign-in renewed.",
+                "旧版 Kimi CLI 在 ~/.kimi 保存的登录已过期，QuotaBar 只读取、不续期这份登录。登录 Kimi Code 应用或新版 `kimi` CLI 后，QuotaBar 会让那份登录保持续期。")
+        case .notInUse:
+            return L10n.t(
+                "The Kimi Code sign-in token on this Mac has expired. QuotaBar renews only the sign-in Kimi Code's settings (~/.kimi-code/config.toml) say is in use, and this is not it: use Kimi Code once, or sign in again.",
+                "本机的 Kimi Code 登录令牌已过期。QuotaBar 只续期 Kimi Code 设置（~/.kimi-code/config.toml）里正在使用的登录，这份不是：用一次 Kimi Code，或重新登录。")
+        case .noDeviceID:
+            return L10n.t(
+                "The Kimi Code sign-in token on this Mac has expired. Renewing it needs the device id Kimi Code creates when it first starts: open Kimi Code once and the quota shows again.",
+                "本机的 Kimi Code 登录令牌已过期。续期需要 Kimi Code 首次启动时生成的设备 ID：打开一次 Kimi Code，额度就会重新显示。")
+        }
+    }
+
+    /// For Settings, under the source: why this sign-in is left alone.
+    static func readOnlyNote(_ reason: KimiCodeRenewability.Reason) -> String {
+        switch reason {
+        case .olderCLI:
+            L10n.t("Read only: QuotaBar does not renew the older CLI's sign-in.", "只读：QuotaBar 不续期旧版 CLI 的登录。")
+        case .cannotRenew:
+            L10n.t("Can no longer be renewed: sign in again once it runs out.", "已无法续期，过期后需要重新登录。")
+        case .notInUse:
+            L10n.t("Read only: not the sign-in Kimi Code's settings say is in use.", "只读：不是 Kimi Code 设置里正在使用的登录。")
+        case .noDeviceID:
+            L10n.t("Read only until Kimi Code has created this Mac's device id.", "Kimi Code 还没有为本机生成设备 ID，暂时只读。")
+        }
     }
 
     /// The access token has run out and nothing renews it — the refresh
     /// token ran out too, 30 days after Kimi Code was last used, or there is
-    /// none — so Kimi Code will ask for a new sign-in.
+    /// none, or the sign-in server refused it — so only signing in brings it back.
     static var signInAgainHint: String {
         L10n.t(
-            "Kimi Code's sign-in on this Mac has ended and can no longer be renewed. Sign in again in the Kimi Code app or with `kimi`, or paste a kimi-auth cookie in Settings.",
-            "Kimi Code 在本机的登录已失效，无法再续期。请在 Kimi Code 应用里或用 `kimi` 重新登录，或在设置里粘贴 kimi-auth cookie。")
+            "Kimi Code's sign-in on this Mac has ended and can no longer be renewed. Sign in again in the Kimi Code app or with `kimi`, or paste a Kimi Code API key or kimi-auth cookie in Settings.",
+            "Kimi Code 在本机的登录已失效，无法再续期。请在 Kimi Code 应用里或用 `kimi` 重新登录，或在设置里粘贴 Kimi Code API Key 或 kimi-auth cookie。")
+    }
+
+    /// A one-off command (`--json`, `--provider`) found the token run out:
+    /// renewing is left to the app, which can see a renewal through.
+    static var readOnlyRunHint: String {
+        L10n.t(
+            "The Kimi Code sign-in token on this Mac has expired. The QuotaBar app renews it while it runs; a one-off command only reads it.",
+            "本机的 Kimi Code 登录令牌已过期。QuotaBar 应用运行时会续期它；一次性命令只读取、不续期。")
+    }
+
+    /// Kimi Code held its lock for the whole wait: it is renewing itself.
+    static var renewalBusyHint: String {
+        L10n.t(
+            "Kimi Code is renewing its sign-in right now; QuotaBar reads the quota again at the next refresh.",
+            "Kimi Code 正在续期登录，QuotaBar 会在下次刷新时重新读取额度。")
+    }
+
+    static func renewalFailedHint(_ detail: String) -> String {
+        L10n.t(
+            "Couldn't renew the Kimi Code sign-in (\(detail)). QuotaBar tries again at the next refresh.",
+            "无法续期 Kimi Code 登录（\(detail)），QuotaBar 会在下次刷新时重试。")
     }
 
     /// A pasted cookie comes first, so it has to go before the sign-in on
@@ -287,14 +571,15 @@ public struct KimiProvider: QuotaProvider {
                 "Kimi turned down the kimi-auth cookie pasted in Settings, which is used before the Kimi Code sign-in on this Mac. Clear it in Settings to use that sign-in, or paste a fresh cookie.",
                 "Kimi 拒绝了设置里粘贴的 kimi-auth cookie；有 cookie 时会先用它，而不是本机 Kimi Code 的登录。在设置里清除它即可改用本机登录，或粘贴新的 cookie。")
             : L10n.t(
-                "Kimi turned down the kimi-auth cookie pasted in Settings. Paste a fresh one, or clear it and sign in to the Kimi Code app or CLI (`kimi`) instead.",
-                "Kimi 拒绝了设置里粘贴的 kimi-auth cookie。请粘贴新的 cookie，或清除它，改为登录 Kimi Code 应用或 CLI（`kimi`）。")
+                "Kimi turned down the kimi-auth cookie pasted in Settings. Paste a fresh one or a Kimi Code API key, or clear it and sign in to the Kimi Code app or CLI (`kimi`) instead.",
+                "Kimi 拒绝了设置里粘贴的 kimi-auth cookie。请粘贴新的 cookie 或 Kimi Code API Key，或清除它，改为登录 Kimi Code 应用或 CLI（`kimi`）。")
     }
 
+    /// Turned down even after a renewal.
     static var rejectedSessionHint: String {
         L10n.t(
-            "Kimi turned down the sign-in token Kimi Code saved on this Mac. Use Kimi Code once so it renews the token; if it asks you to sign in, sign in again.",
-            "Kimi 拒绝了 Kimi Code 在本机保存的登录令牌。用一次 Kimi Code 让它续期；如果它要求登录，请重新登录。")
+            "Kimi turned down the Kimi Code sign-in on this Mac, even renewed. Sign in again in the Kimi Code app or with `kimi`.",
+            "Kimi 拒绝了本机的 Kimi Code 登录，续期后仍然如此。请在 Kimi Code 应用里或用 `kimi` 重新登录。")
     }
 
     /// Pure. The live reply carries the same limits twice:
@@ -443,16 +728,19 @@ public struct KimiProvider: QuotaProvider {
         return QwenProvider.number(value).flatMap(Dates.parseEpoch)
     }
 
-    // MARK: kimi-auth cookie
+    // MARK: kimi.com / kimi.ai billing gateway
 
-    static func fetchWeb(token: String) async throws -> UsageSnapshot {
+    /// The Kimi Code console's own calls on www.kimi.com or www.kimi.ai,
+    /// signed in by the kimi-auth cookie.
+    static func fetchWeb(token: String, edition: KimiEdition, send: @escaping HTTPSend = HTTP.live) async throws -> UsageSnapshot {
+        let site = "https://www.\(edition.site)"
         let headers = [
             "Authorization": "Bearer \(token)",
             "Cookie": "kimi-auth=\(token)",
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "Origin": "https://www.kimi.com",
-            "Referer": "https://www.kimi.com/code/console",
+            "Origin": site,
+            "Referer": "\(site)/code/console",
             "connect-protocol-version": "1",
             "x-msh-platform": "web",
         ]
@@ -484,8 +772,8 @@ public struct KimiProvider: QuotaProvider {
             let ratelimitCode7d: RateLimit7d?
         }
 
-        let usagesURL = URL(string: "https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages")!
-        let usages = try await HTTP.post(usagesURL, headers: headers).requireOK().json(UsagesBody.self)
+        let usagesURL = URL(string: "\(site)/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages")!
+        let usages = try await send("POST", usagesURL, headers, Data("{}".utf8), 20).requireOK().json(UsagesBody.self)
 
         var windows: [UsageWindow] = []
         for usage in usages.usages ?? [] {
@@ -501,8 +789,8 @@ public struct KimiProvider: QuotaProvider {
                 resetsAt: reset))
         }
 
-        let statsURL = URL(string: "https://www.kimi.com/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats")!
-        if let stats = try? await HTTP.post(statsURL, headers: headers).requireOK().json(StatsBody.self) {
+        let statsURL = URL(string: "\(site)/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats")!
+        if let stats = try? await send("POST", statsURL, headers, Data("{}".utf8), 20).requireOK().json(StatsBody.self) {
             if let balance = stats.subscriptionBalance, let ratio = balance.amountUsedRatio {
                 windows.append(UsageWindow(
                     title: L10n.t("Subscription balance", "订阅余额"),

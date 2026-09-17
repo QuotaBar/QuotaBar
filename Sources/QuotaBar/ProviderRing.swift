@@ -335,11 +335,9 @@ struct ProviderCallout: View {
     }
 
     /// "Pro_plus" → "PRO PLUS", "pro" → "PRO". Providers spell their tiers
-    /// every way; the chip spells them one way.
+    /// every way; the chip spells them one way. The edition rides along.
     private var planChip: String? {
-        guard let raw = phase?.snapshot?.planName?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !raw.isEmpty
-        else { return nil }
+        guard let raw = phase?.snapshot?.chipLabel else { return nil }
         return raw.replacingOccurrences(of: "_", with: " ").uppercased()
     }
 
