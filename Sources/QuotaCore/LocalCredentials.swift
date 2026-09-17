@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Security
 
@@ -449,6 +450,11 @@ public enum LocalCredentials {
     /// Decodes a single string claim from a JWT payload without verifying the
     /// signature — this only reads a token the user's own app already trusts.
     static func jwtClaim(_ jwt: String, _ name: String) -> String? {
+        jwtPayload(jwt)?[name] as? String
+    }
+
+    /// The whole payload, for claims that are not strings (`exp`).
+    static func jwtPayload(_ jwt: String) -> [String: Any]? {
         let parts = jwt.split(separator: ".")
         guard parts.count >= 2 else { return nil }
         var payload = String(parts[1])
@@ -456,10 +462,139 @@ public enum LocalCredentials {
             .replacingOccurrences(of: "_", with: "/")
         // Restore base64 padding stripped by the JWT encoding.
         while payload.count % 4 != 0 { payload.append("=") }
-        guard let data = Data(base64Encoded: payload),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        guard let data = Data(base64Encoded: payload) else { return nil }
+        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    }
+
+    // MARK: Kimi Code (~/.kimi-code/credentials, written by the Kimi Code app and CLI)
+
+    /// The OAuth session the Kimi Code desktop app and the `kimi` CLI share.
+    public struct KimiCodeSession: Sendable, Equatable, CustomStringConvertible {
+        public let accessToken: String
+        /// From the file's `expires_at`, else the token's own `exp`.
+        public let expiresAt: Date?
+        /// The Code API the token was issued for, `…/coding/v1`.
+        public let baseURL: URL
+        /// Which file answered — a name, for `--credentials`.
+        public let fileName: String
+
+        /// A little early, so a token that runs out while the request is on
+        /// its way is not sent.
+        public static let expiryMargin: TimeInterval = 30
+
+        public func isExpired(now: Date = Date()) -> Bool {
+            guard let expiresAt else { return false }
+            return expiresAt.timeIntervalSince(now) <= Self.expiryMargin
+        }
+
+        public var usageURL: URL { baseURL.appendingPathComponent("usages") }
+
+        /// Everything but the token, so a log line or a failed assertion
+        /// cannot print it.
+        public var description: String {
+            "KimiCodeSession(\(fileName) → \(baseURL.host ?? "?"), expires \(expiresAt.map { "\($0)" } ?? "unknown"))"
+        }
+    }
+
+    /// The two Code API hosts: api.kimi.com for mainland China, api.kimi.ai
+    /// for everywhere else. A token is only ever sent to one of these.
+    static let kimiCodeBaseURLs = [
+        "https://api.kimi.com/coding/v1",
+        "https://api.kimi.ai/coding/v1",
+    ]
+    static let kimiCodeOAuthHosts = ["https://auth.kimi.com", "https://auth.kimi.ai"]
+
+    /// Kimi Code names the credential file after the hosts it signed in
+    /// against: `kimi-code` for the mainland pair, otherwise `kimi-code-env-`
+    /// and the first 16 hex digits of the SHA-256 of
+    /// `{"oauthHost":…,"baseUrl":…}` (`resolveKimiCodeOAuthKey` in its
+    /// `packages/oauth`). The global app signs in as `kimi-code-env-0e4f99c69cc27850`.
+    static func kimiCodeStorageName(oauthHost: String, baseURL: String) -> String {
+        if oauthHost == "https://auth.kimi.com", baseURL == "https://api.kimi.com/coding/v1" {
+            return "kimi-code"
+        }
+        // Built by hand to match JSON.stringify byte for byte: key order and
+        // unescaped slashes both matter to the hash.
+        let json = #"{"oauthHost":"\#(oauthHost)","baseUrl":"\#(baseURL)"}"#
+        let digest = SHA256.hash(data: Data(json.utf8)).map { String(format: "%02x", $0) }.joined()
+        return "kimi-code-env-" + digest.prefix(16)
+    }
+
+    /// Credential file name → the Code API it belongs to, for every pairing of
+    /// the known hosts. A file for any other host (set through Kimi Code's
+    /// environment overrides) is not read: there is no telling where its
+    /// token may be sent.
+    static let kimiCodeStorageNames: [String: URL] = {
+        var names: [String: URL] = [:]
+        for oauthHost in kimiCodeOAuthHosts {
+            for base in kimiCodeBaseURLs {
+                names[kimiCodeStorageName(oauthHost: oauthHost, baseURL: base)] = URL(string: base)!
+            }
+        }
+        return names
+    }()
+
+    /// The Kimi Code sign-in on this Mac, read afresh on every call so a token
+    /// Kimi Code renewed a minute ago is the one used.
+    ///
+    /// Kimi Code 0.3x and its desktop app keep the session in
+    /// `~/.kimi-code/credentials/<name>.json`; the older Python CLI kept it in
+    /// `~/.kimi/credentials/kimi-code.json`. Whichever runs out last is the
+    /// live one — a region switch or an upgrade leaves the other behind.
+    /// Only read: the access token lasts 15 minutes and Kimi Code renews it
+    /// when it needs it, rotating the refresh token as it goes. A renewal
+    /// from here would leave Kimi Code holding a dead refresh token, and its
+    /// next renewal would sign the owner out.
+    public static func kimiCodeSession() -> KimiCodeSession? {
+        kimiCodeSession(
+            codeHome: home.appendingPathComponent(".kimi-code"),
+            legacyHome: home.appendingPathComponent(".kimi"))
+    }
+
+    static func kimiCodeSession(codeHome: URL, legacyHome: URL) -> KimiCodeSession? {
+        var candidates: [KimiCodeSession] = []
+        let directory = codeHome.appendingPathComponent("credentials")
+        let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        // Sorted, so a tie on expiry is settled the same way every time.
+        for file in files.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) where file.pathExtension == "json" {
+            let stem = file.deletingPathExtension().lastPathComponent
+            guard let base = kimiCodeStorageNames[stem] else { continue }
+            if let session = kimiCodeSession(file: file, baseURL: base) { candidates.append(session) }
+        }
+        let legacy = legacyHome.appendingPathComponent("credentials/kimi-code.json")
+        if let session = kimiCodeSession(file: legacy, baseURL: URL(string: kimiCodeBaseURLs[0])!) {
+            candidates.append(session)
+        }
+        var best: KimiCodeSession?
+        for candidate in candidates
+            where best == nil || (candidate.expiresAt ?? .distantPast) > (best?.expiresAt ?? .distantPast)
+        {
+            best = candidate
+        }
+        return best
+    }
+
+    static func kimiCodeSession(file: URL, baseURL: URL) -> KimiCodeSession? {
+        guard let data = try? Data(contentsOf: file),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }
-        return object[name] as? String
+        return kimiCodeSession(in: root, baseURL: baseURL, fileName: file.lastPathComponent)
+    }
+
+    /// Pure. `{"access_token", "refresh_token", "expires_at", "scope",
+    /// "token_type", "expires_in"}`; `expires_at` is whole seconds from the
+    /// current apps and fractional from the Python CLI. After a refused
+    /// renewal Kimi Code blanks both tokens and zeroes the expiry — signed
+    /// out, so no session.
+    static func kimiCodeSession(in root: [String: Any], baseURL: URL, fileName: String) -> KimiCodeSession? {
+        guard let access = root["access_token"] as? String, !access.isEmpty else { return nil }
+        let fromFile = QwenProvider.number(root["expires_at"]).flatMap(Dates.parseEpoch)
+        let fromToken = jwtPayload(access).flatMap { QwenProvider.number($0["exp"]) }.flatMap(Dates.parseEpoch)
+        return KimiCodeSession(
+            accessToken: access,
+            expiresAt: fromFile ?? fromToken,
+            baseURL: baseURL,
+            fileName: fileName)
     }
 
     // MARK: Grok (~/.grok/auth.json written by the grok CLI)

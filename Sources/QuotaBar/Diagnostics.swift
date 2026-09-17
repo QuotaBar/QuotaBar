@@ -213,6 +213,16 @@ enum Diagnostics {
         out += "Claude   \(claude)\(plan)  (via \(route))\n"
         out += "Codex    \(LocalCredentials.codexAuth() == nil ? "missing" : "available")\n"
         out += "Gemini   \(LocalCredentials.geminiAccessToken() == nil ? "missing" : "available")\n"
+        if let kimi = LocalCredentials.kimiCodeSession() {
+            let expiry = kimi.expiresAt.map { date -> String in
+                let seconds = Int(date.timeIntervalSinceNow)
+                return seconds > 0 ? "\(seconds / 60)m \(seconds % 60)s left" : "\(-seconds / 60)m ago"
+            } ?? "no expiry"
+            let state = kimi.isExpired() ? "expired" : "available"
+            out += "Kimi     \(state) (\(expiry)) · \(kimi.fileName) → \(kimi.baseURL.host ?? "")\n"
+        } else {
+            out += "Kimi     missing\n"
+        }
         FileHandle.standardOutput.write(Data(out.utf8))
     }
 
@@ -353,6 +363,7 @@ enum Diagnostics {
         var out = "\(id.displayName)\n"
         if let snapshot = item.1 {
             out += "  plan: \(snapshot.planName ?? "—")\n"
+            if let account = snapshot.account { out += "  account: \(account)\n" }
             for window in snapshot.windows {
                 let used = window.usedPercent.map { QuotaFormat.percent($0) + " used" } ?? "—"
                 let reset = window.resetsAt.map { " · " + QuotaFormat.resetLabel(to: $0) } ?? ""

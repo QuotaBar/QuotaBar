@@ -647,7 +647,11 @@ Six ways a provider gets its credential, in order of preference:
    (`~/.local/share/opencode/auth.json`), Antigravity
    (`~/.gemini/jetski-standalone-oauth-token`, read only: the app refreshes it
    while it runs, and refreshing it here would need the app's own OAuth
-   client), read in the clear.
+   client), Kimi Code (`~/.kimi-code/credentials/<name>.json`, shared by the
+   Kimi Code app and the `kimi` CLI, with the older CLI's `~/.kimi` copy as a
+   fallback; read only: its access token lasts 15 minutes and Kimi Code renews
+   it while in use, rotating the refresh token, so a renewal here would sign
+   Kimi Code out), read in the clear.
 2. **Another app's keychain item** — Claude Code.
 3. **Another app's local session store** — Cursor keeps its signed-in session
    in `state.vscdb`, a plain SQLite file (`SQLiteRead`). Not the cookie jar,
@@ -658,7 +662,8 @@ Six ways a provider gets its credential, in order of preference:
 
 An automatic reader is always tried *after* a manually pasted credential, so a
 user can override a stale local session. A provider that has both an automatic
-reader and a manual fallback keeps its `credentialHint` non-nil.
+reader and a manual fallback keeps its `credentialHint` non-nil; Settings still
+calls it Auto while nothing is pasted (`UsageStore.signedInLocally`).
 
 There is no OAuth-in-app path: of the eleven providers only Google (Gemini)
 permits third-party client registration, and it is already covered by the CLI

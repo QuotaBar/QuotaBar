@@ -5,6 +5,16 @@
 
 ## 未发布
 
+### 2026-09-17
+
+#### 新增
+
+- Kimi Code 可以直接读取本机 Kimi Code 应用或 CLI（`kimi`）的登录，不用再粘贴 kimi-auth cookie。额度来自 Kimi Code 自己使用的用量接口，显示 5 小时和每周额度（套餐有月额度时一并显示）以及各自的重置时间。Kimi Code 保存的登录令牌只有 15 分钟有效，并且只在使用时续期；QuotaBar 只读取、不续期，以免把 Kimi Code 自己的登录挤掉，令牌过期时卡片会提示用一次 Kimi Code，不用重新登录。已在设置里粘贴过 kimi-auth cookie 的仍优先使用 cookie，清除后改为读取本机登录。
+
+#### 修复
+
+- 设置 → 服务商里，既能读取本机登录、也能手动粘贴凭据的服务商（Cursor、Grok、OpenCode Go、GitHub Copilot、Kimi Code），没有粘贴凭据、用的是本机登录时，状态显示「自动」，不再显示「钥匙串」。
+
 ### 2026-09-16
 
 #### 修复

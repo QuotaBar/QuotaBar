@@ -194,19 +194,206 @@ public struct CursorProvider: QuotaProvider {
     }
 }
 
-// MARK: - Kimi (kimi-auth cookie JWT → kimi.com gateway billing RPC)
+// MARK: - Kimi Code (Kimi Code's own sign-in → coding/v1/usages, or a kimi-auth cookie → kimi.com billing RPC)
 
 public struct KimiProvider: QuotaProvider {
     public let id = ProviderID.kimi
 
+    /// Two sources, decided the way Cursor, Grok and OpenCode Go decide: a
+    /// pasted kimi-auth cookie wins, because pasting one is a deliberate
+    /// override and clearing it goes back to the sign-in on this Mac.
+    /// Without one, the session the Kimi Code app and CLI share is read.
+    /// An expired session still counts as configured: the card then says how
+    /// to bring it back, rather than sending the owner to set up a sign-in
+    /// that is already there.
     public func isConfigured(config: ConfigStore) -> Bool {
-        config.credential(for: .kimi) != nil
+        config.credential(for: .kimi) != nil || LocalCredentials.kimiCodeSession() != nil
     }
 
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
-        guard let token = config.credential(for: .kimi) else {
+        if let token = config.credential(for: .kimi) {
+            return try await Self.fetchWeb(token: token)
+        }
+        guard let session = LocalCredentials.kimiCodeSession() else {
             throw ProviderError.notConfigured(hint: ProviderID.kimi.setupHint)
         }
+        return try await Self.fetchCode(session: session)
+    }
+
+    // MARK: Kimi Code session
+
+    /// `GET <base>/usages` with the access token — the call Kimi Code's own
+    /// usage panel makes, and all it sends.
+    static func fetchCode(session: LocalCredentials.KimiCodeSession, now: Date = Date()) async throws -> UsageSnapshot {
+        // Never renewed here; see `LocalCredentials.kimiCodeSession()`. The
+        // server allows no grace either: a token a minute past its expiry
+        // gets a 401, so asking would only turn a known answer into a vaguer one.
+        guard !session.isExpired(now: now) else {
+            throw ProviderError.sessionExpired(expiredSessionHint)
+        }
+        let response = try await HTTP.get(session.usageURL, headers: [
+            "Authorization": "Bearer \(session.accessToken)",
+            "Accept": "application/json",
+            "User-Agent": "QuotaBar",
+        ])
+        switch response.status {
+        case 401:
+            throw ProviderError.sessionExpired(rejectedSessionHint)
+        case 402, 403:
+            // Kimi Code's own panel offers the subscription page for these.
+            throw ProviderError.noPlan(L10n.t(
+                "Signed in to Kimi Code, but this account has no Kimi Code plan.",
+                "已登录 Kimi Code，但这个账号没有订阅 Kimi Code 套餐。"))
+        default:
+            return try parseCodeUsage(response.requireOK().data)
+        }
+    }
+
+    static var expiredSessionHint: String {
+        L10n.t(
+            "The sign-in token Kimi Code saved on this Mac has expired. It lasts 15 minutes, and Kimi Code renews it only while in use: use Kimi Code once, in the app or with `kimi`, and the quota shows again. No need to sign in again.",
+            "Kimi Code 在本机保存的登录令牌已过期。令牌只有 15 分钟有效，Kimi Code 只在使用时才续期：在应用里或用 `kimi` 用一次 Kimi Code，额度就会重新显示，不用重新登录。")
+    }
+
+    static var rejectedSessionHint: String {
+        L10n.t(
+            "Kimi turned down the sign-in token Kimi Code saved on this Mac. Use Kimi Code once so it renews the token; if it asks you to sign in, sign in again.",
+            "Kimi 拒绝了 Kimi Code 在本机保存的登录令牌。用一次 Kimi Code 让它续期；如果它要求登录，请重新登录。")
+    }
+
+    /// Pure. The live reply carries the same limits twice:
+    ///
+    ///     {"usage": {"limit": "100", "remaining": "100", "resetTime": "…"},
+    ///      "limits": [{"window": {"duration": 300, "timeUnit": "TIME_UNIT_MINUTE"},
+    ///                  "detail": {"limit": "100", "remaining": "100", "resetTime": "…"}}],
+    ///      "usages": {"limit_5h": {"used_ratio": 0, "reset_time": "…"},
+    ///                 "limit_7d": {"used_ratio": 0, "reset_time": "…"}}}
+    ///
+    /// `usages` holds the ratio pools the Kimi Code desktop app reads, and
+    /// they win wherever they are present and sane; `usage` (weekly) and
+    /// `limits` are the older counts, used for any window no pool covers.
+    /// Pools carry no counts, so their windows have no detail line. Following
+    /// CodexBar (#3697), `limit_month_total` is the monthly window and
+    /// `limit_month_code` — the Code share of that same pool — is left out.
+    public static func parseCodeUsage(_ data: Data) throws -> UsageSnapshot {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw ProviderError.badResponse
+        }
+        let pools = root["usages"] as? [String: Any] ?? [:]
+        var windows: [UsageWindow] = []
+        if let pool = ratioWindow(pools["limit_5h"], seconds: 18_000) { windows.append(pool) }
+        if let pool = ratioWindow(pools["limit_7d"], seconds: 604_800) {
+            windows.append(pool)
+        } else if let weekly = countWindow(root["usage"], title: WindowTitle.forSeconds(604_800), seconds: 604_800) {
+            windows.append(weekly)
+        }
+        if let pool = ratioWindow(pools["limit_month_total"], seconds: 2_592_000) { windows.append(pool) }
+
+        let covered = Set(windows.compactMap(\.windowSeconds))
+        for entry in root["limits"] as? [[String: Any]] ?? [] {
+            let seconds = windowSeconds(entry["window"])
+            if let seconds, covered.contains(seconds) { continue }
+            let named = ["name", "title", "scope"].lazy.compactMap { entry[$0] as? String }.first { !$0.isEmpty }
+            let title = seconds.map(WindowTitle.forSeconds) ?? named ?? L10n.t("Rate limit", "速率限制")
+            if let window = countWindow(entry["detail"] ?? entry, title: title, seconds: seconds) {
+                windows.append(window)
+            }
+        }
+        guard !windows.isEmpty else { throw ProviderError.badResponse }
+
+        // Shortest first, as the other providers list them.
+        let ordered = windows.enumerated()
+            .sorted { ($0.element.windowSeconds ?? .max, $0.offset) < ($1.element.windowSeconds ?? .max, $1.offset) }
+            .map(\.element)
+        return UsageSnapshot(planName: planName(root["user"], version: root["version"]), windows: ordered)
+    }
+
+    /// `{"used_ratio": 0.42, "reset_time": "…"}`. A missing, negative or
+    /// non-finite ratio gives nothing, so the older counts can stand in.
+    static func ratioWindow(_ raw: Any?, seconds: Int) -> UsageWindow? {
+        guard let pool = raw as? [String: Any],
+              let ratio = QwenProvider.number(pool["used_ratio"]), ratio.isFinite, ratio >= 0
+        else { return nil }
+        return UsageWindow(
+            title: WindowTitle.forSeconds(seconds),
+            usedPercent: min(ratio, 1) * 100,
+            resetsAt: date(pool["reset_time"]),
+            windowSeconds: seconds)
+    }
+
+    /// `{"limit": "100", "used": "12", "remaining": "88", "resetTime": "…"}`,
+    /// numbers as strings or not. `used` is taken as given — it may pass
+    /// `limit` — and otherwise worked out from `remaining`.
+    static func countWindow(_ raw: Any?, title: String, seconds: Int?) -> UsageWindow? {
+        guard let detail = raw as? [String: Any],
+              let limit = QwenProvider.number(detail["limit"]), limit > 0
+        else { return nil }
+        let used: Double
+        if let reported = QwenProvider.number(detail["used"]), reported >= 0 {
+            used = reported
+        } else if let remaining = QwenProvider.number(detail["remaining"]), remaining >= 0, remaining <= limit {
+            used = limit - remaining
+        } else {
+            return nil
+        }
+        let reset = ["resetTime", "resetAt", "reset_time", "reset_at"].lazy.compactMap { date(detail[$0]) }.first
+        return UsageWindow(
+            title: title,
+            usedPercent: used / limit * 100,
+            detail: "\(Int(used)) / \(Int(limit))",
+            resetsAt: reset,
+            windowSeconds: seconds)
+    }
+
+    /// `{"duration": 300, "timeUnit": "TIME_UNIT_MINUTE"}` in seconds.
+    static func windowSeconds(_ raw: Any?) -> Int? {
+        guard let window = raw as? [String: Any],
+              let duration = QwenProvider.number(window["duration"]), duration > 0
+        else { return nil }
+        let unit: Double
+        switch window["timeUnit"] as? String {
+        case "TIME_UNIT_MINUTE": unit = 60
+        case "TIME_UNIT_HOUR": unit = 3_600
+        case "TIME_UNIT_DAY": unit = 86_400
+        case "TIME_UNIT_WEEK": unit = 604_800
+        default: return nil
+        }
+        return Int(duration * unit)
+    }
+
+    /// `{"membership": {"level": "LEVEL_INTERMEDIATE"}}`. The first goods
+    /// version names its levels after tempos, as Kimi's plans are named
+    /// (mapping after CodexBar); a later version shows the level as sent.
+    static func planName(_ raw: Any?, version: Any?) -> String? {
+        guard let user = raw as? [String: Any],
+              let membership = user["membership"] as? [String: Any],
+              let level = (membership["level"] as? String)?.trimmingCharacters(in: .whitespaces),
+              !level.isEmpty, level != "LEVEL_UNSPECIFIED"
+        else { return nil }
+        let goods = version as? String
+        if goods == nil || goods == "GOODS_VERSION_V1" {
+            let tempos = [
+                "LEVEL_FREE": "Adagio",
+                "LEVEL_TRIAL": "Andante",
+                "LEVEL_BASIC": "Moderato",
+                "LEVEL_INTERMEDIATE": "Allegretto",
+                "LEVEL_ADVANCED": "Allegro",
+            ]
+            if let tempo = tempos[level] { return tempo }
+        }
+        let words = level.replacingOccurrences(of: "LEVEL_", with: "").split(separator: "_")
+        return words.map { $0.prefix(1).uppercased() + $0.dropFirst().lowercased() }.joined(separator: " ")
+    }
+
+    /// ISO 8601 with any number of fractional digits ("…33.809775Z"), or epoch.
+    static func date(_ value: Any?) -> Date? {
+        if let text = value as? String, let parsed = LocalCredentials.parseFlexibleISO(text) { return parsed }
+        return QwenProvider.number(value).flatMap(Dates.parseEpoch)
+    }
+
+    // MARK: kimi-auth cookie
+
+    static func fetchWeb(token: String) async throws -> UsageSnapshot {
         let headers = [
             "Authorization": "Bearer \(token)",
             "Cookie": "kimi-auth=\(token)",

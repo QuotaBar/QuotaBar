@@ -50,9 +50,22 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.8** (2026-09-16) · **2** changes in development · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.8** (2026-09-16) · **4** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-09-17</b> · Unreleased · 1 added · 1 fixed</summary>
+
+**Added**
+
+- Kimi Code reads the sign-in of the Kimi Code app or CLI (`kimi`) on this Mac, so there is no kimi-auth cookie to paste. The quota comes from the usage endpoint Kimi Code itself uses: the 5-hour and weekly limits, and the monthly one when the plan has it, each with its reset time. The token Kimi Code saves lasts 15 minutes and is renewed only while Kimi Code is in use; QuotaBar only reads it and never renews it, which would sign Kimi Code itself out, so once it has expired the card says to use Kimi Code once, with no need to sign in again. A kimi-auth cookie already pasted in Settings still comes first; clear it to use the sign-in on this Mac.
+
+**Fixed**
+
+- In Settings → Providers, providers that can read this Mac's own sign-in as well as take a pasted credential (Cursor, Grok, OpenCode Go, GitHub Copilot, Kimi Code) say Auto rather than Keychain when nothing is pasted and the sign-in on this Mac is what they use.
+
+</details>
+
+<details>
 <summary><b>2026-09-16</b> · Unreleased · 1 fixed · 1 removed</summary>
 
 **Fixed**
@@ -71,26 +84,6 @@ Latest release **0.5.8** (2026-09-16) · **2** changes in development · [full c
 **Fixed**
 
 - The update window cut off long release notes: it was a fixed 420pt tall, so a long list pushed the version title off the top and Later and Install and Relaunch off the bottom, and each change stopped at three lines with an ellipsis. The window now follows its content, every change shows in full, and a long list scrolls inside the window with the title and buttons always in view. An older build updating to this one still shows its old window; updates after this one use the new one.
-
-</details>
-
-<details>
-<summary><b>2026-09-16</b> · 0.5.7 · 2 added · 3 style · 1 fixed</summary>
-
-**Added**
-
-- The notch island and the edge dock can be on at the same time. Presentation used to offer one of menu bar only, island or dock, so turning the dock on turned the island off; now each has its own card and switch, both can be on, either, or neither, and the menu-bar item always stays. With both on, split your providers between them under What each place shows, say Claude and Codex on the island and Cursor and Gemini on the dock. Limit resets play on both. After updating, the choice you had carries over unchanged.
-- In the open island, press and drag sideways to turn the page: left for the next page, right for the one before. The content follows the pointer a little and turns once you let go far enough, so there is no need to aim at the small dots.
-
-**Style**
-
-- The edge dock's folded handle — its fill and its low-quota flash — follows only the providers shown on the dock, not ones kept on the island alone.
-- The island no longer opens the moment the pointer touches it: it opens after the pointer rests on it for half a second, or at once on a click, so passing over it on the way to the menu bar leaves it closed. Moving away from the open island still closes it.
-- The open island drops its Sparkline chart style: readings within one window change so little between refreshes that the line came out flat. Bar, Ring, Stepped and Numeric remain, and a Mac that had Sparkline picked switches to Stepped.
-
-**Fixed**
-
-- Antigravity read "login expired, open Antigravity once to refresh" from an hour after signing in, and opening or restarting Antigravity changed nothing: the sign-in token it saves is written once and never again. While Antigravity runs, the quota now comes from the app's own quota service on this Mac, with no token: Gemini, and Claude and GPT, each with its 5-hour and weekly limits, reset times and the plan. With Antigravity closed, the newer of the tokens it saved in the keychain and on disk is read. An expired token now says what is true: open Antigravity when it isn't running, or try again or restart it when it is. ([#4](https://github.com/gentpan/QuotaBar/issues/4))
 
 </details>
 
@@ -122,7 +115,7 @@ Latest release **0.5.8** (2026-09-16) · **2** changes in development · [full c
 | Antigravity | `~/.gemini/jetski-standalone-oauth-token` → `cloudcode-pa.googleapis.com` | automatic |
 | Cursor | Cursor's own `state.vscdb` session → `cursor.com/api/usage-summary` | automatic / manual |
 | OpenCode Go | `~/.local/share/opencode/auth.json` → `opencode.ai/zen/go/v1/usage` | automatic / manual |
-| Kimi Code | `kimi.com` billing gateway | manual `kimi-auth` JWT |
+| Kimi Code | Kimi Code app / CLI sign-in (`~/.kimi-code/credentials`) → `api.kimi.com` / `api.kimi.ai` `/coding/v1/usages`, or the `kimi.com` billing gateway with a `kimi-auth` JWT | automatic / manual |
 | z.ai | `api.z.ai/api/monitor/usage/quota/limit` | manual API key |
 | MiniMax | `api.minimax.io` coding-plan remains | manual token / cookie |
 | Manus | `api.manus.im` credits | manual session token |

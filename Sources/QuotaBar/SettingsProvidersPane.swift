@@ -227,7 +227,7 @@ struct ProviderSettingsRow: View {
         }
         if configured {
             return StatusPill(
-                text: isManual
+                text: isManual && !store.signedInLocally.contains(id)
                     ? L10n.t("Keychain", "钥匙串")
                     : L10n.t("Auto", "自动"),
                 tone: .ready)

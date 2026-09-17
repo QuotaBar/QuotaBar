@@ -49,9 +49,22 @@ Gatekeeper 可以直接打开。
 <!-- changelog:start -->
 <!-- 由 Scripts/sync_changelog.py 从 CHANGELOG.md 生成，请勿手改。 -->
 
-最新版本 **0.5.8**（2026-09-16） · 开发中 **2** 项改动尚未发布 · [完整更新日志](CHANGELOG.md)
+最新版本 **0.5.8**（2026-09-16） · 开发中 **4** 项改动尚未发布 · [完整更新日志](CHANGELOG.md)
 
 <details open>
+<summary><b>2026-09-17</b> · 未发布 · 新增 1 · 修复 1</summary>
+
+**新增**
+
+- Kimi Code 可以直接读取本机 Kimi Code 应用或 CLI（`kimi`）的登录，不用再粘贴 kimi-auth cookie。额度来自 Kimi Code 自己使用的用量接口，显示 5 小时和每周额度（套餐有月额度时一并显示）以及各自的重置时间。Kimi Code 保存的登录令牌只有 15 分钟有效，并且只在使用时续期；QuotaBar 只读取、不续期，以免把 Kimi Code 自己的登录挤掉，令牌过期时卡片会提示用一次 Kimi Code，不用重新登录。已在设置里粘贴过 kimi-auth cookie 的仍优先使用 cookie，清除后改为读取本机登录。
+
+**修复**
+
+- 设置 → 服务商里，既能读取本机登录、也能手动粘贴凭据的服务商（Cursor、Grok、OpenCode Go、GitHub Copilot、Kimi Code），没有粘贴凭据、用的是本机登录时，状态显示「自动」，不再显示「钥匙串」。
+
+</details>
+
+<details>
 <summary><b>2026-09-16</b> · 未发布 · 修复 1 · 删除 1</summary>
 
 **修复**
@@ -70,26 +83,6 @@ Gatekeeper 可以直接打开。
 **修复**
 
 - 更新窗口在更新内容较多时显示不全：窗口固定 420pt 高，内容一长，顶部的版本标题和底部的「稍后」「安装并重启」按钮都被裁掉，每条更新也只显示 3 行、后面变成省略号。现在窗口高度跟随内容，每条更新完整显示，列表超过一定高度时在窗口内滚动，标题和按钮始终可见。旧版本升级到这一版时看到的仍是旧窗口，从这一版开始往后的更新才会用新窗口。
-
-</details>
-
-<details>
-<summary><b>2026-09-16</b> · 0.5.7 · 新增 2 · 样式 3 · 修复 1</summary>
-
-**新增**
-
-- 刘海岛和边缘停靠条可以同时打开。以前「展示方式」里只能在仅菜单栏、刘海岛、边缘停靠三者中选一个，开了停靠条刘海岛就会关掉；现在两者各有一张卡片和自己的开关，可以都开、只开一个或都关，菜单栏图标始终保留。两个都开时，在「各处显示的服务商」里把服务商分开放，比如刘海岛放 Claude、Codex，停靠条放 Cursor、Gemini。额度重置动画两边都会播放。升级后沿用原来的选择，看到的和之前一样。
-- 刘海岛展开后，可以按住鼠标左右拖动来翻页：往左拖到下一页，往右拖回上一页，面板内容会先跟着鼠标稍微移动，松手时拖动距离够了就翻页，不用再去点底部的小圆点。
-
-**样式**
-
-- 边缘停靠条收起时的把手（进度和低额度闪烁）只看停靠条上显示的服务商，不再受只放在刘海岛上的服务商影响。
-- 刘海岛不再一碰到鼠标就展开：鼠标在收起的刘海岛上停留 0.5 秒才展开，单击则立即展开；鼠标只是路过（比如去点旁边的菜单栏）不会再让它忽大忽小。展开后移开鼠标照常收起。
-- 刘海岛展开面板去掉「趋势线」图表样式：同一个额度窗口里的刷新记录变化很小，画出来几乎是一条平线，看不出区别。现在剩条形、圆环、阶梯、数字四种；之前选了趋势线的会自动改用阶梯。
-
-**修复**
-
-- Antigravity 卡片登录一小时后就一直显示「登录已过期，打开一次 Antigravity 就会刷新」，打开或重启 Antigravity 也没用：它保存的登录令牌只在登录时写一次，之后不再更新。现在 Antigravity 运行时直接向它本机的额度服务读取，不需要令牌，显示 Gemini 和 Claude and GPT 两组各自的 5 小时和每周额度、重置时间以及套餐；Antigravity 没开时读它保存在钥匙串或文件里较新的那份令牌。令牌过期时如实说明：Antigravity 没运行就提示打开它，正在运行但读不到就提示稍后再试或重启。（[#4](https://github.com/gentpan/QuotaBar/issues/4)）
 
 </details>
 
@@ -121,7 +114,7 @@ Gatekeeper 可以直接打开。
 | Antigravity | `~/.gemini/jetski-standalone-oauth-token` → `cloudcode-pa.googleapis.com` | 自动 |
 | Cursor | Cursor 自己的 `state.vscdb` 会话 → `cursor.com/api/usage-summary` | 自动 / 手动 |
 | OpenCode Go | `~/.local/share/opencode/auth.json` → `opencode.ai/zen/go/v1/usage` | 自动 / 手动 |
-| Kimi Code | `kimi.com` 计费网关 | 手动填写 `kimi-auth` JWT |
+| Kimi Code | Kimi Code 应用 / CLI 登录（`~/.kimi-code/credentials`）→ `api.kimi.com` / `api.kimi.ai` `/coding/v1/usages`，或用 `kimi-auth` JWT 读 `kimi.com` 计费网关 | 自动 / 手动 |
 | z.ai | `api.z.ai/api/monitor/usage/quota/limit` | 手动填写 API Key |
 | MiniMax | `api.minimax.io` 编码套餐余量 | 手动填写 token / Cookie |
 | Manus | `api.manus.im` 额度 | 手动填写会话 token |

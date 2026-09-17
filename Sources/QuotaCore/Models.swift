@@ -434,8 +434,8 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
                 "已登录 Cursor.app 时自动读取；否则粘贴 WorkosCursorSessionToken cookie（开发者工具 → 应用 → Cookie → cursor.com）。")
         case .kimi:
             return L10n.t(
-                "kimi-auth cookie JWT (DevTools → Application → Cookies → kimi.com).",
-                "kimi-auth cookie 的 JWT（开发者工具 → 应用 → Cookie → kimi.com）。")
+                "Automatic if the Kimi Code app or CLI (`kimi`) is signed in. Otherwise paste the kimi-auth cookie JWT (DevTools → Application → Cookies → kimi.com).",
+                "已登录 Kimi Code 应用或 CLI（`kimi`）时自动读取；否则粘贴 kimi-auth cookie 的 JWT（开发者工具 → 应用 → Cookie → kimi.com）。")
         case .zai:
             return L10n.t("API key (z.ai → API Keys).", "API Key（z.ai → API Keys）。")
         case .opencodeGo:
@@ -505,6 +505,9 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
         case .copilot: return L10n.t(
             "Sign in with the GitHub CLI (`gh auth login`), or paste a token in Settings.",
             "用 GitHub CLI 登录（`gh auth login`），或在设置里粘贴 token。")
+        case .kimi: return L10n.t(
+            "Sign in to the Kimi Code app or CLI (`kimi`), or paste a kimi-auth cookie in Settings.",
+            "登录 Kimi Code 应用或 CLI（`kimi`），或在设置里粘贴 kimi-auth cookie。")
         default: return credentialHint ?? ""
         }
     }
@@ -848,10 +851,16 @@ public enum ProviderError: LocalizedError, Sendable {
     /// Signed in, and the account simply has no plan to read — said as it
     /// is, not as an expired session or a reply that would not parse.
     case noPlan(String)
+    /// A sign-in another app owns and renews has run out, or was turned
+    /// down, said with what brings it back — usually using that app once,
+    /// not signing in again, which is what `.unauthorized` tells people.
+    case sessionExpired(String)
 
     public var errorDescription: String? {
         switch self {
         case let .noPlan(message):
+            return message
+        case let .sessionExpired(message):
             return message
         case let .notConfigured(hint):
             return L10n.t("Not configured. \(hint)", "尚未配置。\(hint)")

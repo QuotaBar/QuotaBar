@@ -101,6 +101,10 @@ final class UsageStore: ObservableObject {
     /// while macOS asks the user to authorize access — never do that in a
     /// SwiftUI `body`.
     @Published var configured: Set<ProviderID> = []
+    /// The configured providers that take a pasted credential but have none,
+    /// so are answering from this Mac's own sign-in — the Kimi Code app,
+    /// Cursor.app, the grok CLI. Settings says "Auto" for these, not "Keychain".
+    @Published var signedInLocally: Set<ProviderID> = []
 
     /// Latest reading of each provider's public status page, for the ones
     /// that have one. Absent until the page has answered once; a failed poll
@@ -540,15 +544,19 @@ final class UsageStore: ObservableObject {
     /// Re-evaluates which providers have usable credentials.
     func refreshConfigured() {
         Task { [config] in
-            let (ready, claudeWaiting) = await Task.detached(priority: .utility) {
+            let (ready, local, claudeWaiting) = await Task.detached(priority: .utility) {
                 let ready = Set(ProviderID.allCases.filter {
                     ProviderRegistry.make($0).isConfigured(config: config)
                 })
+                // `isConfigured` has just read these credentials, so this is
+                // answered from the memo, not the keychain.
+                let local = ready.filter { $0.credentialHint != nil && config.credential(for: $0) == nil }
                 // Non-interactive, like every keychain read off a timer.
                 let waiting = LocalCredentials.claudeCredentialState() == .needsAuthorization
-                return (ready, waiting)
+                return (ready, local, waiting)
             }.value
             self.configured = ready
+            self.signedInLocally = local
             self.claudeNeedsAuthorization = claudeWaiting
         }
     }
