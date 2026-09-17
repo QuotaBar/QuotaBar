@@ -207,7 +207,13 @@ enum Diagnostics {
     /// the two reads. Never the secret.
     static func printCredentials() {
         var out = ""
-        let claude = LocalCredentials.claudeCredentialState()
+        let claude: String
+        switch LocalCredentials.claudeCredentialState() {
+        case .available: claude = "available"
+        case .needsAuthorization: claude = "needs authorization (press Allow keychain access in Settings)"
+        case .signedOut: claude = "signed out (item present, OAuth tokens empty; run `claude`, then /login)"
+        case .missing: claude = "missing"
+        }
         let route = LocalCredentials.claudeCredentialRoute().rawValue
         let plan = LocalCredentials.claudePlanName().map { " · \($0)" } ?? ""
         out += "Claude   \(claude)\(plan)  (via \(route))\n"

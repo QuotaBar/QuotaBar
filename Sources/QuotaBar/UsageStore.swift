@@ -32,10 +32,16 @@ enum ProviderPhase: Sendable {
 final class UsageStore: ObservableObject {
     @Published var enabled: [ProviderID]
     @Published var states: [ProviderID: ProviderPhase] = [:]
+    /// What the last quiet read of Claude Code's keychain item found. nil
+    /// until the first one is back.
+    @Published private(set) var claudeCredential: LocalCredentials.ClaudeCredentialState?
     /// Claude Code's session lives in another app's keychain item, and macOS
     /// wants the user's say-so before this app may read it. True while that
     /// is outstanding; the panel and the settings row show the button then.
-    @Published private(set) var claudeNeedsAuthorization = false
+    var claudeNeedsAuthorization: Bool { claudeCredential == .needsAuthorization }
+    /// The item is there with its tokens blanked: Claude Code signed out on
+    /// this Mac, and the settings row says so rather than "no sign-in found".
+    var claudeSignedOut: Bool { claudeCredential == .signedOut }
     /// Persisted, because it decides what the menu-bar glyph reports — a
     /// choice that silently reverted on every launch would make the icon
     /// change meaning without the user doing anything.
@@ -135,6 +141,10 @@ final class UsageStore: ObservableObject {
     @Published var lastRefreshAt: Date?
     /// The footer's refresh-everything is running.
     @Published var isForceRefreshing = false
+    /// What the last refresh-everything came to, for a moment after it
+    /// finished; nil the rest of the time.
+    @Published var refreshOutcome: RefreshOutcome?
+    private var refreshOutcomeTask: Task<Void, Never>?
     /// True while something is capturing the screen and the owner asked for
     /// usage to be hidden then.
     @Published var isPrivacyMasked = false
@@ -178,9 +188,11 @@ final class UsageStore: ObservableObject {
         states: [ProviderID: ProviderPhase],
         cost: CostSummary = .empty,
         ledger: UsageLedger = .empty,
-        history: [ProviderID: [Double]] = [:]) -> UsageStore
+        history: [ProviderID: [Double]] = [:],
+        claudeCredential: LocalCredentials.ClaudeCredentialState? = nil) -> UsageStore
     {
         let store = UsageStore(inert: true)
+        store.claudeCredential = claudeCredential
         store.enabled = enabled
         store.reported = states.compactMapValues(\.snapshot)
         store.states = states
@@ -360,9 +372,17 @@ final class UsageStore: ObservableObject {
     /// credentials read afresh, the status pages, and the logs — the lot,
     /// not the one card a card's own button refreshes. The automatic timer
     /// starts over from here.
+    ///
+    /// The spinner stays up for `RefreshOutcome.minimumSpin` at least, and
+    /// the outcome — all up to date, or how many still are not — then sits
+    /// in the island's sync note for a moment: reads that fail at once came
+    /// back before the spinner could be seen, and the click read as nothing.
     func forceRefreshAll() {
         guard !isForceRefreshing else { return }
         isForceRefreshing = true
+        refreshOutcomeTask?.cancel()
+        refreshOutcome = nil
+        let started = Date()
         config.invalidateCredentialCache()
         LocalCredentials.invalidateClaudeToken()
         startAutoRefresh()
@@ -371,8 +391,22 @@ final class UsageStore: ObservableObject {
             async let status: Void = refreshServiceStatus()
             async let logs: Void = refreshCostNow()
             _ = await (providers, status, logs)
+            let remaining = RefreshOutcome.remainingSpin(elapsed: Date().timeIntervalSince(started))
+            if remaining > 0 { try? await Task.sleep(for: .seconds(remaining)) }
             isForceRefreshing = false
             tick &+= 1
+            showRefreshOutcome(RefreshOutcome(failing: failingProviders.count))
+        }
+    }
+
+    /// Holds the outcome for `RefreshOutcome.holdSeconds`, then clears it.
+    private func showRefreshOutcome(_ outcome: RefreshOutcome) {
+        refreshOutcomeTask?.cancel()
+        refreshOutcome = outcome
+        refreshOutcomeTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(RefreshOutcome.holdSeconds))
+            guard !Task.isCancelled else { return }
+            self?.refreshOutcome = nil
         }
     }
 
@@ -546,7 +580,7 @@ final class UsageStore: ObservableObject {
     /// Re-evaluates which providers have usable credentials.
     func refreshConfigured() {
         Task { [config] in
-            let (ready, local, claudeWaiting) = await Task.detached(priority: .utility) {
+            let (ready, local, claude) = await Task.detached(priority: .utility) {
                 let ready = Set(ProviderID.allCases.filter {
                     ProviderRegistry.make($0).isConfigured(config: config)
                 })
@@ -554,12 +588,12 @@ final class UsageStore: ObservableObject {
                 // answered from the memo, not the keychain.
                 let local = ready.filter { $0.credentialHint != nil && config.credential(for: $0) == nil }
                 // Non-interactive, like every keychain read off a timer.
-                let waiting = LocalCredentials.claudeCredentialState() == .needsAuthorization
-                return (ready, local, waiting)
+                let claude = LocalCredentials.claudeCredentialState()
+                return (ready, local, claude)
             }.value
             self.configured = ready
             self.signedInLocally = local
-            self.claudeNeedsAuthorization = claudeWaiting
+            self.claudeCredential = claude
         }
     }
 

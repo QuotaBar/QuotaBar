@@ -706,8 +706,9 @@ struct EdgeDockView: View {
         let index = id.flatMap { store.dockProviders.firstIndex(of: $0) }
         let isDetail = id != nil && detail == id
         // Everything that changes the card's height: its data (the tick moves
-        // on every refresh), the preferences, the bar style.
-        let sizeKey = id.map { "\($0.rawValue)|\(isDetail)|\(store.tick)|\(store.experienceRevision)|\(store.meterStyle.rawValue)|\(store.serviceStatus[$0]?.level.rawValue ?? "")" }
+        // on every refresh), the preferences, the bar style, and the reason
+        // a stale reading's note gives.
+        let sizeKey = id.map { "\($0.rawValue)|\(isDetail)|\(store.tick)|\(store.experienceRevision)|\(store.meterStyle.rawValue)|\(store.serviceStatus[$0]?.level.rawValue ?? "")|\(store.states[$0]?.errorMessage ?? "")" }
         coordinator.showCallout(
             at: index,
             total: store.dockProviders.count,

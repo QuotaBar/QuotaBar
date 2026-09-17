@@ -319,12 +319,7 @@ public struct ClaudeProvider: QuotaProvider {
 
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
         guard let token = LocalCredentials.claudeOAuthToken() else {
-            // Two different situations behind one nil: no session at all, or
-            // a session macOS will not hand over until the user says so.
-            if LocalCredentials.claudeCredentialState() == .needsAuthorization {
-                throw ProviderError.needsAuthorization(hint: LocalCredentials.claudeAuthorizationHint)
-            }
-            throw ProviderError.notConfigured(hint: ProviderID.claude.setupHint)
+            throw Self.credentialError(for: LocalCredentials.claudeCredentialState())
         }
         let headers = [
             "Authorization": "Bearer \(token)",
@@ -341,6 +336,20 @@ public struct ClaudeProvider: QuotaProvider {
         // the extra request happens once per sign-in, not once per minute.
         snapshot.account = await Self.profileEmail(headers: headers, token: token)
         return snapshot
+    }
+
+    /// Three situations behind a missing token, each said as it is: no
+    /// session at all, a session Claude Code signed out of, or a session
+    /// macOS will not hand over until the user says so. Pure, for the tests.
+    static func credentialError(for state: LocalCredentials.ClaudeCredentialState) -> ProviderError {
+        switch state {
+        case .needsAuthorization:
+            return .needsAuthorization(hint: LocalCredentials.claudeAuthorizationHint)
+        case .signedOut:
+            return .sessionExpired(LocalCredentials.claudeSignedOutHint)
+        case .available, .missing:
+            return .notConfigured(hint: ProviderID.claude.setupHint)
+        }
     }
 
     // MARK: Profile

@@ -234,6 +234,9 @@ struct QuotaRowView: View {
             style: store.meterStyle,
             height: compact ? 4 : 5)
             .paceTick(window, mode: store.meterMode, always: experience.alwaysShowPace)
+            // An older reading standing in for one that failed: the bar is
+            // dimmed, as on the island, so it is not taken for today's.
+            .opacity(store.states[id]?.staleReading != nil ? 0.45 : 1)
             .help(projectionHelp)
             .animation(Motion.animation(.easeOut(duration: 0.3)), value: shown)
     }
@@ -299,9 +302,13 @@ struct QuotaRowView: View {
                 to: resetsAt,
                 format: experience.resetTimeFormat == .countdown ? .exact : .countdown,
                 clock: experience.clockStyle)
+            // Reset time passed on a reading that is not updating: the
+            // figure is the window that ended, so the line says so in the
+            // not-updating amber rather than reading as current.
+            let lapsed = store.states[id]?.staleReading != nil && StaleReading.resetLapsed(resetsAt)
             Text(store.resetText(resetsAt))
                 .font(.system(size: 11))
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(lapsed ? Palette.amber : .white.opacity(0.5))
                 .lineLimit(1)
                 .contentShape(Rectangle())
                 .onTapGesture { store.toggleResetFormat() }
@@ -579,6 +586,82 @@ struct CountUpMoney: View {
 
     private func format(_ value: Double) -> String {
         compact ? QuotaFormat.moneyCompact(value) : QuotaFormat.money(value)
+    }
+}
+
+// MARK: - Not updating
+
+extension ProviderPhase {
+    /// The reading on show and why it was not replaced, while the last
+    /// refresh failed and an older reading is still standing in.
+    var staleReading: (snapshot: UsageSnapshot, reason: String)? {
+        if case let .stale(snapshot, error) = self { return (snapshot, error) }
+        return nil
+    }
+}
+
+/// "● 未能更新", where a provider's service status sits: the amber of the
+/// sync note that counts these, so the two read as one thing. The tooltip
+/// says why and how old the numbers are; a click opens the provider's
+/// settings, where it signs in.
+struct NotUpdatingBadge: View {
+    let id: ProviderID
+    let reason: String
+    let fetchedAt: Date
+    var size: CGFloat = 10
+
+    var body: some View {
+        HStack(spacing: Design.space1) {
+            Circle()
+                .fill(Palette.amber)
+                .frame(width: 6, height: 6)
+            Text(StaleReading.label)
+                .font(.system(size: size, weight: .medium))
+                .foregroundStyle(Palette.amber)
+                .lineLimit(1)
+                .fixedSize()
+        }
+        .contentShape(Rectangle())
+        // A tap, not a `Button`: the island and the dock are panels that are
+        // never key. The menu panel closes first, as its other ways to
+        // Settings do, rather than sitting over the window it opened.
+        .onTapGesture {
+            MenuPanelController.shared.close()
+            SettingsWindow.open(provider: id)
+        }
+        .help(StaleReading.help(reason: reason, fetchedAt: fetchedAt)
+            + "\n" + L10n.t("Click to open its settings.", "点击打开它的设置。"))
+        .accessibilityLabel("\(StaleReading.label): \(reason)")
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
+/// Over a stale reading's windows: how old the numbers are, and why the
+/// refresh that should have replaced them failed.
+struct StaleReadingNote: View {
+    let reason: String
+    let fetchedAt: Date
+    var lines = 2
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 9))
+                .foregroundStyle(Palette.amber)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(StaleReading.note(fetchedAt: fetchedAt))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.7))
+                if !reason.isEmpty {
+                    Text(reason)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.45))
+                        .lineLimit(lines)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .help(StaleReading.help(reason: reason, fetchedAt: fetchedAt))
     }
 }
 

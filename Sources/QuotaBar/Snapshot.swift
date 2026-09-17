@@ -265,6 +265,130 @@ enum Snapshot {
         .frame(width: IslandPanelLayout.width(notchWidth: notch.notchWidth), height: IslandPanelLayout.height(rows: rows, notch: notch.height))
         .environment(\.colorScheme, .dark)
         render(twoTools, to: url, name: "island-overview-two-tools", backing: Color(hex: "D8D8D8"))
+
+        notUpdatingPreview(directory: url, notch: notch, shape: shape)
+    }
+
+    /// Providers that are not updating, as the island, the menu card, the
+    /// dock's card and the settings row show them, in both languages.
+    /// Dated from the real clock: how old a reading is and whether a reset
+    /// has passed are read against it.
+    private static func failingStates(extra: Int = 0) -> [ProviderID: ProviderPhase] {
+        let now = Date()
+        var states: [ProviderID: ProviderPhase] = [
+            .codex: .loaded(UsageSnapshot(
+                planName: "Pro 20x",
+                windows: [
+                    UsageWindow(
+                        title: WindowTitle.forSeconds(604_800),
+                        usedPercent: 100,
+                        resetsAt: now.addingTimeInterval(2 * 86_400 + 5 * 3600),
+                        isActive: true,
+                        windowSeconds: 604_800),
+                ],
+                fetchedAt: now.addingTimeInterval(-120))),
+            // Signed out three hours ago: the last reading stands in, and
+            // its 5-hour window has reset since.
+            .claude: .stale(UsageSnapshot(
+                planName: "Max 20x",
+                windows: [
+                    UsageWindow(
+                        title: WindowTitle.forSeconds(18_000),
+                        usedPercent: 25,
+                        resetsAt: now.addingTimeInterval(-40 * 60),
+                        isActive: true,
+                        windowSeconds: 18_000),
+                    UsageWindow(
+                        title: WindowTitle.forSeconds(604_800),
+                        usedPercent: 40,
+                        resetsAt: now.addingTimeInterval(3 * 86_400),
+                        windowSeconds: 604_800),
+                ],
+                fetchedAt: now.addingTimeInterval(-3 * 3600)),
+                error: ProviderError.sessionExpired(LocalCredentials.claudeSignedOutHint).errorDescription ?? ""),
+            .antigravity: .failed(ProviderError.notConfigured(hint: L10n.t(
+                "Antigravity isn't running, and the sign-in token it saved has expired. Open Antigravity and the quota shows again; no need to sign in.",
+                "Antigravity 没有运行，保存的登录令牌也已过期。打开 Antigravity 就能重新读到额度，不用重新登录。")).errorDescription ?? ""),
+            .moonshot: .failed(ProviderError.notConfigured(hint: ProviderID.moonshot.setupHint).errorDescription ?? ""),
+        ]
+        for id in [ProviderID.deepseek, .openrouter, .qwen].prefix(extra) {
+            states[id] = .failed(ProviderError.unauthorized.errorDescription ?? "")
+        }
+        return states
+    }
+
+    private static func failingStore(extra: Int = 0, recovered: Bool = false) -> UsageStore {
+        var states = failingStates(extra: extra)
+        var enabled: [ProviderID] = [.codex, .claude, .antigravity, .moonshot]
+        enabled += [ProviderID.deepseek, .openrouter, .qwen].prefix(extra)
+        if recovered {
+            // Everything read: the reading Claude had, current again.
+            states[.claude] = states[.claude]?.snapshot.map { .loaded($0) }
+            enabled = [.codex, .claude]
+        }
+        let store = UsageStore.preview(enabled: enabled, states: states, claudeCredential: recovered ? .available : .signedOut)
+        for id in [ProviderID.codex, .claude] {
+            store.serviceStatus[id] = ServiceStatus(
+                level: .operational,
+                description: "",
+                pageURL: URL(string: id == .codex ? "https://status.openai.com" : "https://status.anthropic.com")!,
+                checkedAt: Date())
+        }
+        return store
+    }
+
+    private static func notUpdatingPreview(directory url: URL, notch: IslandCoordinator.NotchMetrics, shape: UnevenRoundedRectangle) {
+        let backing = Color(hex: "D8D8D8")
+        let chart = ConfigStore.shared.experience.islandChart
+        func island(_ store: UsageStore, list: Bool = false) -> some View {
+            let bridge = IslandCoordinator.Bridge()
+            store.experience.islandChart = chart
+            let rows = min(store.islandSlots, max(1, store.islandProviders.count))
+            return ZStack(alignment: .top) {
+                shape.fill(Color.black)
+                IslandPanel(store: store, notch: notch, bridge: bridge, showsFailures: list)
+            }
+            .frame(
+                width: IslandPanelLayout.width(notchWidth: notch.notchWidth),
+                height: IslandPanelLayout.height(rows: rows, notch: notch.height))
+            .environment(\.colorScheme, .dark)
+        }
+        for language in [L10n.Language.zhHans, .en] {
+            L10n.override = language
+            let suffix = language == .en ? "en" : "zh"
+            render(island(failingStore()), to: url, name: "island-not-updating-\(suffix)", backing: backing)
+            render(island(failingStore(), list: true), to: url, name: "island-not-updating-list-\(suffix)", backing: backing)
+            // More than the room above the footer holds.
+            render(island(failingStore(extra: 3), list: true), to: url, name: "island-not-updating-list-crowded-\(suffix)", backing: backing)
+            let refreshing = failingStore()
+            refreshing.isForceRefreshing = true
+            render(island(refreshing), to: url, name: "island-refreshing-\(suffix)", backing: backing)
+            let stillFailing = failingStore()
+            stillFailing.refreshOutcome = RefreshOutcome(failing: stillFailing.failingProviders.count)
+            render(island(stillFailing), to: url, name: "island-refreshed-not-updating-\(suffix)", backing: backing)
+            let recovered = failingStore(recovered: true)
+            recovered.refreshOutcome = .allUpToDate
+            render(island(recovered), to: url, name: "island-refreshed-all-up-to-date-\(suffix)", backing: backing)
+
+            let card = ProviderCardView(store: failingStore(), id: .claude)
+                .frame(width: 340)
+                .padding(12)
+                .background(Color(white: 0.06))
+                .environment(\.colorScheme, .dark)
+            render(card, to: url, name: "panel-card-not-updating-\(suffix)", backing: Color(white: 0.06))
+            let callout = ProviderCallout(store: failingStore(), id: .claude)
+                .padding(20)
+                .environment(\.colorScheme, .dark)
+            render(callout, to: url, name: "dock-callout-not-updating-\(suffix)", backing: Color(hex: "3A4A5A"))
+            write(
+                ProviderSettingsRow(store: failingStore(), id: .claude, isExpanded: false, onToggle: {})
+                    .environment(\.glassDisabled, true)
+                    .frame(width: 620)
+                    .padding(Design.space4),
+                to: url,
+                name: "settings-row-claude-signed-out-\(suffix)")
+        }
+        L10n.override = ConfigStore.shared.language
     }
 
     /// Renders every menu-bar style across a range of levels, so a style can

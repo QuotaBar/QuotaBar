@@ -202,7 +202,8 @@ struct ProviderCallout: View {
                 }
             }
             let account = phase?.snapshot?.account.flatMap { $0.isEmpty ? nil : $0 }
-            if account != nil || status != nil {
+            let stale = phase?.staleReading
+            if account != nil || status != nil || stale != nil {
                 HStack(spacing: Design.space2) {
                     if let account {
                         Text(account)
@@ -214,6 +215,11 @@ struct ProviderCallout: View {
                     Spacer(minLength: 0)
                     if let status {
                         ServiceStatusBadge(status: status, size: 10, ink: .white.opacity(0.55))
+                    }
+                    // Next to the page's reading: the service may be fine
+                    // while this provider's own reading is hours old.
+                    if let stale {
+                        NotUpdatingBadge(id: id, reason: stale.reason, fetchedAt: stale.snapshot.fetchedAt)
                     }
                 }
             }
@@ -236,6 +242,9 @@ struct ProviderCallout: View {
                 .fixedSize(horizontal: false, vertical: true)
         case let .loaded(snapshot), let .stale(snapshot, _):
             VStack(alignment: .leading, spacing: Design.space3) {
+                if let reason = phase?.errorMessage {
+                    StaleReadingNote(reason: reason, fetchedAt: snapshot.fetchedAt)
+                }
                 // A prepaid account draws its balance and spend; the
                 // figure-only windows standing for it would be empty bars.
                 let represented = snapshot.balance?.representedWindowIDs ?? []

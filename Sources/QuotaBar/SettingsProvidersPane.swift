@@ -76,9 +76,23 @@ struct ProvidersPane: View {
                         // the next thing seen is how to sign in, not a
                         // spinner that ends in an error.
                         onEnabledUnconfigured: { expanded = id })
+                        .id(SettingsWindow.anchor(for: id))
                 }
             }
+            // Another surface asked for a provider — the island's list of
+            // what is not updating: its row, open, whatever the filter hid.
+            .onAppear { takeRequestedProvider() }
+            .onReceive(NotificationCenter.default.publisher(for: SettingsWindow.showProvider)) { _ in
+                takeRequestedProvider()
+            }
         }
+    }
+
+    private func takeRequestedProvider() {
+        guard let wanted = SettingsWindow.requestedProvider else { return }
+        SettingsWindow.requestedProvider = nil
+        if !visible.contains(wanted) { filter = .all }
+        expanded = wanted
     }
 
     private var summary: String {
@@ -232,6 +246,9 @@ struct ProviderSettingsRow: View {
                     : L10n.t("Auto", "自动"),
                 tone: .ready)
         }
+        if id == .claude, store.claudeSignedOut {
+            return StatusPill(text: L10n.t("Sign in", "需登录"), tone: .attention)
+        }
         return StatusPill(text: L10n.t("Set up", "待配置"), tone: .attention)
     }
 
@@ -328,8 +345,13 @@ private struct CredentialEditor: View {
                                      "本机没有找到登录信息。可在下方用浏览器登录，或粘贴凭据。")
                             : L10n.t("No sign-in found on this Mac. Paste the credential below.",
                                      "本机没有找到登录信息。请在下方粘贴凭据。"))
-                        : L10n.t("No sign-in found on this Mac. \(id.setupHint)",
-                                 "本机没有找到登录信息。\(id.setupHint)"))
+                        // The item is there with its tokens blanked: signed
+                        // out, which "no sign-in found" sent people hunting
+                        // for a keychain item that was right where it was.
+                        : id == .claude && store.claudeSignedOut
+                            ? LocalCredentials.claudeSignedOutHint
+                            : L10n.t("No sign-in found on this Mac. \(id.setupHint)",
+                                     "本机没有找到登录信息。\(id.setupHint)"))
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

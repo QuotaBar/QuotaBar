@@ -25,6 +25,26 @@ enum SettingsWindow {
     /// Posted with a view id inside the section just shown, to scroll it into view.
     static let scrollTo = Notification.Name("bar.quota.settings.scrollTo")
 
+    /// Posted with a `ProviderID` raw value: open that provider's row.
+    static let showProvider = Notification.Name("bar.quota.settings.showProvider")
+    /// The row the last `open(provider:)` asked for, for a providers pane
+    /// that is only built once the section has switched to it — too late
+    /// for the notification. The pane takes it when it appears.
+    static var requestedProvider: ProviderID?
+
+    /// The scroll anchor of a provider's row in the providers pane.
+    static func anchor(for id: ProviderID) -> String { "provider.\(id.rawValue)" }
+
+    /// Opens Settings at a provider's row, open, scrolled into view: where
+    /// its sign-in, its credential and its connection test are.
+    static func open(provider id: ProviderID) {
+        requestedProvider = id
+        open(section: .providers, anchor: anchor(for: id))
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: showProvider, object: id.rawValue)
+        }
+    }
+
     /// Opens Settings at one section, optionally scrolled to a card in it.
     static func open(section: SettingsSection, anchor: String? = nil) {
         open()

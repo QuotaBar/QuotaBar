@@ -44,6 +44,85 @@ final class LocalCredentialsClaudeTests: XCTestCase {
         XCTAssertEqual(LocalCredentials.classify(status: errSecParam, data: nil).state, .missing)
     }
 
+    // MARK: Signed out
+
+    /// What Claude Code leaves in the keychain after signing out: the item,
+    /// the plan, and both tokens as empty strings.
+    private let signedOutItem = #"{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":0,"subscriptionType":"max","rateLimitTier":"default_claude_max_20x"}}"#
+
+    func testAnItemWithBothTokensBlankIsSignedOut() {
+        let lookup = LocalCredentials.classify(status: errSecSuccess, data: json(signedOutItem))
+        XCTAssertEqual(lookup.state, .signedOut)
+        XCTAssertNil(lookup.token)
+        XCTAssertEqual(lookup.plan, "Max 20x", "the plan is still read from the signed-out item")
+    }
+
+    func testNoItemIsMissingNotSignedOut() {
+        XCTAssertEqual(LocalCredentials.classify(status: errSecItemNotFound, data: nil).state, .missing)
+    }
+
+    func testAnItemWithATokenIsAvailableNotSignedOut() {
+        let lookup = LocalCredentials.classify(
+            status: errSecSuccess,
+            data: json(#"{"claudeAiOauth":{"accessToken":"sk-ant-abc","refreshToken":""}}"#))
+        XCTAssertEqual(lookup.state, .available)
+        XCTAssertEqual(lookup.token, "sk-ant-abc")
+    }
+
+    /// A blank access token beside a refresh token is Claude Code's to
+    /// renew, not a sign-out; an item with no access token at all never
+    /// held a session.
+    func testOnlyBothTokensBlankCountsAsSignedOut() {
+        let renewable = LocalCredentials.classify(
+            status: errSecSuccess,
+            data: json(#"{"claudeAiOauth":{"accessToken":"","refreshToken":"sk-ant-ort01-abc"}}"#))
+        XCTAssertEqual(renewable.state, .missing)
+        let neverSignedIn = LocalCredentials.classify(
+            status: errSecSuccess,
+            data: json(#"{"claudeAiOauth":{"subscriptionType":"max"}}"#))
+        XCTAssertEqual(neverSignedIn.state, .missing)
+        XCTAssertEqual(LocalCredentials.classify(status: errSecSuccess, data: json("not json")).state, .missing)
+    }
+
+    func testAnItemWithoutARefreshTokenKeyAndABlankAccessTokenIsSignedOut() {
+        XCTAssertEqual(
+            LocalCredentials.classify(status: errSecSuccess, data: json(#"{"claudeAiOauth":{"accessToken":""}}"#)).state,
+            .signedOut)
+        XCTAssertEqual(
+            LocalCredentials.classify(status: errSecSuccess, data: json(#"{"accessToken":""}"#)).state,
+            .signedOut, "the legacy top-level shape")
+    }
+
+    /// The route the installed app actually takes: the security tool.
+    func testTheToolReadingASignedOutItemIsSignedOut() {
+        let lookup = LocalCredentials.SecurityTool.classifyToolResult(exitCode: 0, output: json(signedOutItem + "\n"))
+        XCTAssertEqual(lookup?.state, .signedOut)
+        XCTAssertEqual(lookup?.plan, "Max 20x")
+        XCTAssertEqual(lookup?.via, .securityTool)
+    }
+
+    func testEachStateIsSaidAsItIs() {
+        L10n.override = .en
+        defer { L10n.override = .system }
+        guard case let .sessionExpired(message) = ClaudeProvider.credentialError(for: .signedOut) else {
+            return XCTFail("signed out is a session to sign in to again")
+        }
+        XCTAssertTrue(message.contains("signed out"), message)
+        XCTAssertTrue(message.contains("/login"), message)
+        guard case .needsAuthorization = ClaudeProvider.credentialError(for: .needsAuthorization) else {
+            return XCTFail("needs authorization keeps its button")
+        }
+        guard case let .notConfigured(hint) = ClaudeProvider.credentialError(for: .missing) else {
+            return XCTFail("no item is not configured")
+        }
+        XCTAssertEqual(hint, ProviderID.claude.setupHint)
+
+        L10n.override = .zhHans
+        XCTAssertEqual(
+            ClaudeProvider.credentialError(for: .signedOut).errorDescription,
+            "Claude Code 已在这台 Mac 上退出登录。在终端运行 `claude`，再输入 /login 登录。")
+    }
+
     // MARK: Token extraction
 
     func testFallsBackToTheLegacyTopLevelToken() {

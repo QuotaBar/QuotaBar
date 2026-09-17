@@ -63,6 +63,11 @@ struct ProviderCardView: View {
                         ServiceStatusBadge(status: status, size: 10, ink: .white.opacity(0.65))
                     }
                 }
+                // Beside the service status: the page may say all is well
+                // while this reading is hours old.
+                if !forExport, let stale = phase?.staleReading {
+                    NotUpdatingBadge(id: id, reason: stale.reason, fetchedAt: stale.snapshot.fetchedAt)
+                }
                 if !forExport {
                     if refreshing || store.isLoading(id) {
                         ProgressView()
@@ -118,7 +123,7 @@ struct ProviderCardView: View {
         case let .loaded(snapshot), let .stale(snapshot, _):
             VStack(alignment: .leading, spacing: compact ? 8 : 11) {
                 if let error = phase?.errorMessage {
-                    staleNote(error, age: snapshot.fetchedAt)
+                    StaleReadingNote(reason: error, fetchedAt: snapshot.fetchedAt)
                 }
                 if let sheet = snapshot.balance {
                     BalanceSheetView(store: store, id: id, sheet: sheet, compact: compact, expanded: expanded, forExport: forExport)
@@ -316,18 +321,6 @@ struct ProviderCardView: View {
                 }
             }
         }
-    }
-
-    private func staleNote(_ error: String, age: Date) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 5) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 9))
-                .foregroundStyle(Palette.amber)
-            Text(L10n.t("Showing numbers from \(QuotaFormat.age(of: age))", "显示的是 \(QuotaFormat.age(of: age))的数据"))
-                .font(.system(size: 10))
-                .foregroundStyle(.white.opacity(0.55))
-        }
-        .help(error)
     }
 
     // MARK: Context menu

@@ -72,6 +72,23 @@ struct IslandPanel: View {
     /// How far the pointer has dragged the open panel sideways; the pages
     /// follow it a little, then turn once it lets go past the line.
     @State private var dragX: CGFloat = 0
+    /// The list of providers that are not updating, over the right column.
+    /// Hovering the sync note opens it and leaving both closes it; a click
+    /// on the note keeps it open until the next click.
+    @State private var failuresShown = false
+    @State private var failuresPinned = false
+    @State private var noteHovered = false
+    @State private var listHovered = false
+    @State private var failuresHideTask: Task<Void, Never>?
+
+    init(store: UsageStore, notch: IslandCoordinator.NotchMetrics?, bridge: IslandCoordinator.Bridge, showsFailures: Bool = false) {
+        self.store = store
+        self.notch = notch
+        self.bridge = bridge
+        // Seeded for the snapshot renderer, which cannot hover.
+        _failuresShown = State(initialValue: showsFailures)
+        _failuresPinned = State(initialValue: showsFailures)
+    }
 
     /// Left takes the first `slots` enabled providers, right the next.
     private var left: [ProviderID] { Array(store.islandProviders.prefix(store.islandSlots)) }
@@ -113,6 +130,33 @@ struct IslandPanel: View {
             })
             footer
                 .frame(height: IslandPanelLayout.footerHeight)
+        }
+        // Over the right column, just above the note that opens it, and no
+        // taller than the panel above the footer: the panel cannot scroll.
+        .overlay(alignment: .bottomTrailing) {
+            if failuresShown, !store.failingProviders.isEmpty {
+                IslandFailureList(store: store, ids: store.failingProviders) { id in
+                    closeFailures()
+                    if let id {
+                        SettingsWindow.open(provider: id)
+                    } else {
+                        SettingsWindow.open(section: .providers)
+                    }
+                }
+                .onHover { inside in
+                    listHovered = inside
+                    hoverChanged()
+                }
+                .padding(.top, IslandPanelLayout.bodyTop / 2)
+                .padding(.bottom, IslandPanelLayout.footerHeight + 2)
+                .transition(.opacity.combined(with: .offset(y: 4)))
+            }
+        }
+        .animation(Motion.animation(Motion.hoverFade), value: failuresShown)
+        // The last one recovered: the list goes, and a later failure does
+        // not bring it back open on its own.
+        .onChange(of: store.failingProviders.isEmpty) { _, none in
+            if none { closeFailures() }
         }
         .padding(.horizontal, IslandPanelLayout.horizontalInset)
         .frame(maxWidth: .infinity, alignment: .top)
@@ -215,7 +259,18 @@ struct IslandPanel: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 pageDots
                 HStack(spacing: 6) {
-                    IslandSyncStatus(store: store)
+                    IslandSyncStatus(store: store, open: failuresShown && !store.failingProviders.isEmpty) { inside in
+                        noteHovered = inside
+                        hoverChanged()
+                    } onTap: {
+                        if failuresShown, failuresPinned {
+                            closeFailures()
+                        } else {
+                            failuresHideTask?.cancel()
+                            failuresPinned = true
+                            failuresShown = true
+                        }
+                    }
                     refreshButton
                 }
                 .frame(maxWidth: .infinity, alignment: .trailing)
@@ -226,6 +281,28 @@ struct IslandPanel: View {
 }
 
 private extension IslandPanel {
+    /// Opens on the pointer arriving at the note or the list; closes a beat
+    /// after it has left both, so the gap between them can be crossed.
+    func hoverChanged() {
+        failuresHideTask?.cancel()
+        if noteHovered || listHovered {
+            if !store.failingProviders.isEmpty { failuresShown = true }
+            return
+        }
+        guard !failuresPinned else { return }
+        failuresHideTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled, !noteHovered, !listHovered, !failuresPinned else { return }
+            failuresShown = false
+        }
+    }
+
+    func closeFailures() {
+        failuresHideTask?.cancel()
+        failuresPinned = false
+        failuresShown = false
+    }
+
     /// Every provider, the status pages and the logs, as the menu panel's
     /// button does; a spinner in its place until all of it is back.
     @ViewBuilder
@@ -276,9 +353,20 @@ private extension IslandPanel {
     }
 }
 
-/// "● 已同步 3 分钟前", or an amber note that something is not updating.
+/// "● 已同步 3 分钟前", or an amber note that something is not updating;
+/// for a moment after the refresh button, what the refresh came to.
+///
+/// While providers are failing the note is itself a control: hovering or
+/// clicking it lists them. A tap gesture with `.help`, as the chips are —
+/// this panel is never key, and a `Button` would not fire. With nothing
+/// failing it is plain text, laid out exactly as before.
 private struct IslandSyncStatus: View {
     @ObservedObject var store: UsageStore
+    /// The list it opens is on show.
+    var open = false
+    var onHover: (Bool) -> Void = { _ in }
+    var onTap: () -> Void = {}
+    @State private var hovering = false
 
     private var latest: Date? {
         store.enabled.compactMap { store.states[$0]?.snapshot?.fetchedAt }.max()
@@ -286,22 +374,172 @@ private struct IslandSyncStatus: View {
 
     var body: some View {
         let failing = store.failingProviders.count
-        HStack(spacing: 5) {
+        let note = SyncNote.make(
+            refreshing: store.isForceRefreshing,
+            outcome: store.refreshOutcome,
+            failing: failing,
+            latest: latest)
+        let row = HStack(spacing: 5) {
             BreathingDot(active: true, color: failing > 0 ? Palette.amber : Palette.live, pulse: store.tick)
-            Text(label(failing: failing))
+            Text(note.text())
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.55))
+                .foregroundStyle(.white.opacity(failing > 0 && (hovering || open) ? 0.85 : 0.55))
                 .lineLimit(1)
+                .contentTransition(.opacity)
+            if failing > 0 {
+                Image(systemName: open ? "chevron.down" : "chevron.up")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.white.opacity(hovering || open ? 0.7 : 0.35))
+            }
+        }
+        .animation(Motion.animation(Motion.hoverFade), value: note)
+        if failing > 0 {
+            row
+                // The highlight reaches past the row rather than padding
+                // it, so the footer measures the same as the plain note.
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(Color.white.opacity(hovering || open ? 0.08 : 0))
+                        .padding(.horizontal, -5)
+                        .padding(.vertical, -3))
+                .contentShape(Rectangle().inset(by: -4))
+                .onHover { inside in
+                    withAnimation(Motion.animation(Motion.hoverFade)) { hovering = inside }
+                    onHover(inside)
+                }
+                .onTapGesture(perform: onTap)
+                .help(L10n.t("Which providers are not updating, and why", "哪些服务商未能更新，以及原因"))
+                .accessibilityAddTraits(.isButton)
+                // Gone with the last failure: the pointer may still be on it.
+                .onDisappear { onHover(false) }
+        } else {
+            row
         }
     }
+}
 
-    private func label(failing: Int) -> String {
-        if store.isForceRefreshing { return L10n.t("Refreshing…", "正在刷新…") }
-        if failing > 0 {
-            return L10n.t("\(failing) not updating", "\(failing) 个未能更新")
+/// The providers that are not updating, each with its mark, its name and
+/// what its last refresh said, and a click away from its settings. Fitted to
+/// the room above the footer: two lines of reason each while they fit, one
+/// line when not, and past that the first few and a line counting the rest.
+private struct IslandFailureList: View {
+    @ObservedObject var store: UsageStore
+    let ids: [ProviderID]
+    /// A provider's row, or nil for the line counting the rest.
+    let open: (ProviderID?) -> Void
+
+    static let width: CGFloat = 288
+
+    var body: some View {
+        ViewThatFits(in: .vertical) {
+            list(lines: 2, limit: ids.count)
+            list(lines: 1, limit: ids.count)
+            list(lines: 1, limit: 3)
+            list(lines: 1, limit: 2)
+            list(lines: 1, limit: 1)
         }
-        guard let latest else { return L10n.t("Syncing…", "同步中…") }
-        return L10n.t("Synced \(QuotaFormat.age(of: latest))", "已同步 \(QuotaFormat.age(of: latest))")
+        .frame(width: Self.width, alignment: .bottomTrailing)
+    }
+
+    private func list(lines: Int, limit: Int) -> some View {
+        let shown = Array(ids.prefix(limit))
+        let rest = ids.count - shown.count
+        return VStack(alignment: .leading, spacing: 0) {
+            ForEach(shown) { id in
+                IslandFailureRow(
+                    id: id,
+                    reason: store.states[id]?.errorMessage ?? "",
+                    staleSince: store.states[id]?.staleReading?.snapshot.fetchedAt,
+                    lines: lines) { open(id) }
+            }
+            if rest > 0 {
+                IslandFailureMore(count: rest) { open(nil) }
+            }
+        }
+        .padding(3)
+        .frame(width: Self.width, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: Design.radiusCard, style: .continuous)
+                .fill(Color(white: 0.1)))
+        .overlay(
+            RoundedRectangle(cornerRadius: Design.radiusCard, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
+    }
+}
+
+private struct IslandFailureRow: View {
+    let id: ProviderID
+    let reason: String
+    /// When the numbers still on show were read; nil when there are none.
+    let staleSince: Date?
+    let lines: Int
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 6) {
+                ProviderGlyph(id: id, size: 12, tint: .white)
+                    .frame(width: 14)
+                Text(id.displayName)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                if let staleSince {
+                    Text(StaleReading.note(fetchedAt: staleSince))
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.4))
+                        .lineLimit(1)
+                }
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.white.opacity(hovering ? 0.8 : 0.35))
+            }
+            Text(reason.isEmpty ? StaleReading.label : reason)
+                .font(.system(size: 10))
+                .foregroundStyle(.white.opacity(0.6))
+                .lineLimit(lines)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.leading, 20)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(
+            RoundedRectangle(cornerRadius: Design.radiusTile - 2, style: .continuous)
+                .fill(Color.white.opacity(hovering ? 0.08 : 0)))
+        .contentShape(Rectangle())
+        .onHover { inside in withAnimation(Motion.animation(Motion.hoverFade)) { hovering = inside } }
+        .onTapGesture(perform: action)
+        .help((reason.isEmpty ? "" : reason + "\n")
+            + L10n.t("Click to open \(id.displayName) in Settings.", "点击在设置里打开 \(id.displayName)。"))
+        .accessibilityLabel("\(id.displayName): \(reason)")
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
+/// "2 more in Settings", when the rest do not fit.
+private struct IslandFailureMore: View {
+    let count: Int
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(L10n.t("\(count) more in Settings", "另有 \(count) 个，在设置里查看"))
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.white.opacity(hovering ? 0.8 : 0.5))
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.white.opacity(hovering ? 0.8 : 0.35))
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .onTapGesture(perform: action)
+        .accessibilityAddTraits(.isButton)
     }
 }
 
@@ -322,6 +560,8 @@ private struct IslandProviderBlock: View {
     }
 
     private var snapshot: UsageSnapshot? { store.states[id]?.snapshot }
+    /// The last refresh failed and these are older numbers.
+    private var stale: (snapshot: UsageSnapshot, reason: String)? { store.states[id]?.staleReading }
 
     /// One window per horizon, two at most — the 5-hour and the 7-day when
     /// both exist, the one there is otherwise.
@@ -362,7 +602,19 @@ private struct IslandProviderBlock: View {
                         .background(RoundedRectangle(cornerRadius: 3).fill(.white.opacity(0.06)))
                 }
                 if let status = store.serviceStatus[id] {
-                    ServiceStatusBadge(status: status, size: 10, ink: .white.opacity(0.5))
+                    // Not updating takes the words; a page that says all is
+                    // well keeps its dot, one that does not keeps its badge.
+                    if stale != nil, status.level.isHealthy {
+                        Circle()
+                            .fill(Color(hex: status.level.colorHex))
+                            .frame(width: 6, height: 6)
+                            .help(status.sourceNote)
+                    } else {
+                        ServiceStatusBadge(status: status, size: 10, ink: .white.opacity(0.5))
+                    }
+                }
+                if let stale {
+                    NotUpdatingBadge(id: id, reason: stale.reason, fetchedAt: stale.snapshot.fetchedAt)
                 }
                 Spacer(minLength: 0)
             }
@@ -375,7 +627,7 @@ private struct IslandProviderBlock: View {
                 } else {
                     HStack(alignment: .top, spacing: 18) {
                         ForEach(horizons) { window in
-                            IslandTile(window: window, accent: Color(hex: id.accentHex), store: store, id: id)
+                            IslandTile(window: window, accent: Color(hex: id.accentHex), store: store, id: id, stale: stale != nil)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
@@ -472,17 +724,28 @@ private struct IslandTile: View {
     let accent: Color
     @ObservedObject var store: UsageStore
     var id: ProviderID = .claude
+    /// The provider's last refresh failed and this is an older reading:
+    /// figure and bar dimmed, so it is not taken for the current one.
+    var stale = false
 
     private var used: Double { window.usedPercent ?? 0 }
     private var percent: Double { store.meterMode.shownPercent(fromUsed: used) }
 
     /// The alert colour for the figure — white until the warning band —
     /// so the number, not the bar, says how close this is. Judged on what
-    /// is used, whichever way the figure is shown.
+    /// is used, whichever way the figure is shown. A stale figure is grey:
+    /// an alert colour on an old number would still read as news.
     private var figureColor: Color {
+        if stale { return .white.opacity(0.5) }
         guard let hex = store.alertSettings.level(for: used).hex else { return .white }
         return Color(hex: hex)
     }
+
+    private var barTint: Color { stale ? accent.opacity(0.35) : accent }
+
+    /// Reset time passed on a stale reading: the figure belongs to the
+    /// window that ended, and nothing says what the new one holds.
+    private var resetLapsed: Bool { stale && StaleReading.resetLapsed(window.resetsAt) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -528,10 +791,10 @@ private struct IslandTile: View {
     private var chart: some View {
         switch store.experience.islandChart {
         case .bar:
-            Meter(percent: percent, tint: accent, style: .continuous, height: 10, track: .white.opacity(0.10))
+            Meter(percent: percent, tint: barTint, style: .continuous, height: 10, track: .white.opacity(0.10))
                 .transition(.chartSwap)
         default:
-            Meter(percent: percent, tint: accent, style: .stepped, height: 13, track: .white.opacity(0.10))
+            Meter(percent: percent, tint: barTint, style: .stepped, height: 13, track: .white.opacity(0.10))
                 .transition(.chartSwap)
         }
     }
@@ -539,8 +802,13 @@ private struct IslandTile: View {
     private var resetLine: some View {
         Text(window.resetsAt.map { store.resetText($0) } ?? (window.detail ?? " "))
             .font(.system(size: 10, design: .monospaced))
-            .foregroundStyle(.white.opacity(0.45))
+            .foregroundStyle(resetLapsed ? Palette.amber : .white.opacity(0.45))
             .lineLimit(1)
+            .help(resetLapsed
+                ? L10n.t(
+                    "This window has reset since these numbers were read, and the provider is not updating: what the new window holds is not known yet.",
+                    "读到这些数字之后这个窗口已经重置，而服务商未能更新：新窗口的用量还不知道。")
+                : "")
     }
 
     private var numeric: some View {
@@ -558,7 +826,7 @@ private struct IslandTile: View {
                 Circle().stroke(Color.white.opacity(0.1), lineWidth: 6)
                 Circle()
                     .trim(from: 0, to: max(0.01, percent / 100))
-                    .stroke(accent, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                    .stroke(barTint, style: StrokeStyle(lineWidth: 6, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 Text("\(Int(percent.rounded()))")
                     .font(.system(size: 15, weight: .semibold, design: .monospaced))

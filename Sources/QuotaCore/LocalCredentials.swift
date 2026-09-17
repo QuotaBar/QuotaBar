@@ -68,6 +68,10 @@ public enum LocalCredentials {
         /// The item is there, but macOS would put up its keychain dialog
         /// before handing it over, and no user action has asked for that yet.
         case needsAuthorization
+        /// The item is there and reads, but Claude Code has blanked both its
+        /// OAuth tokens: it signed out on this Mac (`/logout`, or a session it
+        /// could no longer renew). Only signing in again brings it back.
+        case signedOut
         /// No item, or an item without a usable token: Claude Code has not
         /// signed in on this Mac.
         case missing
@@ -98,6 +102,13 @@ public enum LocalCredentials {
         L10n.t(
             "Claude Code keeps its session in the keychain, and macOS asks before another app may read it. Press “Allow keychain access” and choose Always Allow in the dialog.",
             "Claude Code 的会话存在钥匙串里，macOS 会在其他应用读取前询问一次。点「授权钥匙串访问」，在弹窗里选「始终允许」。")
+    }
+
+    /// Shown when Claude Code's item is there with its tokens blanked.
+    public static var claudeSignedOutHint: String {
+        L10n.t(
+            "Claude Code is signed out on this Mac. Run `claude` in Terminal, then /login.",
+            "Claude Code 已在这台 Mac 上退出登录。在终端运行 `claude`，再输入 /login 登录。")
     }
 
     /// Never prompts. Background refreshes call this every cycle, and a
@@ -275,8 +286,11 @@ public enum LocalCredentials {
         case errSecSuccess:
             let root = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
             let token = root.flatMap(claudeToken)
+            let state: ClaudeCredentialState = token != nil
+                ? .available
+                : (root.map(claudeSignedOut) ?? false) ? .signedOut : .missing
             return ClaudeLookup(
-                state: token == nil ? .missing : .available,
+                state: state,
                 token: token,
                 plan: root.flatMap(claudePlan))
         case errSecInteractionNotAllowed, errSecAuthFailed, errSecUserCanceled:
@@ -304,6 +318,20 @@ public enum LocalCredentials {
         }
         if let token = root["accessToken"] as? String, !token.isEmpty { return token }
         return nil
+    }
+
+    /// What Claude Code leaves behind when it signs out: the item and its
+    /// plan stay, and `accessToken` and `refreshToken` are empty strings.
+    /// Told apart from an item that never held a session, which carries no
+    /// `accessToken` at all. A blank access token beside a refresh token is
+    /// not a sign-out: Claude Code renews that by itself.
+    static func claudeSignedOut(_ root: [String: Any]) -> Bool {
+        let oauth = root["claudeAiOauth"] as? [String: Any] ?? root
+        guard let access = oauth["accessToken"] as? String,
+              access.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return false }
+        let refresh = (oauth["refreshToken"] as? String) ?? ""
+        return refresh.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// `rateLimitTier` is the precise one — "default_claude_max_20x" carries
