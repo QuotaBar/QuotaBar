@@ -473,10 +473,34 @@ public enum LocalCredentials {
         public let accessToken: String
         /// From the file's `expires_at`, else the token's own `exp`.
         public let expiresAt: Date?
+        /// Whether the file holds a refresh token for Kimi Code to renew the
+        /// access token with. The refresh token itself is not kept: it is
+        /// Kimi Code's alone to use.
+        public let hasRefreshToken: Bool
+        /// When that refresh token runs out, from its own `exp` — 30 days
+        /// after Kimi Code last renewed. nil when it carries none, and the
+        /// server decides.
+        public let refreshExpiresAt: Date?
         /// The Code API the token was issued for, `…/coding/v1`.
         public let baseURL: URL
         /// Which file answered — a name, for `--credentials`.
         public let fileName: String
+
+        public init(
+            accessToken: String,
+            expiresAt: Date?,
+            hasRefreshToken: Bool = true,
+            refreshExpiresAt: Date? = nil,
+            baseURL: URL,
+            fileName: String)
+        {
+            self.accessToken = accessToken
+            self.expiresAt = expiresAt
+            self.hasRefreshToken = hasRefreshToken
+            self.refreshExpiresAt = refreshExpiresAt
+            self.baseURL = baseURL
+            self.fileName = fileName
+        }
 
         /// A little early, so a token that runs out while the request is on
         /// its way is not sent.
@@ -487,12 +511,27 @@ public enum LocalCredentials {
             return expiresAt.timeIntervalSince(now) <= Self.expiryMargin
         }
 
+        /// Whether Kimi Code can still renew the access token by itself, the
+        /// next time it is used: it holds a refresh token that has not run out.
+        public func canRenew(now: Date = Date()) -> Bool {
+            guard hasRefreshToken else { return false }
+            guard let refreshExpiresAt else { return true }
+            return refreshExpiresAt.timeIntervalSince(now) > Self.expiryMargin
+        }
+
+        /// Signed out in all but name: the access token has run out and
+        /// nothing can renew it, so only signing in again brings it back.
+        public func needsSignIn(now: Date = Date()) -> Bool {
+            isExpired(now: now) && !canRenew(now: now)
+        }
+
         public var usageURL: URL { baseURL.appendingPathComponent("usages") }
 
         /// Everything but the token, so a log line or a failed assertion
         /// cannot print it.
         public var description: String {
-            "KimiCodeSession(\(fileName) → \(baseURL.host ?? "?"), expires \(expiresAt.map { "\($0)" } ?? "unknown"))"
+            "KimiCodeSession(\(fileName) → \(baseURL.host ?? "?"), expires \(expiresAt.map { "\($0)" } ?? "unknown"), "
+                + "renewable until \(hasRefreshToken ? refreshExpiresAt.map { "\($0)" } ?? "unknown" : "never"))"
         }
     }
 
@@ -535,64 +574,132 @@ public enum LocalCredentials {
     }()
 
     /// The Kimi Code sign-in on this Mac, read afresh on every call so a token
-    /// Kimi Code renewed a minute ago is the one used.
+    /// Kimi Code renewed a minute ago is the one used. nil when there is none,
+    /// or none that Kimi Code could still renew: an expired access token with
+    /// a refresh token that has run out too is a sign-in to redo, not one to
+    /// wait for.
     ///
     /// Kimi Code 0.3x and its desktop app keep the session in
     /// `~/.kimi-code/credentials/<name>.json`; the older Python CLI kept it in
-    /// `~/.kimi/credentials/kimi-code.json`. Whichever runs out last is the
-    /// live one — a region switch or an upgrade leaves the other behind.
+    /// `~/.kimi/credentials/kimi-code.json`. Among the files that count (see
+    /// `kimiCodeSessions`), whichever runs out last is the live one — a
+    /// region switch leaves the other behind.
     /// Only read: the access token lasts 15 minutes and Kimi Code renews it
     /// when it needs it, rotating the refresh token as it goes. A renewal
     /// from here would leave Kimi Code holding a dead refresh token, and its
     /// next renewal would sign the owner out.
-    public static func kimiCodeSession() -> KimiCodeSession? {
-        kimiCodeSession(
-            codeHome: home.appendingPathComponent(".kimi-code"),
-            legacyHome: home.appendingPathComponent(".kimi"))
+    public static func kimiCodeSession(now: Date = Date()) -> KimiCodeSession? {
+        kimiCodeSession(codeHome: kimiCodeHome, legacyHome: kimiLegacyHome, now: now)
     }
 
-    static func kimiCodeSession(codeHome: URL, legacyHome: URL) -> KimiCodeSession? {
-        var candidates: [KimiCodeSession] = []
-        let directory = codeHome.appendingPathComponent("credentials")
-        let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
-        // Sorted, so a tie on expiry is settled the same way every time.
-        for file in files.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) where file.pathExtension == "json" {
-            let stem = file.deletingPathExtension().lastPathComponent
-            guard let base = kimiCodeStorageNames[stem] else { continue }
-            if let session = kimiCodeSession(file: file, baseURL: base) { candidates.append(session) }
-        }
-        let legacy = legacyHome.appendingPathComponent("credentials/kimi-code.json")
-        if let session = kimiCodeSession(file: legacy, baseURL: URL(string: kimiCodeBaseURLs[0])!) {
-            candidates.append(session)
-        }
+    /// Every sign-in that may be the one Kimi Code uses, whether or not it
+    /// can still be renewed — for telling "signed out" from "never signed in".
+    public static func kimiCodeSessions() -> [KimiCodeSession] {
+        kimiCodeSessions(codeHome: kimiCodeHome, legacyHome: kimiLegacyHome)
+    }
+
+    /// When each file the sign-in is read from was last written, by name —
+    /// never what it holds. A change means Kimi Code renewed its token, or
+    /// signed in or out, and the quota can be read again.
+    public static func kimiCodeFilesWritten() -> [String: Date] {
+        kimiCodeFilesWritten(codeHome: kimiCodeHome, legacyHome: kimiLegacyHome)
+    }
+
+    static var kimiCodeHome: URL { home.appendingPathComponent(".kimi-code") }
+    static var kimiLegacyHome: URL { home.appendingPathComponent(".kimi") }
+
+    static func kimiCodeSession(codeHome: URL, legacyHome: URL, now: Date) -> KimiCodeSession? {
         var best: KimiCodeSession?
-        for candidate in candidates
-            where best == nil || (candidate.expiresAt ?? .distantPast) > (best?.expiresAt ?? .distantPast)
+        for candidate in kimiCodeSessions(codeHome: codeHome, legacyHome: legacyHome)
+            where !candidate.needsSignIn(now: now)
+            && (best == nil || (candidate.expiresAt ?? .distantPast) > (best?.expiresAt ?? .distantPast))
         {
             best = candidate
         }
         return best
     }
 
-    static func kimiCodeSession(file: URL, baseURL: URL) -> KimiCodeSession? {
-        guard let data = try? Data(contentsOf: file),
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return nil }
-        return kimiCodeSession(in: root, baseURL: baseURL, fileName: file.lastPathComponent)
+    /// The files that count, in a fixed order so a tie on expiry is settled
+    /// the same way every time.
+    ///
+    /// - Kimi Code's own files, except any written before a signed-out
+    ///   marker: after a refused renewal Kimi Code blanks the file it was
+    ///   using, and a file from an earlier region is then no sign-in of its.
+    ///   One written after the marker is a sign-in since.
+    /// - The Python CLI's file only where Kimi Code has never been: once it
+    ///   has, it keeps its own file, and its migration report lists the old
+    ///   sign-in as one to redo — the old file is left over, not live.
+    static func kimiCodeSessions(codeHome: URL, legacyHome: URL) -> [KimiCodeSession] {
+        let fileManager = FileManager.default
+        let directory = codeHome.appendingPathComponent("credentials")
+        let files = (try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        var found: [(session: KimiCodeSession, written: Date)] = []
+        var signedOutAt: Date?
+        var hasOwnFile = false
+        for file in files.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) where file.pathExtension == "json" {
+            let stem = file.deletingPathExtension().lastPathComponent
+            guard let base = kimiCodeStorageNames[stem] else { continue }
+            hasOwnFile = true
+            guard let root = kimiCodeFile(file) else { continue }
+            let written = modificationDate(file) ?? .distantPast
+            if let session = kimiCodeSession(in: root, baseURL: base, fileName: file.lastPathComponent) {
+                found.append((session, written))
+            } else if (root["access_token"] as? String)?.isEmpty == true {
+                signedOutAt = max(signedOutAt ?? .distantPast, written)
+            }
+        }
+        var sessions = found
+            .filter { entry in signedOutAt.map { entry.written > $0 } ?? true }
+            .map(\.session)
+        let migrated = fileManager.fileExists(atPath: codeHome.appendingPathComponent("migration-report.json").path)
+        let legacy = legacyHome.appendingPathComponent("credentials/kimi-code.json")
+        if !hasOwnFile, !migrated, let root = kimiCodeFile(legacy),
+           let session = kimiCodeSession(in: root, baseURL: URL(string: kimiCodeBaseURLs[0])!, fileName: legacy.lastPathComponent)
+        {
+            sessions.append(session)
+        }
+        return sessions
+    }
+
+    static func kimiCodeFilesWritten(codeHome: URL, legacyHome: URL) -> [String: Date] {
+        var written: [String: Date] = [:]
+        let directory = codeHome.appendingPathComponent("credentials")
+        let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        for file in files where file.pathExtension == "json"
+            && kimiCodeStorageNames[file.deletingPathExtension().lastPathComponent] != nil
+        {
+            written[file.lastPathComponent] = modificationDate(file) ?? .distantPast
+        }
+        let legacy = legacyHome.appendingPathComponent("credentials/kimi-code.json")
+        if let date = modificationDate(legacy) { written["~/.kimi/" + legacy.lastPathComponent] = date }
+        return written
+    }
+
+    private static func kimiCodeFile(_ file: URL) -> [String: Any]? {
+        guard let data = try? Data(contentsOf: file) else { return nil }
+        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    }
+
+    private static func modificationDate(_ file: URL) -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: file.path))?[.modificationDate] as? Date
     }
 
     /// Pure. `{"access_token", "refresh_token", "expires_at", "scope",
     /// "token_type", "expires_in"}`; `expires_at` is whole seconds from the
     /// current apps and fractional from the Python CLI. After a refused
     /// renewal Kimi Code blanks both tokens and zeroes the expiry — signed
-    /// out, so no session.
+    /// out, so no session. The refresh token is decoded here, on this Mac,
+    /// for its `exp` alone, and never kept or sent.
     static func kimiCodeSession(in root: [String: Any], baseURL: URL, fileName: String) -> KimiCodeSession? {
         guard let access = root["access_token"] as? String, !access.isEmpty else { return nil }
         let fromFile = QwenProvider.number(root["expires_at"]).flatMap(Dates.parseEpoch)
         let fromToken = jwtPayload(access).flatMap { QwenProvider.number($0["exp"]) }.flatMap(Dates.parseEpoch)
+        let refresh = (root["refresh_token"] as? String) ?? ""
         return KimiCodeSession(
             accessToken: access,
             expiresAt: fromFile ?? fromToken,
+            hasRefreshToken: !refresh.isEmpty,
+            refreshExpiresAt: jwtPayload(refresh).flatMap { QwenProvider.number($0["exp"]) }.flatMap(Dates.parseEpoch),
             baseURL: baseURL,
             fileName: fileName)
     }

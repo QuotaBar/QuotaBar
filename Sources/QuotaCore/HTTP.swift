@@ -118,9 +118,11 @@ public enum Dates {
         return plain.date(from: string)
     }
 
-    /// Accepts epoch seconds or milliseconds.
+    /// Accepts epoch seconds or milliseconds. Nothing for "inf" or a figure
+    /// millions of years out: a countdown to such a date would not fit an
+    /// `Int`, and `QuotaFormat` would stop the app converting it.
     public static func parseEpoch(_ value: Double?) -> Date? {
-        guard let value, value > 0 else { return nil }
+        guard let value, value.isFinite, value > 0, value < 1e18 else { return nil }
         return value > 100_000_000_000 ? Date(timeIntervalSince1970: value / 1000) : Date(timeIntervalSince1970: value)
     }
 

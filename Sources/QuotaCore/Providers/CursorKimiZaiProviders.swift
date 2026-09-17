@@ -203,18 +203,30 @@ public struct KimiProvider: QuotaProvider {
     /// pasted kimi-auth cookie wins, because pasting one is a deliberate
     /// override and clearing it goes back to the sign-in on this Mac.
     /// Without one, the session the Kimi Code app and CLI share is read.
-    /// An expired session still counts as configured: the card then says how
-    /// to bring it back, rather than sending the owner to set up a sign-in
-    /// that is already there.
+    /// A session whose access token has expired still counts as configured
+    /// while Kimi Code can renew it: the card then says how to bring it back,
+    /// rather than sending the owner to set up a sign-in that is already
+    /// there. One it can no longer renew does not count; see
+    /// `LocalCredentials.kimiCodeSession()`.
     public func isConfigured(config: ConfigStore) -> Bool {
         config.credential(for: .kimi) != nil || LocalCredentials.kimiCodeSession() != nil
     }
 
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
         if let token = config.credential(for: .kimi) {
-            return try await Self.fetchWeb(token: token)
+            do {
+                return try await Self.fetchWeb(token: token)
+            } catch ProviderError.unauthorized {
+                // Signing in to Kimi Code again would change nothing while
+                // the cookie is there, which is what `.unauthorized` suggests.
+                throw ProviderError.sessionExpired(
+                    Self.rejectedCookieHint(signedInLocally: LocalCredentials.kimiCodeSession() != nil))
+            }
         }
         guard let session = LocalCredentials.kimiCodeSession() else {
+            if !LocalCredentials.kimiCodeSessions().isEmpty {
+                throw ProviderError.sessionExpired(Self.signInAgainHint)
+            }
             throw ProviderError.notConfigured(hint: ProviderID.kimi.setupHint)
         }
         return try await Self.fetchCode(session: session)
@@ -229,7 +241,7 @@ public struct KimiProvider: QuotaProvider {
         // server allows no grace either: a token a minute past its expiry
         // gets a 401, so asking would only turn a known answer into a vaguer one.
         guard !session.isExpired(now: now) else {
-            throw ProviderError.sessionExpired(expiredSessionHint)
+            throw ProviderError.sessionExpired(session.canRenew(now: now) ? expiredSessionHint : signInAgainHint)
         }
         let response = try await HTTP.get(session.usageURL, headers: [
             "Authorization": "Bearer \(session.accessToken)",
@@ -249,10 +261,34 @@ public struct KimiProvider: QuotaProvider {
         }
     }
 
+    /// Only for a token Kimi Code can still renew; see `signInAgainHint`.
+    /// QuotaBar notices the renewal within a minute (`UsageStore`), so the
+    /// quota does show again without waiting for the next refresh.
     static var expiredSessionHint: String {
         L10n.t(
             "The sign-in token Kimi Code saved on this Mac has expired. It lasts 15 minutes, and Kimi Code renews it only while in use: use Kimi Code once, in the app or with `kimi`, and the quota shows again. No need to sign in again.",
             "Kimi Code 在本机保存的登录令牌已过期。令牌只有 15 分钟有效，Kimi Code 只在使用时才续期：在应用里或用 `kimi` 用一次 Kimi Code，额度就会重新显示，不用重新登录。")
+    }
+
+    /// The access token has run out and nothing renews it — the refresh
+    /// token ran out too, 30 days after Kimi Code was last used, or there is
+    /// none — so Kimi Code will ask for a new sign-in.
+    static var signInAgainHint: String {
+        L10n.t(
+            "Kimi Code's sign-in on this Mac has ended and can no longer be renewed. Sign in again in the Kimi Code app or with `kimi`, or paste a kimi-auth cookie in Settings.",
+            "Kimi Code 在本机的登录已失效，无法再续期。请在 Kimi Code 应用里或用 `kimi` 重新登录，或在设置里粘贴 kimi-auth cookie。")
+    }
+
+    /// A pasted cookie comes first, so it has to go before the sign-in on
+    /// this Mac can be used.
+    static func rejectedCookieHint(signedInLocally: Bool) -> String {
+        signedInLocally
+            ? L10n.t(
+                "Kimi turned down the kimi-auth cookie pasted in Settings, which is used before the Kimi Code sign-in on this Mac. Clear it in Settings to use that sign-in, or paste a fresh cookie.",
+                "Kimi 拒绝了设置里粘贴的 kimi-auth cookie；有 cookie 时会先用它，而不是本机 Kimi Code 的登录。在设置里清除它即可改用本机登录，或粘贴新的 cookie。")
+            : L10n.t(
+                "Kimi turned down the kimi-auth cookie pasted in Settings. Paste a fresh one, or clear it and sign in to the Kimi Code app or CLI (`kimi`) instead.",
+                "Kimi 拒绝了设置里粘贴的 kimi-auth cookie。请粘贴新的 cookie，或清除它，改为登录 Kimi Code 应用或 CLI（`kimi`）。")
     }
 
     static var rejectedSessionHint: String {
@@ -323,15 +359,18 @@ public struct KimiProvider: QuotaProvider {
 
     /// `{"limit": "100", "used": "12", "remaining": "88", "resetTime": "…"}`,
     /// numbers as strings or not. `used` is taken as given — it may pass
-    /// `limit` — and otherwise worked out from `remaining`.
+    /// `limit` — and otherwise worked out from `remaining`. Infinite figures
+    /// ("inf", "1e400") give nothing.
     static func countWindow(_ raw: Any?, title: String, seconds: Int?) -> UsageWindow? {
         guard let detail = raw as? [String: Any],
-              let limit = QwenProvider.number(detail["limit"]), limit > 0
+              let limit = QwenProvider.number(detail["limit"]), limit.isFinite, limit > 0
         else { return nil }
         let used: Double
-        if let reported = QwenProvider.number(detail["used"]), reported >= 0 {
+        if let reported = QwenProvider.number(detail["used"]), reported.isFinite, reported >= 0 {
             used = reported
-        } else if let remaining = QwenProvider.number(detail["remaining"]), remaining >= 0, remaining <= limit {
+        } else if let remaining = QwenProvider.number(detail["remaining"]), remaining.isFinite,
+                  remaining >= 0, remaining <= limit
+        {
             used = limit - remaining
         } else {
             return nil
@@ -340,9 +379,20 @@ public struct KimiProvider: QuotaProvider {
         return UsageWindow(
             title: title,
             usedPercent: used / limit * 100,
-            detail: "\(Int(used)) / \(Int(limit))",
+            detail: countDetail(used: used, limit: limit),
             resetsAt: reset,
             windowSeconds: seconds)
+    }
+
+    /// "12 / 100", or nothing when a figure is no whole number an `Int` holds.
+    /// The counts come as int64 strings, and a plan with no cap may send
+    /// int64's largest, which a `Double` rounds past `Int.max`: `Int(_:)`
+    /// would stop the app there.
+    static func countDetail(used: Double, limit: Double) -> String? {
+        guard let used = Int(exactly: used.rounded(.towardZero)),
+              let limit = Int(exactly: limit.rounded(.towardZero))
+        else { return nil }
+        return "\(used) / \(limit)"
     }
 
     /// `{"duration": 300, "timeUnit": "TIME_UNIT_MINUTE"}` in seconds.
@@ -358,7 +408,9 @@ public struct KimiProvider: QuotaProvider {
         case "TIME_UNIT_WEEK": unit = 604_800
         default: return nil
         }
-        return Int(duration * unit)
+        // Checked, not `Int(_:)`, for the same reason as `countDetail`.
+        guard let seconds = Int(exactly: (duration * unit).rounded()), seconds > 0 else { return nil }
+        return seconds
     }
 
     /// `{"membership": {"level": "LEVEL_INTERMEDIATE"}}`. The first goods
@@ -438,14 +490,14 @@ public struct KimiProvider: QuotaProvider {
         var windows: [UsageWindow] = []
         for usage in usages.usages ?? [] {
             guard let detail = usage.detail else { continue }
-            let limit = Double(detail.limit ?? "") ?? 0
-            let used = Double(detail.used ?? "") ?? 0
+            let limit = Double(detail.limit ?? "").flatMap { $0.isFinite ? $0 : nil } ?? 0
+            let used = Double(detail.used ?? "").flatMap { $0.isFinite ? $0 : nil } ?? 0
             let reset = Dates.parseAny(detail.resetTime) ?? Dates.parseAny(detail.resetAt)
             let percent: Double? = limit > 0 ? used / limit * 100 : nil
             windows.append(UsageWindow(
                 title: usage.scope ?? L10n.t("Usage", "用量"),
                 usedPercent: percent,
-                detail: limit > 0 ? "\(Int(used)) / \(Int(limit))" : nil,
+                detail: limit > 0 ? countDetail(used: used, limit: limit) : nil,
                 resetsAt: reset))
         }
 

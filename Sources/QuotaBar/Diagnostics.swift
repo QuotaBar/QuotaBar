@@ -213,13 +213,17 @@ enum Diagnostics {
         out += "Claude   \(claude)\(plan)  (via \(route))\n"
         out += "Codex    \(LocalCredentials.codexAuth() == nil ? "missing" : "available")\n"
         out += "Gemini   \(LocalCredentials.geminiAccessToken() == nil ? "missing" : "available")\n"
-        if let kimi = LocalCredentials.kimiCodeSession() {
+        func kimiLine(_ state: String, _ kimi: LocalCredentials.KimiCodeSession) -> String {
             let expiry = kimi.expiresAt.map { date -> String in
                 let seconds = Int(date.timeIntervalSinceNow)
                 return seconds > 0 ? "\(seconds / 60)m \(seconds % 60)s left" : "\(-seconds / 60)m ago"
             } ?? "no expiry"
-            let state = kimi.isExpired() ? "expired" : "available"
-            out += "Kimi     \(state) (\(expiry)) · \(kimi.fileName) → \(kimi.baseURL.host ?? "")\n"
+            return "Kimi     \(state) (\(expiry)) · \(kimi.fileName) → \(kimi.baseURL.host ?? "")\n"
+        }
+        if let kimi = LocalCredentials.kimiCodeSession() {
+            out += kimiLine(kimi.isExpired() ? "expired, Kimi Code renews it when used" : "available", kimi)
+        } else if let ended = LocalCredentials.kimiCodeSessions().first {
+            out += kimiLine("signed out, cannot be renewed", ended)
         } else {
             out += "Kimi     missing\n"
         }
@@ -363,7 +367,6 @@ enum Diagnostics {
         var out = "\(id.displayName)\n"
         if let snapshot = item.1 {
             out += "  plan: \(snapshot.planName ?? "—")\n"
-            if let account = snapshot.account { out += "  account: \(account)\n" }
             for window in snapshot.windows {
                 let used = window.usedPercent.map { QuotaFormat.percent($0) + " used" } ?? "—"
                 let reset = window.resetsAt.map { " · " + QuotaFormat.resetLabel(to: $0) } ?? ""

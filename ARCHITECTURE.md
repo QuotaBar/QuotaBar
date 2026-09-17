@@ -648,10 +648,12 @@ Six ways a provider gets its credential, in order of preference:
    (`~/.gemini/jetski-standalone-oauth-token`, read only: the app refreshes it
    while it runs, and refreshing it here would need the app's own OAuth
    client), Kimi Code (`~/.kimi-code/credentials/<name>.json`, shared by the
-   Kimi Code app and the `kimi` CLI, with the older CLI's `~/.kimi` copy as a
-   fallback; read only: its access token lasts 15 minutes and Kimi Code renews
-   it while in use, rotating the refresh token, so a renewal here would sign
-   Kimi Code out), read in the clear.
+   Kimi Code app and the `kimi` CLI, with the older CLI's `~/.kimi` copy only
+   where Kimi Code has never run; read only: its access token lasts 15 minutes
+   and Kimi Code renews it while in use, rotating the refresh token, so a
+   renewal here would sign Kimi Code out. A file whose access and refresh
+   tokens have both run out is no session, and `UsageStore` reads Kimi again
+   when Kimi Code rewrites the file), read in the clear.
 2. **Another app's keychain item** — Claude Code.
 3. **Another app's local session store** — Cursor keeps its signed-in session
    in `state.vscdb`, a plain SQLite file (`SQLiteRead`). Not the cookie jar,

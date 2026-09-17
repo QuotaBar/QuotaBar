@@ -22,25 +22,46 @@ final class KimiCodeSessionTests: XCTestCase {
         try? FileManager.default.removeItem(at: root)
     }
 
-    private func write(_ json: String, _ path: String, in home: URL) throws {
+    private func write(_ json: String, _ path: String, in home: URL, written: Date? = nil) throws {
         let url = home.appendingPathComponent("credentials/\(path)")
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data(json.utf8).write(to: url)
+        if let written {
+            try FileManager.default.setAttributes([.modificationDate: written], ofItemAtPath: url.path)
+        }
     }
 
     private func session() -> LocalCredentials.KimiCodeSession? {
-        LocalCredentials.kimiCodeSession(codeHome: codeHome, legacyHome: legacyHome)
+        LocalCredentials.kimiCodeSession(codeHome: codeHome, legacyHome: legacyHome, now: now)
     }
 
-    /// A token whose payload carries only `exp`; the signature is a placeholder.
-    private func jwt(exp: Int) -> String {
+    private func sessions() -> [LocalCredentials.KimiCodeSession] {
+        LocalCredentials.kimiCodeSessions(codeHome: codeHome, legacyHome: legacyHome)
+    }
+
+    /// What Kimi Code 0.3x leaves in `~/.kimi-code` after moving from the Python CLI.
+    private func writeMigrationReport() throws {
+        try FileManager.default.createDirectory(at: codeHome, withIntermediateDirectories: true)
+        try Data(#"{"notices":{"oauthLoginsRequiringRelogin":["kimi-code.json"]}}"#.utf8)
+            .write(to: codeHome.appendingPathComponent("migration-report.json"))
+    }
+
+    /// A token whose payload carries only its type and `exp`; the signature is a placeholder.
+    private func jwt(exp: Int, type: String = "access") -> String {
         func b64(_ json: String) -> String {
             Data(json.utf8).base64EncodedString()
                 .replacingOccurrences(of: "+", with: "-")
                 .replacingOccurrences(of: "/", with: "_")
                 .replacingOccurrences(of: "=", with: "")
         }
-        return "\(b64(#"{"alg":"ES256","typ":"JWT"}"#)).\(b64("{\"type\":\"access\",\"exp\":\(exp)}")).c2ln"
+        return "\(b64(#"{"alg":"ES256","typ":"JWT"}"#)).\(b64("{\"type\":\"\(type)\",\"exp\":\(exp)}")).c2ln"
+    }
+
+    /// A credential file as Kimi Code writes it: the access token runs out at
+    /// `expires`, the refresh token at `renewableUntil` (nil: no refresh token).
+    private func file(access: String = "access", expires: Int, renewableUntil: Int?) -> String {
+        let refresh = renewableUntil.map { jwt(exp: $0, type: "refresh") } ?? ""
+        return "{\"access_token\":\"\(access)\",\"refresh_token\":\"\(refresh)\",\"expires_at\":\(expires),\"expires_in\":900}"
     }
 
     // MARK: File names
@@ -67,7 +88,7 @@ final class KimiCodeSessionTests: XCTestCase {
         try write(#"""
         {
           "access_token": "new-access",
-          "refresh_token": "never-read",
+          "refresh_token": "\#(jwt(exp: 1_802_592_000, type: "refresh"))",
           "expires_at": 1800000900,
           "scope": "kimi-code",
           "token_type": "Bearer",
@@ -77,23 +98,43 @@ final class KimiCodeSessionTests: XCTestCase {
         let found = try XCTUnwrap(session())
         XCTAssertEqual(found.accessToken, "new-access")
         XCTAssertEqual(found.expiresAt, Date(timeIntervalSince1970: 1_800_000_900))
+        XCTAssertTrue(found.hasRefreshToken)
+        XCTAssertEqual(found.refreshExpiresAt, Date(timeIntervalSince1970: 1_802_592_000))
         XCTAssertEqual(found.baseURL.absoluteString, "https://api.kimi.ai/coding/v1")
         XCTAssertEqual(found.usageURL.absoluteString, "https://api.kimi.ai/coding/v1/usages")
         XCTAssertEqual(found.fileName, globalFile)
     }
 
-    /// An upgrade from the Python CLI leaves its file behind; the one that
-    /// runs out last is the live one.
-    func testPicksTheSessionThatRunsOutLast() throws {
-        try write(#"{"access_token":"current","expires_at":1800000900,"expires_in":900}"#, globalFile, in: codeHome)
-        try write(#"{"access_token":"legacy","expires_at":1794754572.25,"expires_in":900.0}"#, "kimi-code.json", in: legacyHome)
-        XCTAssertEqual(session()?.accessToken, "current")
-
-        try write(#"{"access_token":"legacy","expires_at":1800001800.5,"expires_in":900.0}"#, "kimi-code.json", in: legacyHome)
+    /// The Python CLI's file, where Kimi Code itself has never been.
+    func testReadsThePythonCLIsFile() throws {
+        try write(#"{"access_token":"legacy","refresh_token":"opaque","expires_at":1800001800.5,"expires_in":900.0}"#,
+                  "kimi-code.json", in: legacyHome)
         let legacy = try XCTUnwrap(session())
         XCTAssertEqual(legacy.accessToken, "legacy")
         XCTAssertEqual(legacy.expiresAt?.timeIntervalSince1970 ?? 0, 1_800_001_800.5, accuracy: 0.001)
         XCTAssertEqual(legacy.baseURL.absoluteString, "https://api.kimi.com/coding/v1")
+        // Not a JWT: renewable as far as anyone here can tell.
+        XCTAssertTrue(legacy.canRenew(now: now))
+        XCTAssertNil(legacy.refreshExpiresAt)
+    }
+
+    /// Once Kimi Code has its own file, the Python CLI's is left over, even
+    /// when it happens to run out later.
+    func testThePythonCLIsFileIsLeftOverOnceKimiCodeHasItsOwn() throws {
+        try write(#"{"access_token":"current","expires_at":1800000900,"expires_in":900}"#, globalFile, in: codeHome)
+        try write(#"{"access_token":"legacy","expires_at":1800001800.5,"expires_in":900.0}"#, "kimi-code.json", in: legacyHome)
+        XCTAssertEqual(session()?.accessToken, "current")
+        XCTAssertEqual(sessions().map(\.accessToken), ["current"])
+    }
+
+    /// Kimi Code's migration lists the old sign-in as one to redo; signing
+    /// out of Kimi Code afterwards deletes its file, and the old one must not
+    /// stand in for it.
+    func testAfterMigratingThePythonCLIsFileIsNotRead() throws {
+        try writeMigrationReport()
+        try write(#"{"access_token":"legacy","refresh_token":"opaque","expires_at":1800001800}"#, "kimi-code.json", in: legacyHome)
+        XCTAssertNil(session())
+        XCTAssertTrue(sessions().isEmpty)
     }
 
     /// A region switch leaves the mainland file next to the global one.
@@ -129,17 +170,106 @@ final class KimiCodeSessionTests: XCTestCase {
         XCTAssertNil(session())
     }
 
+    private let revokedMarker = #"{"access_token":"","refresh_token":"","expires_at":0,"expires_in":0,"scope":"kimi-code","token_type":"Bearer"}"#
+
     /// What Kimi Code writes after a refused renewal: signed out.
     func testTheRevokedMarkerIsNoSession() throws {
-        try write(#"{"access_token":"","refresh_token":"","expires_at":0,"expires_in":0,"scope":"kimi-code","token_type":"Bearer"}"#,
-                  globalFile, in: codeHome)
+        try write(revokedMarker, globalFile, in: codeHome)
         XCTAssertNil(session())
+        XCTAssertTrue(sessions().isEmpty)
+    }
+
+    /// The layout on a Mac moved from the Python CLI: its file long dead, and
+    /// Kimi Code's own file revoked or deleted by signing out.
+    func testASignedOutKimiCodeNeverFallsBackToTheDeadPythonCLIFile() throws {
+        let dead = file(access: "legacy", expires: 1_794_816_000, renewableUntil: 1_797_408_000)
+        try write(dead, "kimi-code.json", in: legacyHome)
+
+        // Revoked, with and without the migration report.
+        try write(revokedMarker, globalFile, in: codeHome)
+        XCTAssertNil(session())
+        try writeMigrationReport()
+        XCTAssertNil(session())
+
+        // Deleted by signing out.
+        try FileManager.default.removeItem(at: codeHome.appendingPathComponent("credentials/\(globalFile)"))
+        XCTAssertNil(session())
+        XCTAssertTrue(sessions().isEmpty)
+    }
+
+    /// Where Kimi Code has never been, a Python CLI file nothing can renew
+    /// is no session either, but is still there to tell "signed out" apart.
+    func testADeadPythonCLIFileIsNoSession() throws {
+        try write(file(access: "legacy", expires: 1_794_816_000, renewableUntil: 1_797_408_000), "kimi-code.json", in: legacyHome)
+        XCTAssertNil(session())
+        XCTAssertEqual(sessions().map(\.fileName), ["kimi-code.json"])
+    }
+
+    /// Kimi Code left unused past its refresh token's 30 days: the access
+    /// token has run out and nothing can renew it.
+    func testAnExpiredTokenIsASessionOnlyWhileKimiCodeCanRenewIt() throws {
+        // Renewable for another day: waiting on Kimi Code.
+        try write(file(expires: 1_799_999_000, renewableUntil: 1_800_086_400), globalFile, in: codeHome)
+        let waiting = try XCTUnwrap(session())
+        XCTAssertTrue(waiting.isExpired(now: now))
+        XCTAssertTrue(waiting.canRenew(now: now))
+        XCTAssertFalse(waiting.needsSignIn(now: now))
+
+        // The refresh token ran out an hour ago.
+        try write(file(expires: 1_799_999_000, renewableUntil: 1_799_996_400), globalFile, in: codeHome)
+        XCTAssertNil(session())
+        XCTAssertEqual(try XCTUnwrap(sessions().first).needsSignIn(now: now), true)
+
+        // No refresh token at all.
+        try write(file(expires: 1_799_999_000, renewableUntil: nil), globalFile, in: codeHome)
+        XCTAssertNil(session())
+
+        // Still good without one, until the access token runs out.
+        try write(file(expires: 1_800_000_900, renewableUntil: nil), globalFile, in: codeHome)
+        XCTAssertEqual(session()?.canRenew(now: now), false)
+    }
+
+    /// A refused renewal on the region Kimi Code uses blanks that file; the
+    /// other region's file, written before, is no sign-in of its. Signing in
+    /// on the other region afterwards is.
+    func testTheRevokedMarkerOutranksFilesWrittenBeforeIt() throws {
+        let earlier = Date(timeIntervalSince1970: 1_799_990_000)
+        let later = Date(timeIntervalSince1970: 1_799_995_000)
+        try write(file(access: "mainland", expires: 1_799_999_000, renewableUntil: 1_802_000_000),
+                  "kimi-code.json", in: codeHome, written: earlier)
+        try write(revokedMarker, globalFile, in: codeHome, written: later)
+        XCTAssertNil(session())
+
+        try write(file(access: "mainland", expires: 1_800_000_900, renewableUntil: 1_802_592_000),
+                  "kimi-code.json", in: codeHome, written: Date(timeIntervalSince1970: 1_799_999_100))
+        XCTAssertEqual(session()?.accessToken, "mainland")
     }
 
     func testUnreadableFilesAreSkipped() throws {
         try write("not json", globalFile, in: codeHome)
-        try write(#"{"access_token":"legacy","expires_at":1800000000}"#, "kimi-code.json", in: legacyHome)
-        XCTAssertEqual(session()?.accessToken, "legacy")
+        try write(#"{"access_token":"mainland","expires_at":1800000900}"#, "kimi-code.json", in: codeHome)
+        XCTAssertEqual(session()?.accessToken, "mainland")
+    }
+
+    /// Only when each file was written, never what it holds, and a change on
+    /// every renewal or sign-out.
+    func testFilesWrittenFollowRenewalsAndSignOuts() throws {
+        func written() -> [String: Date] {
+            LocalCredentials.kimiCodeFilesWritten(codeHome: codeHome, legacyHome: legacyHome)
+        }
+        XCTAssertEqual(written(), [:])
+        try write(file(expires: 1_800_000_900, renewableUntil: 1_802_592_000), globalFile, in: codeHome,
+                  written: Date(timeIntervalSince1970: 1_800_000_000))
+        try write("{}", "other.json", in: codeHome)
+        let first = written()
+        XCTAssertEqual(first, [globalFile: Date(timeIntervalSince1970: 1_800_000_000)])
+
+        try write(file(expires: 1_800_001_800, renewableUntil: 1_802_593_000), globalFile, in: codeHome,
+                  written: Date(timeIntervalSince1970: 1_800_000_900))
+        XCTAssertNotEqual(written(), first)
+
+        try FileManager.default.removeItem(at: codeHome.appendingPathComponent("credentials/\(globalFile)"))
+        XCTAssertEqual(written(), [:])
     }
 
     /// A file for hosts set through Kimi Code's environment overrides has no
@@ -189,6 +319,36 @@ final class KimiCodeSessionTests: XCTestCase {
             XCTAssertEqual(message, KimiProvider.expiredSessionHint)
             XCTAssertEqual(error.localizedDescription, KimiProvider.expiredSessionHint)
         }
+    }
+
+    /// "No need to sign in again" only while that is true.
+    func testAnExpiredSessionNothingCanRenewSaysToSignInAgain() async {
+        let base = URL(string: "https://api.kimi.ai/coding/v1")!
+        let ended = [
+            LocalCredentials.KimiCodeSession(
+                accessToken: "t", expiresAt: now.addingTimeInterval(-60),
+                refreshExpiresAt: now.addingTimeInterval(-3_600), baseURL: base, fileName: "f"),
+            LocalCredentials.KimiCodeSession(
+                accessToken: "t", expiresAt: now.addingTimeInterval(-60),
+                hasRefreshToken: false, baseURL: base, fileName: "f"),
+        ]
+        for session in ended {
+            do {
+                _ = try await KimiProvider.fetchCode(session: session, now: now)
+                XCTFail("expected an error")
+            } catch {
+                guard case let ProviderError.sessionExpired(message) = error else { return XCTFail("\(error)") }
+                XCTAssertEqual(message, KimiProvider.signInAgainHint)
+                XCTAssertNotEqual(message, KimiProvider.expiredSessionHint)
+            }
+        }
+    }
+
+    func testARejectedCookieSaysToClearIt() {
+        XCTAssertNotEqual(
+            KimiProvider.rejectedCookieHint(signedInLocally: true),
+            KimiProvider.rejectedCookieHint(signedInLocally: false))
+        XCTAssertNotEqual(KimiProvider.rejectedCookieHint(signedInLocally: true), ProviderError.unauthorized.errorDescription)
     }
 }
 
@@ -295,6 +455,40 @@ final class KimiCodeUsageTests: XCTestCase {
         XCTAssertEqual(try plan(#"{"membership":{"level":"LEVEL_ADVANCED"}}"#, version: "GOODS_VERSION_V2"), "Advanced")
         XCTAssertNil(try plan(#"{"membership":{"level":"LEVEL_UNSPECIFIED"}}"#))
         XCTAssertNil(try plan(#"{"membership":"odd"}"#))
+    }
+
+    /// Protobuf-JSON int64 strings: an uncapped plan may send int64's largest,
+    /// which rounds past `Int.max` as a `Double`. No detail line, no crash.
+    func testHugeAndInfiniteFiguresDoNotCrash() throws {
+        let uncapped = try parse(#"""
+        {"usage":{"limit":"9223372036854775807","used":"5"},
+         "limits":[{"window":{"duration":300,"timeUnit":"TIME_UNIT_MINUTE"},
+                    "detail":{"limit":"9223372036854775807","remaining":"9223372036854775807"}}]}
+        """#)
+        XCTAssertEqual(uncapped.windows.map(\.windowSeconds), [18_000, 604_800])
+        XCTAssertNil(uncapped.windows[0].detail)
+        XCTAssertNil(uncapped.windows[1].detail)
+        XCTAssertEqual(uncapped.windows[1].usedPercent ?? -1, 0, accuracy: 0.0001)
+
+        // An infinite limit or count is no window; an endless one no length.
+        let odd = try parse(#"""
+        {"usage":{"limit":"inf","used":"5"},
+         "limits":[{"window":{"duration":"1e300","timeUnit":"TIME_UNIT_WEEK"},"detail":{"limit":"10","used":"1e400","remaining":"4"}},
+                   {"window":{"duration":"inf","timeUnit":"TIME_UNIT_MINUTE"},"detail":{"limit":"10","used":"2","resetTime":"inf"}},
+                   {"detail":{"limit":"1e400","used":"1"}}]}
+        """#)
+        XCTAssertEqual(odd.windows.count, 2)
+        XCTAssertTrue(odd.windows.allSatisfy { $0.windowSeconds == nil })
+        XCTAssertEqual(odd.windows.map(\.detail), ["6 / 10", "2 / 10"])
+        XCTAssertNil(odd.windows[1].resetsAt)
+
+        XCTAssertNil(KimiProvider.countDetail(used: 1, limit: .infinity))
+        XCTAssertNil(KimiProvider.countDetail(used: .nan, limit: 10))
+        XCTAssertEqual(KimiProvider.countDetail(used: 12.7, limit: 100), "12 / 100")
+        XCTAssertNil(KimiProvider.windowSeconds(["duration": 1e300, "timeUnit": "TIME_UNIT_DAY"]))
+        XCTAssertNil(Dates.parseEpoch(.infinity))
+        XCTAssertNil(Dates.parseEpoch(1e300))
+        XCTAssertNotNil(Dates.parseEpoch(1_800_000_000_000))
     }
 
     func testNothingToShowIsABadResponse() {

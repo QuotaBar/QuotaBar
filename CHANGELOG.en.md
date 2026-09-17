@@ -9,11 +9,12 @@ Server moves, the website, and build or release scripts don't change the app its
 
 #### Added
 
-- Kimi Code reads the sign-in of the Kimi Code app or CLI (`kimi`) on this Mac, so there is no kimi-auth cookie to paste. The quota comes from the usage endpoint Kimi Code itself uses: the 5-hour and weekly limits, and the monthly one when the plan has it, each with its reset time. The token Kimi Code saves lasts 15 minutes and is renewed only while Kimi Code is in use; QuotaBar only reads it and never renews it, which would sign Kimi Code itself out, so once it has expired the card says to use Kimi Code once, with no need to sign in again. A kimi-auth cookie already pasted in Settings still comes first; clear it to use the sign-in on this Mac.
+- Kimi Code reads the sign-in of the Kimi Code app or CLI (`kimi`) on this Mac, so there is no kimi-auth cookie to paste. The quota comes from the usage endpoint Kimi Code itself uses: the 5-hour and weekly limits, and the monthly one when the plan has it, each with its reset time. The token Kimi Code saves lasts 15 minutes and is renewed only while Kimi Code is in use; QuotaBar only reads it and never renews it, which would sign Kimi Code itself out, so once it has expired the card says to use Kimi Code once, with no need to sign in again; QuotaBar reads the quota again within a minute of Kimi Code renewing the token, not at its next refresh. When Kimi Code's sign-in can no longer be renewed, after 30 days unused or once signed out, the card says to sign in again, and a dead sign-in the old Python CLI left in `~/.kimi` is not used in its place. A kimi-auth cookie already pasted in Settings still comes first; clear it to use the sign-in on this Mac. If Kimi turns the cookie down, the card says to clear it or paste a fresh one.
 
 #### Fixed
 
 - In Settings → Providers, providers that can read this Mac's own sign-in as well as take a pasted credential (Cursor, Grok, OpenCode Go, GitHub Copilot, Kimi Code) say Auto rather than Keychain when nothing is pasted and the sign-in on this Mac is what they use.
+- QuotaBar quit when a provider sent a figure too large to convert, such as a Kimi Code limit as large as the largest 64-bit integer, or a reset time with no end. Such a figure now just leaves out the count or the reset time.
 
 ### 2026-09-16
 

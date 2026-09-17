@@ -434,8 +434,8 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
                 "已登录 Cursor.app 时自动读取；否则粘贴 WorkosCursorSessionToken cookie（开发者工具 → 应用 → Cookie → cursor.com）。")
         case .kimi:
             return L10n.t(
-                "Automatic if the Kimi Code app or CLI (`kimi`) is signed in. Otherwise paste the kimi-auth cookie JWT (DevTools → Application → Cookies → kimi.com).",
-                "已登录 Kimi Code 应用或 CLI（`kimi`）时自动读取；否则粘贴 kimi-auth cookie 的 JWT（开发者工具 → 应用 → Cookie → kimi.com）。")
+                "Automatic if the Kimi Code app or CLI (`kimi`) is signed in. Otherwise paste the kimi-auth cookie JWT (DevTools → Application → Cookies → kimi.com); a pasted cookie is used first.",
+                "已登录 Kimi Code 应用或 CLI（`kimi`）时自动读取；否则粘贴 kimi-auth cookie 的 JWT（开发者工具 → 应用 → Cookie → kimi.com），粘贴后优先使用 cookie。")
         case .zai:
             return L10n.t("API key (z.ai → API Keys).", "API Key（z.ai → API Keys）。")
         case .opencodeGo:
@@ -851,9 +851,11 @@ public enum ProviderError: LocalizedError, Sendable {
     /// Signed in, and the account simply has no plan to read — said as it
     /// is, not as an expired session or a reply that would not parse.
     case noPlan(String)
-    /// A sign-in another app owns and renews has run out, or was turned
-    /// down, said with what brings it back — usually using that app once,
-    /// not signing in again, which is what `.unauthorized` tells people.
+    /// A sign-in another app owns and renews has run out, or a credential
+    /// was turned down, said with what brings it back when that is not what
+    /// `.unauthorized` tells people — using that app once rather than
+    /// signing in again, or clearing a pasted credential that stands in the
+    /// way of the sign-in on this Mac.
     case sessionExpired(String)
 
     public var errorDescription: String? {

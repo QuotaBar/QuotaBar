@@ -168,6 +168,8 @@ final class UsageStore: ObservableObject {
     private var netMonitor: NWPathMonitor?
     private var lastNetStatus: NWPath.Status?
     private var systemObservers: [NSObjectProtocol] = []
+    /// When Kimi Code last wrote its sign-in files; see `noteKimiCodeSignIn`.
+    private var kimiCodeWritten: [String: Date]?
 
     /// Builds a store wired to the real config but with no timers, network
     /// calls or notification prompts — used by `--snapshot` and previews.
@@ -1044,8 +1046,22 @@ final class UsageStore: ObservableObject {
                 try? await Task.sleep(for: .seconds(30))
                 guard let self, !Task.isCancelled else { return }
                 self.tick &+= 1
+                self.noteKimiCodeSignIn()
             }
         }
+    }
+
+    /// Kimi Code's access token lasts 15 minutes and is renewed only while
+    /// Kimi Code is in use, so a quota read on the refresh timer mostly finds
+    /// it run out. With the clock, when its files were written is looked at —
+    /// never what they hold — and Kimi is read again as soon as Kimi Code has
+    /// renewed, signed in or signed out, rather than at the next refresh.
+    private func noteKimiCodeSignIn() {
+        let written = LocalCredentials.kimiCodeFilesWritten()
+        defer { kimiCodeWritten = written }
+        guard let previous = kimiCodeWritten, previous != written else { return }
+        refreshConfigured()
+        if isEnabled(.kimi) { refresh(.kimi) }
     }
 
     /// Refresh shortly after wake and when the network recovers, mirroring
