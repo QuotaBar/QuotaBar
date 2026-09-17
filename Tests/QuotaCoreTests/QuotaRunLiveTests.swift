@@ -9,7 +9,7 @@ import XCTest
 ///
 /// Skipped unless `QUOTABAR_RUN_E2E` names a server, e.g.
 /// `QUOTABAR_RUN_E2E=http://127.0.0.1:8799/api/v1 swift test --filter QuotaRunLiveTests`
-/// with `server/run/run_server.py` running on a throwaway database and
+/// with the quota.run repository's `server/run/run_server.py` running on a throwaway database and
 /// `QUOTA_RUN_DEV_LOGIN=1 QUOTA_RUN_INSECURE_COOKIES=1` in its environment.
 /// The session's writes send `Origin`, which must equal the server's
 /// `QUOTA_RUN_ORIGIN`: `QUOTABAR_RUN_E2E_ORIGIN`, by default the scheme, host

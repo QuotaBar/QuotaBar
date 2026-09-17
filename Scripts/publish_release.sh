@@ -1,6 +1,6 @@
 #!/bin/bash
 # 发布 release.sh 已经打好的版本：GitHub Release、quota.bar 服务器副本、
-# Homebrew tap、官网，一次做完。
+# Homebrew tap、两个网站（旁边的 quota.bar、quota.run 仓库），一次做完。
 #
 #   ./Scripts/publish_release.sh                    # 版本号取 Info.plist
 #   STEPS="mirror" ./Scripts/publish_release.sh     # 只重传服务器副本
@@ -135,7 +135,12 @@ if has_step tap; then
   rm -rf "$work"
 fi
 
+# 两个网站是旁边的独立仓库：quota.bar 首页的版本号、下载链接和更新日志，quota.run 页脚的下载链接，
+# 都从本仓库生成，所以发版后两个站都要重新部署。
 if has_step site; then
-  echo "── 官网"
-  ./Scripts/deploy_site.sh
+  for site in ${SITES:-../quota.bar ../quota.run}; do
+    [ -x "$site/Scripts/deploy_site.sh" ] || die "找不到 $site/Scripts/deploy_site.sh：网站仓库应放在本仓库旁边，或用 SITES 指定"
+    echo "── 网站 $(basename "$site")"
+    "$site/Scripts/deploy_site.sh"
+  done
 fi

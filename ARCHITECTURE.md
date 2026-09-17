@@ -89,12 +89,17 @@ same commit or the one right after. A release moves those lines under its
 version heading. Server moves, the site and build tooling are not recorded.
 
 The log is also shown where people look: the "recent updates" blocks in
-`README.md` and `README.zh-CN.md`, the home page's 更新日志 section and
-`web/changelog.html` are generated from it, with the commit calendar in
-`Assets/readme/`. After editing the changelog run
-`python3 Scripts/sync_changelog.py` and commit what it rewrites;
-`deploy_site.sh` runs it before every publish. Never edit between the
-`<!-- changelog:start -->` markers by hand.
+`README.md` and `README.zh-CN.md` are generated from it, with the commit
+calendar in `Assets/readme/`. After editing the changelog run
+`python3 Scripts/sync_changelog.py` and commit what it rewrites. Never edit
+between the `<!-- changelog:start -->` markers by hand.
+
+The websites are separate repositories checked out next to this one —
+`../quota.bar` (product site and feedback receiver) and `../quota.run` (Quota
+Run pages and API). Their build scripts read this repository's changelogs,
+`ProviderID` and logos, so the home page's 更新日志 section and quota.bar's
+changelog page follow the log when a site is deployed. `publish_release.sh`
+deploys both as its last step.
 
 ### Credentials
 

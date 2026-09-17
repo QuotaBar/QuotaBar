@@ -337,9 +337,8 @@ same assistant turn into every session file that replays it (deduplicated on
   card, local API.
 - `Tests/QuotaCoreTests` — parser fixtures, cost regressions, config migration, updater
   verification. Everything testable lives in QuotaCore.
-- `site/index.html` — the website's template, every piece of copy written as
-  `[[English||中文]]`; `Scripts/sync_changelog.py` builds it into `web/` (English at the
-  root, Chinese under `web/zh/`). `web/` is what gets deployed.
+- `docs/quota-run.md` — the Quota Run contract between the app and its server. The
+  website and the Quota Run service live in separate repositories.
 
 Adding a provider, and every design decision worth knowing before changing one:
 [ARCHITECTURE.md](ARCHITECTURE.md). Every change to the app is logged, dated, in
