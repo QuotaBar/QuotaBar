@@ -339,7 +339,16 @@ final class UsageStore: ObservableObject {
         enabled.filter { states[$0]?.errorMessage != nil }
     }
 
+    /// Providers with no reading whose last refresh failed, being read again.
+    /// They keep `.failed` until the read is back, as a stale provider keeps
+    /// its numbers: a retry is not a recovery, and as `.loading` they dropped
+    /// out of `failingProviders` for as long as every refresh took — the
+    /// island's list of them lost its rows, or closed, and the amber dots
+    /// went green.
+    @Published private(set) var retrying: Set<ProviderID> = []
+
     func isLoading(_ id: ProviderID) -> Bool {
+        if retrying.contains(id) { return true }
         if case .loading = states[id] { return true }
         return false
     }
@@ -488,14 +497,18 @@ final class UsageStore: ObservableObject {
     }
 
     private func markLoading(_ id: ProviderID) {
-        // Keep showing the previous numbers while a refresh is in flight; only
-        // a provider with nothing yet gets the spinner.
-        if states[id]?.snapshot == nil {
-            states[id] = .loading
+        // Keep showing the previous numbers while a refresh is in flight, and
+        // a failure with none keeps its message; only a provider with nothing
+        // yet gets the spinner.
+        switch states[id] {
+        case .loaded, .stale: break
+        case .failed: retrying.insert(id)
+        case .loading, nil: states[id] = .loading
         }
     }
 
     private func apply(_ id: ProviderID, _ result: Result<UsageSnapshot, Error>) {
+        retrying.remove(id)
         switch result {
         case let .success(reading):
             let snapshot = withBalanceEstimate(id, reading)
@@ -973,6 +986,7 @@ final class UsageStore: ObservableObject {
         } else {
             enabled.removeAll { $0 == id }
             states[id] = nil
+            retrying.remove(id)
             reported[id] = nil
             SnapshotCache.shared.remove(id)
             if selected == id { selected = enabled.first }

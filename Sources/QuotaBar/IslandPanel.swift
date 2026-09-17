@@ -73,13 +73,27 @@ struct IslandPanel: View {
     /// follow it a little, then turn once it lets go past the line.
     @State private var dragX: CGFloat = 0
     /// The list of providers that are not updating, over the right column.
-    /// Hovering the sync note opens it and leaving both closes it; a click
-    /// on the note keeps it open until the next click.
+    /// Resting the pointer on the sync note opens it and leaving both closes
+    /// it. A click on the note toggles what is on show: a closed list opens
+    /// and stays open until the next click, an open one closes.
     @State private var failuresShown = false
     @State private var failuresPinned = false
     @State private var noteHovered = false
     @State private var listHovered = false
-    @State private var failuresHideTask: Task<Void, Never>?
+    /// Closed by a click with the pointer still on the note: resting there
+    /// does not open it again until the pointer has left.
+    @State private var failuresHoverSuppressed = false
+    /// Opens the list once the pointer has rested on the note, or closes it
+    /// a beat after the pointer has left the note and the list.
+    @State private var failuresHoverTask: Task<Void, Never>?
+
+    /// How long the pointer rests on the note before the list opens. On
+    /// contact, a pointer crossing the footer on its way to the refresh
+    /// button flashed the list over the right column, and a click on the
+    /// note always landed on a list already open, so it changed nothing.
+    static let failuresHoverDelay: Duration = .milliseconds(350)
+    /// Long enough to cross the gap between the note and the list.
+    static let failuresHideDelay: Duration = .milliseconds(300)
 
     init(store: UsageStore, notch: IslandCoordinator.NotchMetrics?, bridge: IslandCoordinator.Bridge, showsFailures: Bool = false) {
         self.store = store
@@ -147,6 +161,9 @@ struct IslandPanel: View {
                     listHovered = inside
                     hoverChanged()
                 }
+                // Removed from under the pointer — a row was clicked, the
+                // last failure cleared — it gets no hover-out.
+                .onDisappear { listHovered = false }
                 .padding(.top, IslandPanelLayout.bodyTop / 2)
                 .padding(.bottom, IslandPanelLayout.footerHeight + 2)
                 .transition(.opacity.combined(with: .offset(y: 4)))
@@ -263,13 +280,7 @@ struct IslandPanel: View {
                         noteHovered = inside
                         hoverChanged()
                     } onTap: {
-                        if failuresShown, failuresPinned {
-                            closeFailures()
-                        } else {
-                            failuresHideTask?.cancel()
-                            failuresPinned = true
-                            failuresShown = true
-                        }
+                        toggleFailures()
                     }
                     refreshButton
                 }
@@ -281,26 +292,52 @@ struct IslandPanel: View {
 }
 
 private extension IslandPanel {
-    /// Opens on the pointer arriving at the note or the list; closes a beat
-    /// after it has left both, so the gap between them can be crossed.
+    /// Opens once the pointer has rested on the note, so one passing over
+    /// it does not flash the list; closes a beat after the pointer has left
+    /// the note and the list, so the gap between them can be crossed. The
+    /// list itself only keeps it open.
     func hoverChanged() {
-        failuresHideTask?.cancel()
-        if noteHovered || listHovered {
-            if !store.failingProviders.isEmpty { failuresShown = true }
-            return
+        failuresHoverTask?.cancel()
+        if !noteHovered { failuresHoverSuppressed = false }
+        if noteHovered, !failuresShown, !failuresHoverSuppressed, !store.failingProviders.isEmpty {
+            failuresHoverTask = Task { @MainActor in
+                try? await Task.sleep(for: Self.failuresHoverDelay)
+                guard !Task.isCancelled, noteHovered, !failuresHoverSuppressed, !store.failingProviders.isEmpty
+                else { return }
+                failuresShown = true
+            }
+        } else if failuresShown, !failuresPinned, !noteHovered, !listHovered {
+            failuresHoverTask = Task { @MainActor in
+                try? await Task.sleep(for: Self.failuresHideDelay)
+                guard !Task.isCancelled, !noteHovered, !listHovered, !failuresPinned else { return }
+                failuresShown = false
+            }
         }
-        guard !failuresPinned else { return }
-        failuresHideTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled, !noteHovered, !listHovered, !failuresPinned else { return }
-            failuresShown = false
+    }
+
+    /// A click on the note: the list on show, pinned or opened by resting
+    /// on the note, closes, and stays closed while the pointer is still on
+    /// the note; a closed one opens at once and stays open until the next
+    /// click. Every click changes what is on screen.
+    func toggleFailures() {
+        if failuresShown {
+            closeFailures()
+            failuresHoverSuppressed = noteHovered
+        } else {
+            failuresHoverTask?.cancel()
+            failuresHoverSuppressed = false
+            failuresPinned = true
+            failuresShown = true
         }
     }
 
     func closeFailures() {
-        failuresHideTask?.cancel()
+        failuresHoverTask?.cancel()
         failuresPinned = false
         failuresShown = false
+        // The list may go from under the pointer, which then never hears
+        // that it left.
+        listHovered = false
     }
 
     /// Every provider, the status pages and the logs, as the menu panel's
@@ -356,10 +393,10 @@ private extension IslandPanel {
 /// "● 已同步 3 分钟前", or an amber note that something is not updating;
 /// for a moment after the refresh button, what the refresh came to.
 ///
-/// While providers are failing the note is itself a control: hovering or
-/// clicking it lists them. A tap gesture with `.help`, as the chips are —
-/// this panel is never key, and a `Button` would not fire. With nothing
-/// failing it is plain text, laid out exactly as before.
+/// While providers are failing the note is itself a control: resting the
+/// pointer on it or clicking it lists them. A tap gesture with `.help`, as
+/// the chips are — this panel is never key, and a `Button` would not fire.
+/// With nothing failing it is plain text, laid out exactly as before.
 private struct IslandSyncStatus: View {
     @ObservedObject var store: UsageStore
     /// The list it opens is on show.
@@ -410,8 +447,12 @@ private struct IslandSyncStatus: View {
                 .onTapGesture(perform: onTap)
                 .help(L10n.t("Which providers are not updating, and why", "哪些服务商未能更新，以及原因"))
                 .accessibilityAddTraits(.isButton)
-                // Gone with the last failure: the pointer may still be on it.
-                .onDisappear { onHover(false) }
+                // Gone with the last failure: the pointer may still be on it,
+                // and no hover-out comes — for the highlight here either.
+                .onDisappear {
+                    hovering = false
+                    onHover(false)
+                }
         } else {
             row
         }
