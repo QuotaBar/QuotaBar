@@ -306,42 +306,62 @@ final class KimiCodeSessionTests: XCTestCase {
         XCTAssertTrue(String(describing: session).contains(globalFile))
     }
 
-    /// Known without asking, and said with what brings it back — no request goes out.
-    func testAnExpiredSessionIsNotSent() async {
-        let expired = LocalCredentials.KimiCodeSession(
-            accessToken: "t", expiresAt: now.addingTimeInterval(-60),
-            baseURL: URL(string: "https://api.kimi.ai/coding/v1")!, fileName: "f")
+    /// An environment on the throwaway homes whose network fails the test.
+    private func offline() -> KimiCodeEnvironment {
+        let fixed = now
+        return KimiCodeEnvironment(
+            codeHome: codeHome, legacyHome: legacyHome,
+            send: { _, url, _, _, _ in
+                XCTFail("no request expected, sent one to \(url.host ?? "?")")
+                throw ProviderError.network("offline")
+            },
+            now: { fixed }, sleep: { _ in }, appVersion: "test", renewal: KimiCodeRenewal())
+    }
+
+    /// The older CLI's sign-in is only read: once expired, said with what
+    /// brings it back, and no request goes out.
+    func testAnExpiredOlderCLISessionIsNotSent() async throws {
+        let legacy = file(access: "legacy", expires: 1_799_999_000, renewableUntil: 1_802_000_000)
+        try write(legacy, "kimi-code.json", in: legacyHome)
+        let expected = KimiProvider.expiredHint(.readOnly(.olderCLI))
         do {
-            _ = try await KimiProvider.fetchCode(session: expired, now: now)
+            _ = try await KimiProvider.fetchLocal(offline())
             XCTFail("expected an error")
         } catch {
             guard case let ProviderError.sessionExpired(message) = error else { return XCTFail("\(error)") }
-            XCTAssertEqual(message, KimiProvider.expiredSessionHint)
-            XCTAssertEqual(error.localizedDescription, KimiProvider.expiredSessionHint)
+            XCTAssertEqual(message, expected)
+            XCTAssertEqual(error.localizedDescription, expected)
         }
+        XCTAssertEqual(try String(contentsOf: legacyHome.appendingPathComponent("credentials/kimi-code.json"), encoding: .utf8), legacy)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: legacyHome.appendingPathComponent("oauth").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: codeHome.path))
     }
 
-    /// "No need to sign in again" only while that is true.
-    func testAnExpiredSessionNothingCanRenewSaysToSignInAgain() async {
-        let base = URL(string: "https://api.kimi.ai/coding/v1")!
-        let ended = [
-            LocalCredentials.KimiCodeSession(
-                accessToken: "t", expiresAt: now.addingTimeInterval(-60),
-                refreshExpiresAt: now.addingTimeInterval(-3_600), baseURL: base, fileName: "f"),
-            LocalCredentials.KimiCodeSession(
-                accessToken: "t", expiresAt: now.addingTimeInterval(-60),
-                hasRefreshToken: false, baseURL: base, fileName: "f"),
-        ]
-        for session in ended {
+    /// Nothing left to renew with: sign in again, and no request goes out.
+    func testAnExpiredSessionNothingCanRenewSaysToSignInAgain() async throws {
+        for renewableUntil in [1_799_996_400, nil] as [Int?] {
+            try write(file(expires: 1_799_999_000, renewableUntil: renewableUntil), globalFile, in: codeHome)
             do {
-                _ = try await KimiProvider.fetchCode(session: session, now: now)
+                _ = try await KimiProvider.fetchLocal(offline())
                 XCTFail("expected an error")
             } catch {
                 guard case let ProviderError.sessionExpired(message) = error else { return XCTFail("\(error)") }
                 XCTAssertEqual(message, KimiProvider.signInAgainHint)
-                XCTAssertNotEqual(message, KimiProvider.expiredSessionHint)
             }
         }
+    }
+
+    /// Where config.toml names the sign-in Kimi Code uses, that one is read
+    /// even when a file from an earlier region runs out later.
+    func testTheSignInConfigTomlNamesComesFirst() throws {
+        try write(file(access: "mainland", expires: 1_800_000_300, renewableUntil: 1_802_000_000), "kimi-code.json", in: codeHome)
+        try write(file(access: "global", expires: 1_800_000_900, renewableUntil: 1_802_000_000), globalFile, in: codeHome)
+        XCTAssertEqual(session()?.accessToken, "global")
+        try Data("[providers.\"managed:kimi-code\"]\n[providers.\"managed:kimi-code\".oauth]\nkey = \"oauth/kimi-code\"\n".utf8)
+            .write(to: codeHome.appendingPathComponent("config.toml"))
+        XCTAssertEqual(session()?.accessToken, "mainland")
+        XCTAssertEqual(session()?.edition, .china)
+        XCTAssertEqual(session()?.storageName, "kimi-code")
     }
 
     func testARejectedCookieSaysToClearIt() {

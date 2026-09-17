@@ -434,8 +434,8 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
                 "已登录 Cursor.app 时自动读取；否则粘贴 WorkosCursorSessionToken cookie（开发者工具 → 应用 → Cookie → cursor.com）。")
         case .kimi:
             return L10n.t(
-                "Automatic if the Kimi Code app or CLI (`kimi`) is signed in. Otherwise paste the kimi-auth cookie JWT (DevTools → Application → Cookies → kimi.com); a pasted cookie is used first.",
-                "已登录 Kimi Code 应用或 CLI（`kimi`）时自动读取；否则粘贴 kimi-auth cookie 的 JWT（开发者工具 → 应用 → Cookie → kimi.com），粘贴后优先使用 cookie。")
+                "1. Automatic if the Kimi Code app or CLI (`kimi`) is signed in, China or Global edition; QuotaBar keeps that sign-in renewed.\n2. Or paste a Kimi Code API key, from the Kimi Code console of your edition (kimi.com or kimi.ai).\n3. Or paste a kimi-auth cookie from kimi.com (DevTools → Application → Cookies).\nSomething pasted is used before the sign-in on this Mac.",
+                "1. 已登录 Kimi Code 应用或 CLI（`kimi`）时自动读取，国内版、国际版均可，QuotaBar 会让这份登录保持续期。\n2. 或粘贴 Kimi Code API Key，在你所用版本的 Kimi Code 控制台（kimi.com 或 kimi.ai）获取。\n3. 或粘贴 kimi.com 的 kimi-auth cookie（开发者工具 → 应用 → Cookie）。\n粘贴的凭据优先于本机登录使用。")
         case .zai:
             return L10n.t("API key (z.ai → API Keys).", "API Key（z.ai → API Keys）。")
         case .opencodeGo:
@@ -506,8 +506,8 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
             "Sign in with the GitHub CLI (`gh auth login`), or paste a token in Settings.",
             "用 GitHub CLI 登录（`gh auth login`），或在设置里粘贴 token。")
         case .kimi: return L10n.t(
-            "Sign in to the Kimi Code app or CLI (`kimi`), or paste a kimi-auth cookie in Settings.",
-            "登录 Kimi Code 应用或 CLI（`kimi`），或在设置里粘贴 kimi-auth cookie。")
+            "Sign in to the Kimi Code app or CLI (`kimi`), China or Global edition, or paste a Kimi Code API key or a kimi-auth cookie in Settings.",
+            "登录 Kimi Code 应用或 CLI（`kimi`，国内版、国际版均可），或在设置里粘贴 Kimi Code API Key 或 kimi-auth cookie。")
         default: return credentialHint ?? ""
         }
     }
@@ -779,6 +779,13 @@ public struct UsageSnapshot: Sendable {
     public var resetCredits: ResetCredits?
     /// A prepaid account's balance, spend and keys; see `BalanceSheet`.
     public var balance: BalanceSheet?
+    /// Which edition of a service with separate regional accounts answered —
+    /// "Global", "国内版" — for the chip beside the plan. Kept apart from
+    /// `planName`, which Quota Run groups history by.
+    public var edition: String?
+    /// The credential the reading came from — "Kimi Code sign-in", "API key"
+    /// — for providers that take more than one.
+    public var source: String?
 
     public init(
         planName: String? = nil,
@@ -786,7 +793,9 @@ public struct UsageSnapshot: Sendable {
         windows: [UsageWindow] = [],
         fetchedAt: Date = .now,
         resetCredits: ResetCredits? = nil,
-        balance: BalanceSheet? = nil)
+        balance: BalanceSheet? = nil,
+        edition: String? = nil,
+        source: String? = nil)
     {
         self.planName = planName
         self.account = account
@@ -794,6 +803,17 @@ public struct UsageSnapshot: Sendable {
         self.fetchedAt = fetchedAt
         self.resetCredits = resetCredits
         self.balance = balance
+        self.edition = edition
+        self.source = source
+    }
+
+    /// The chip beside the provider's name: the plan and the edition, either
+    /// one alone, or nothing. Not yet upper-cased; each surface styles it.
+    public var chipLabel: String? {
+        let parts = [planName, edition]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     /// `ForEach` needs stable unique ids; two providers legitimately report two
@@ -857,12 +877,18 @@ public enum ProviderError: LocalizedError, Sendable {
     /// signing in again, or clearing a pasted credential that stands in the
     /// way of the sign-in on this Mac.
     case sessionExpired(String)
+    /// Something that passes by itself — a renewal another app is in the
+    /// middle of, a sign-in server that did not answer — said as it is. The
+    /// last reading stays on screen until the next refresh.
+    case unavailable(String)
 
     public var errorDescription: String? {
         switch self {
         case let .noPlan(message):
             return message
         case let .sessionExpired(message):
+            return message
+        case let .unavailable(message):
             return message
         case let .notConfigured(hint):
             return L10n.t("Not configured. \(hint)", "尚未配置。\(hint)")
@@ -893,6 +919,30 @@ public protocol QuotaProvider: Sendable {
     /// Whether the required credentials can be resolved right now.
     func isConfigured(config: ConfigStore) -> Bool
     func fetch(config: ConfigStore) async throws -> UsageSnapshot
+    /// What the next fetch would use, for Settings — nil when there is only
+    /// one way in and nothing to tell apart. Reads local files and the
+    /// keychain memo, never the network.
+    func sourceInfo(config: ConfigStore) -> ProviderSourceInfo?
+}
+
+extension QuotaProvider {
+    public func sourceInfo(config: ConfigStore) -> ProviderSourceInfo? { nil }
+}
+
+/// Which of a provider's credentials is in use, said in a line.
+public struct ProviderSourceInfo: Sendable, Equatable {
+    /// "Kimi Code sign-in · Global (kimi.ai)".
+    public var summary: String
+    /// A second, quieter line: what else is there, or why something is not done.
+    public var note: String?
+    /// The console for the account in use, when it differs by edition.
+    public var consoleURL: URL?
+
+    public init(summary: String, note: String? = nil, consoleURL: URL? = nil) {
+        self.summary = summary
+        self.note = note
+        self.consoleURL = consoleURL
+    }
 }
 
 // MARK: - Formatting helpers

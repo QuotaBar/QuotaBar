@@ -73,9 +73,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// The run ledger saves five seconds after a change; quitting inside
-    /// that window would drop the change without this.
+    /// that window would drop the change without this. Quitting mid-renewal
+    /// gives Kimi Code its lock back at once rather than after it goes stale.
     func applicationWillTerminate(_ notification: Notification) {
         RunLedgerStore.shared.flush()
+        KimiCodeLock.releaseAll()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {

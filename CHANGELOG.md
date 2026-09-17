@@ -9,7 +9,9 @@
 
 #### 新增
 
-- Kimi Code 可以直接读取本机 Kimi Code 应用或 CLI（`kimi`）的登录，不用再粘贴 kimi-auth cookie。额度来自 Kimi Code 自己使用的用量接口，显示 5 小时和每周额度（套餐有月额度时一并显示）以及各自的重置时间。Kimi Code 保存的登录令牌只有 15 分钟有效，并且只在使用时续期；QuotaBar 只读取、不续期，以免把 Kimi Code 自己的登录挤掉，令牌过期时卡片会提示用一次 Kimi Code，不用重新登录；Kimi Code 续期后，QuotaBar 在一分钟内重新读取额度，不用等下一次刷新。Kimi Code 超过 30 天没用、登录已经无法续期，或者已经退出登录时，卡片提示重新登录，也不会改用旧版 Python CLI 留在 `~/.kimi` 里的失效登录。已在设置里粘贴过 kimi-auth cookie 的仍优先使用 cookie，清除后改为读取本机登录；cookie 被 Kimi 拒绝时，卡片会提示清除它或粘贴新的 cookie。
+- Kimi Code 可以直接读取本机 Kimi Code 应用或 CLI（`kimi`）的登录，不用再粘贴 kimi-auth cookie，国内版（kimi.com）和国际版（kimi.ai）都会自动识别。额度来自 Kimi Code 自己使用的用量接口，显示 5 小时和每周额度（套餐有月额度时一并显示）以及各自的重置时间。Kimi Code 保存的登录令牌只有 15 分钟有效，快过期时 QuotaBar 会替它续期，额度一直能显示，不用再去用一次 Kimi Code。续期完全按 Kimi Code 自己的方式进行：先取得 Kimi Code 使用的同一把续期锁，再重新读一次登录文件，Kimi Code 刚续期过就直接用它的结果，续期后按 Kimi Code 的格式原样写回，因此两边不会同时续期、把对方的登录挤掉。Kimi Code 正在续期时，卡片提示下次刷新再读取；网络或服务器出错时保留上一次的读数，下次刷新重试；续期被拒绝时 QuotaBar 不改动登录文件，只提示重新登录。Kimi Code 在本机的登录变化后（登录、退出、切换版本），QuotaBar 在一分钟内重新读取额度。Kimi Code 超过 30 天没用、登录已经无法续期，或者已经退出登录时，卡片提示重新登录，也不会改用旧版 Python CLI 留在 `~/.kimi` 里的失效登录；旧版 CLI 的登录只读取、不续期。
+- Kimi Code 也可以在设置里粘贴 Kimi Code API Key（在所用版本的 Kimi Code 控制台获取）。QuotaBar 先向国内版查询、被拒绝再查国际版，之后直接查询认出的版本；两边都拒绝时卡片会说明。粘贴的内容按格式自动区分 API Key 和 kimi-auth cookie（cookie 读取 kimi.com），并优先于本机登录使用，清除后改为读取本机登录；cookie 或 API Key 被拒绝时，卡片会提示清除它或换一个。
+- Kimi Code 卡片的套餐标签旁显示所用版本（国内版 / 国际版）。设置 → 服务商 → Kimi Code 新增「当前使用」一行，写明用的是本机登录、API Key 还是 kimi-auth cookie，以及对应的版本；「如何登录」列出这三种方式；「控制台」链接按版本打开 kimi.com 或 kimi.ai。
 
 #### 修复
 

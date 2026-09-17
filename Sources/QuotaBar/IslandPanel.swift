@@ -352,7 +352,7 @@ private struct IslandProviderBlock: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
-                if let plan = snapshot?.planName?.trimmingCharacters(in: .whitespacesAndNewlines), !plan.isEmpty {
+                if let plan = snapshot?.chipLabel {
                     Text(plan.replacingOccurrences(of: "_", with: " ").uppercased())
                         .font(.system(size: 9, weight: .bold, design: .monospaced))
                         .tracking(0.8)

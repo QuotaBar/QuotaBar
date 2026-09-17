@@ -48,9 +48,15 @@ struct ProviderCardView: View {
                         .font(.system(size: 9, weight: .bold, design: .monospaced))
                         .tracking(0.6)
                         .foregroundStyle(.white.opacity(0.78))
+                        .lineLimit(1)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 2)
                         .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        // Where the reading came from, for providers with
+                        // more than one way in.
+                        .help(snapshot?.source.map { source in
+                            [source, snapshot?.edition].compactMap { $0 }.joined(separator: " · ")
+                        } ?? "")
                 }
                 Spacer(minLength: 6)
                 if let status = store.serviceStatus[id] {
@@ -96,8 +102,7 @@ struct ProviderCardView: View {
     }
 
     private var planChip: String? {
-        guard let raw = snapshot?.planName?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty
-        else { return nil }
+        guard let raw = snapshot?.chipLabel else { return nil }
         return raw.replacingOccurrences(of: "_", with: " ").uppercased()
     }
 
@@ -164,7 +169,7 @@ struct ProviderCardView: View {
     private func hasMore(_ snapshot: UsageSnapshot) -> Bool {
         !rest(snapshot).isEmpty || snapshot.resetCredits?.isShown == true || id.costSource != nil
             || snapshot.balance.map(BalanceSheetView.hasMore) == true
-            || StatusPages.page(for: id) != nil || id.dashboardURL != nil
+            || StatusPages.page(for: id) != nil || store.dashboardURL(for: id) != nil
     }
 
     private var caret: some View {
@@ -275,7 +280,7 @@ struct ProviderCardView: View {
             if let page = StatusPages.page(for: id) {
                 linkButton(L10n.t("Status", "状态页"), "waveform.path.ecg", page)
             }
-            if let console = id.dashboardURL {
+            if let console = store.dashboardURL(for: id) {
                 linkButton(L10n.t("Console", "控制台"), "arrow.up.right", console)
             }
             Spacer()

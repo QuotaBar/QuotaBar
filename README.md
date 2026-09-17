@@ -50,14 +50,16 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.8** (2026-09-16) · **5** changes in development · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.8** (2026-09-16) · **7** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
-<summary><b>2026-09-17</b> · Unreleased · 1 added · 2 fixed</summary>
+<summary><b>2026-09-17</b> · Unreleased · 3 added · 2 fixed</summary>
 
 **Added**
 
-- Kimi Code reads the sign-in of the Kimi Code app or CLI (`kimi`) on this Mac, so there is no kimi-auth cookie to paste. The quota comes from the usage endpoint Kimi Code itself uses: the 5-hour and weekly limits, and the monthly one when the plan has it, each with its reset time. The token Kimi Code saves lasts 15 minutes and is renewed only while Kimi Code is in use; QuotaBar only reads it and never renews it, which would sign Kimi Code itself out, so once it has expired the card says to use Kimi Code once, with no need to sign in again; QuotaBar reads the quota again within a minute of Kimi Code renewing the token, not at its next refresh. When Kimi Code's sign-in can no longer be renewed, after 30 days unused or once signed out, the card says to sign in again, and a dead sign-in the old Python CLI left in `~/.kimi` is not used in its place. A kimi-auth cookie already pasted in Settings still comes first; clear it to use the sign-in on this Mac. If Kimi turns the cookie down, the card says to clear it or paste a fresh one.
+- Kimi Code reads the sign-in of the Kimi Code app or CLI (`kimi`) on this Mac, so there is no kimi-auth cookie to paste, and tells the China edition (kimi.com) from the Global one (kimi.ai) by itself. The quota comes from the usage endpoint Kimi Code itself uses: the 5-hour and weekly limits, and the monthly one when the plan has it, each with its reset time. The token Kimi Code saves lasts 15 minutes; when it is about to run out QuotaBar renews it, so the quota keeps showing without using Kimi Code first. The renewal follows Kimi Code's own rules: QuotaBar takes the same renewal lock Kimi Code takes, reads the sign-in again and uses Kimi Code's result if it has just renewed, and saves the renewed sign-in in Kimi Code's own format, so the two never renew at once and sign each other out. While Kimi Code is renewing, the card says the quota is read at the next refresh; a network or server error keeps the last reading and tries again next time; a refused renewal leaves the sign-in file untouched and the card says to sign in again. QuotaBar reads the quota again within a minute of Kimi Code signing in, signing out or switching edition. When Kimi Code's sign-in can no longer be renewed, after 30 days unused or once signed out, the card says to sign in again, and a dead sign-in the old Python CLI left in `~/.kimi` is not used in its place; the old CLI's sign-in is only ever read, never renewed.
+- Kimi Code also takes a Kimi Code API key pasted in Settings, from the Kimi Code console of your edition. QuotaBar asks the China edition first and the Global one if that refuses, then goes straight to the edition that answered; if both refuse the key, the card says so. What is pasted is told apart by its shape — an API key, or a kimi-auth cookie, which reads kimi.com — and comes before the sign-in on this Mac; clear it to use that sign-in. If Kimi turns the cookie or the key down, the card says to clear it or replace it.
+- The Kimi Code card shows the edition in use (China / Global) beside the plan. In Settings → Providers → Kimi Code, a new "In use" line says whether the sign-in on this Mac, an API key or a kimi-auth cookie is used, and for which edition; "How to sign in" lists the three ways; and the Console link opens kimi.com or kimi.ai to match.
 
 **Fixed**
 
@@ -116,7 +118,7 @@ Latest release **0.5.8** (2026-09-16) · **5** changes in development · [full c
 | Antigravity | `~/.gemini/jetski-standalone-oauth-token` → `cloudcode-pa.googleapis.com` | automatic |
 | Cursor | Cursor's own `state.vscdb` session → `cursor.com/api/usage-summary` | automatic / manual |
 | OpenCode Go | `~/.local/share/opencode/auth.json` → `opencode.ai/zen/go/v1/usage` | automatic / manual |
-| Kimi Code | Kimi Code app / CLI sign-in (`~/.kimi-code/credentials`) → `api.kimi.com` / `api.kimi.ai` `/coding/v1/usages`, or the `kimi.com` billing gateway with a `kimi-auth` JWT | automatic / manual |
+| Kimi Code | Kimi Code app / CLI sign-in (`~/.kimi-code/credentials`, renewed under Kimi Code's own lock) or a Kimi Code API key → `api.kimi.com` / `api.kimi.ai` `/coding/v1/usages`, China or Global edition detected; or the `kimi.com` billing gateway with a `kimi-auth` JWT | automatic / manual API key / cookie |
 | z.ai | `api.z.ai/api/monitor/usage/quota/limit` | manual API key |
 | MiniMax | `api.minimax.io` coding-plan remains | manual token / cookie |
 | Manus | `api.manus.im` credits | manual session token |
@@ -199,13 +201,17 @@ With two screens, choose which one the island, dock and cards appear on.
 ## Your data
 
 Automatic providers reuse the session your CLI already created — the app never asks for a
-password. Manually entered tokens go to the **macOS login keychain**, never to a file.
+password. The one session QuotaBar also renews is Kimi Code's, whose token lasts 15
+minutes: it takes Kimi Code's own renewal lock and writes the renewed sign-in back to
+Kimi Code's file in Kimi Code's format. Manually entered tokens go to the **macOS login
+keychain**, never to a file.
 Preferences live in `~/.config/quotabar/config.json` (mode `0600`) and contain no
 secrets. There is no analytics and no telemetry.
 
 QuotaBar connects only to:
 
-- the usage endpoints of the providers you turn on, with your own session or key;
+- the usage endpoints of the providers you turn on, with your own session or key, and
+  Kimi Code's sign-in server (`auth.kimi.com` / `auth.kimi.ai`) to renew its session;
 - their public status pages, such as `status.claude.com`;
 - `open.er-api.com`, once a day, for exchange rates;
 - GitHub, to check for and download updates and to fetch model prices (LiteLLM's catalog);

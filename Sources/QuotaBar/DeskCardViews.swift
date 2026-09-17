@@ -238,7 +238,7 @@ private struct DeskFocus: View {
         let snapshot = store.states[id]?.snapshot
         let compact = card.size == .small
         DeskFrame(size: card.size) {
-            DeskHeader(title: id.displayName, id: id, plan: snapshot?.planName, pill: store.deskPill(id), compact: compact)
+            DeskHeader(title: id.displayName, id: id, plan: snapshot?.chipLabel, pill: store.deskPill(id), compact: compact)
             Spacer(minLength: compact ? 6 : 10)
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text(windows.lead == nil ? "—" : "\(Int(store.deskShown(used).rounded()))")
@@ -330,7 +330,7 @@ private struct DeskGauge: View {
         let pace = windows.lead?.pace()
         let snapshot = store.states[id]?.snapshot
         DeskFrame(size: card.size) {
-            DeskHeader(title: id.displayName, id: id, plan: snapshot?.planName, pill: store.deskPill(id), compact: card.size == .small)
+            DeskHeader(title: id.displayName, id: id, plan: snapshot?.chipLabel, pill: store.deskPill(id), compact: card.size == .small)
             if card.size == .small {
                 Spacer(minLength: 4)
                 HStack {

@@ -590,7 +590,7 @@ struct DeskBalanceCard: View {
         let compact = size == .small
         let first = sheet.balances.first
         DeskFrame(size: size) {
-            DeskHeader(title: id.displayName, id: id, plan: store.states[id]?.snapshot?.planName, pill: store.deskPill(id), compact: compact)
+            DeskHeader(title: id.displayName, id: id, plan: store.states[id]?.snapshot?.chipLabel, pill: store.deskPill(id), compact: compact)
             Spacer(minLength: compact ? 6 : 10)
             Text(first.map { QuotaFormat.amount($0.total, code: $0.currency) } ?? "—")
                 .font(.system(size: compact ? 30 : 38, weight: .semibold, design: .monospaced))

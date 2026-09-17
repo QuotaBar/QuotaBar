@@ -18,6 +18,7 @@ public enum LimitsJSON {
                 var provider: [String: Any] = ["id": item.id.rawValue, "name": item.id.displayName]
                 if let snapshot = item.snapshot {
                     provider["plan"] = snapshot.planName ?? NSNull()
+                    if let edition = snapshot.edition { provider["edition"] = edition }
                     provider["fetchedAt"] = iso.string(from: snapshot.fetchedAt)
                     provider["stale"] = now.timeIntervalSince(snapshot.fetchedAt) > 15 * 60
                     provider["windows"] = snapshot.windows.map { window -> [String: Any] in

@@ -105,6 +105,9 @@ final class UsageStore: ObservableObject {
     /// so are answering from this Mac's own sign-in — the Kimi Code app,
     /// Cursor.app, the grok CLI. Settings says "Auto" for these, not "Keychain".
     @Published var signedInLocally: Set<ProviderID> = []
+    /// For providers with more than one way in, which one the next refresh
+    /// uses — "API key · Global (kimi.ai)" — and the console for it.
+    @Published var sourceInfo: [ProviderID: ProviderSourceInfo] = [:]
 
     /// Latest reading of each provider's public status page, for the ones
     /// that have one. Absent until the page has answered once; a failed poll
@@ -393,6 +396,9 @@ final class UsageStore: ObservableObject {
                 }
                 for await (id, result) in group {
                     self.apply(id, result)
+                    // A read may have renewed the Kimi Code sign-in, which
+                    // rewrites its file: that is no news to read again for.
+                    if id == .kimi { self.kimiCodeWritten = LocalCredentials.kimiCodeFilesWritten() }
                 }
             }
             finishRefresh()
@@ -546,25 +552,36 @@ final class UsageStore: ObservableObject {
     /// Re-evaluates which providers have usable credentials.
     func refreshConfigured() {
         Task { [config] in
-            let (ready, local, claudeWaiting) = await Task.detached(priority: .utility) {
+            let (ready, local, sources, claudeWaiting) = await Task.detached(priority: .utility) {
                 let ready = Set(ProviderID.allCases.filter {
                     ProviderRegistry.make($0).isConfigured(config: config)
                 })
                 // `isConfigured` has just read these credentials, so this is
                 // answered from the memo, not the keychain.
                 let local = ready.filter { $0.credentialHint != nil && config.credential(for: $0) == nil }
+                var sources: [ProviderID: ProviderSourceInfo] = [:]
+                for id in ready {
+                    sources[id] = ProviderRegistry.make(id).sourceInfo(config: config)
+                }
                 // Non-interactive, like every keychain read off a timer.
                 let waiting = LocalCredentials.claudeCredentialState() == .needsAuthorization
-                return (ready, local, waiting)
+                return (ready, local, sources, waiting)
             }.value
             self.configured = ready
             self.signedInLocally = local
+            if self.sourceInfo != sources { self.sourceInfo = sources }
             self.claudeNeedsAuthorization = claudeWaiting
         }
     }
 
     func isConfigured(_ id: ProviderID) -> Bool {
         configured.contains(id)
+    }
+
+    /// The console for the account in use — the kimi.ai one for a global
+    /// Kimi Code sign-in — else the provider's usual one.
+    func dashboardURL(for id: ProviderID) -> URL? {
+        sourceInfo[id]?.consoleURL ?? id.dashboardURL
     }
 
     /// Raises the keychain dialog for Claude Code's item — the only place the
@@ -1051,11 +1068,11 @@ final class UsageStore: ObservableObject {
         }
     }
 
-    /// Kimi Code's access token lasts 15 minutes and is renewed only while
-    /// Kimi Code is in use, so a quota read on the refresh timer mostly finds
-    /// it run out. With the clock, when its files were written is looked at —
-    /// never what they hold — and Kimi is read again as soon as Kimi Code has
-    /// renewed, signed in or signed out, rather than at the next refresh.
+    /// With the clock, when Kimi Code's sign-in files were written is looked
+    /// at — never what they hold — and Kimi is read again as soon as Kimi
+    /// Code has signed in, signed out or switched edition, rather than at the
+    /// next refresh. A renewal QuotaBar made itself is not news: the read
+    /// that renewed takes a fresh look at the files (`refreshNow`).
     private func noteKimiCodeSignIn() {
         let written = LocalCredentials.kimiCodeFilesWritten()
         defer { kimiCodeWritten = written }

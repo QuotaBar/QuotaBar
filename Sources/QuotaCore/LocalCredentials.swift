@@ -473,9 +473,9 @@ public enum LocalCredentials {
         public let accessToken: String
         /// From the file's `expires_at`, else the token's own `exp`.
         public let expiresAt: Date?
-        /// Whether the file holds a refresh token for Kimi Code to renew the
-        /// access token with. The refresh token itself is not kept: it is
-        /// Kimi Code's alone to use.
+        /// Whether the file holds a refresh token to renew the access token
+        /// with. The refresh token itself is not kept: a renewal reads it
+        /// from the file again, under Kimi Code's lock.
         public let hasRefreshToken: Bool
         /// When that refresh token runs out, from its own `exp` — 30 days
         /// after Kimi Code last renewed. nil when it carries none, and the
@@ -485,6 +485,10 @@ public enum LocalCredentials {
         public let baseURL: URL
         /// Which file answered — a name, for `--credentials`.
         public let fileName: String
+        /// The name Kimi Code saves this sign-in under (`kimi-code`,
+        /// `kimi-code-env-…`), which also names its renewal lock. nil for the
+        /// older Python CLI's file in `~/.kimi`, which QuotaBar only reads.
+        public let storageName: String?
 
         public init(
             accessToken: String,
@@ -492,7 +496,8 @@ public enum LocalCredentials {
             hasRefreshToken: Bool = true,
             refreshExpiresAt: Date? = nil,
             baseURL: URL,
-            fileName: String)
+            fileName: String,
+            storageName: String? = nil)
         {
             self.accessToken = accessToken
             self.expiresAt = expiresAt
@@ -500,19 +505,38 @@ public enum LocalCredentials {
             self.refreshExpiresAt = refreshExpiresAt
             self.baseURL = baseURL
             self.fileName = fileName
+            self.storageName = storageName
         }
+
+        /// China (api.kimi.com) or global (api.kimi.ai).
+        public var edition: KimiEdition { KimiEdition.forAPIHost(baseURL.host) }
+
+        /// Written by the Python CLI that came before Kimi Code.
+        public var isLegacy: Bool { storageName == nil }
 
         /// A little early, so a token that runs out while the request is on
         /// its way is not sent.
         public static let expiryMargin: TimeInterval = 30
+
+        /// How close to running out QuotaBar lets a token get before it
+        /// renews it. Later than Kimi Code's own threshold (half of the 15
+        /// minutes): QuotaBar needs the token for one request, and every
+        /// renewal rotates the refresh token Kimi Code shares.
+        public static let renewalMargin: TimeInterval = 60
 
         public func isExpired(now: Date = Date()) -> Bool {
             guard let expiresAt else { return false }
             return expiresAt.timeIntervalSince(now) <= Self.expiryMargin
         }
 
-        /// Whether Kimi Code can still renew the access token by itself, the
-        /// next time it is used: it holds a refresh token that has not run out.
+        /// Close enough to running out to renew before use.
+        public func isDueForRenewal(now: Date = Date()) -> Bool {
+            guard let expiresAt else { return false }
+            return expiresAt.timeIntervalSince(now) <= Self.renewalMargin
+        }
+
+        /// Whether the access token can still be renewed: there is a refresh
+        /// token, and it has not run out.
         public func canRenew(now: Date = Date()) -> Bool {
             guard hasRefreshToken else { return false }
             guard let refreshExpiresAt else { return true }
@@ -530,7 +554,7 @@ public enum LocalCredentials {
         /// Everything but the token, so a log line or a failed assertion
         /// cannot print it.
         public var description: String {
-            "KimiCodeSession(\(fileName) → \(baseURL.host ?? "?"), expires \(expiresAt.map { "\($0)" } ?? "unknown"), "
+            "KimiCodeSession(\(fileName) → \(baseURL.host ?? "?") [\(edition.rawValue)], expires \(expiresAt.map { "\($0)" } ?? "unknown"), "
                 + "renewable until \(hasRefreshToken ? refreshExpiresAt.map { "\($0)" } ?? "unknown" : "never"))"
         }
     }
@@ -563,14 +587,19 @@ public enum LocalCredentials {
     /// the known hosts. A file for any other host (set through Kimi Code's
     /// environment overrides) is not read: there is no telling where its
     /// token may be sent.
-    static let kimiCodeStorageNames: [String: URL] = {
-        var names: [String: URL] = [:]
+    static let kimiCodeStorageNames: [String: URL] = kimiCodeSlots.mapValues(\.baseURL)
+
+    /// The same pairings with both hosts: what a file's token may be renewed
+    /// against, and where it is spent. The edition follows the Code API host.
+    static let kimiCodeSlots: [String: KimiCodeSlot] = {
+        var slots: [String: KimiCodeSlot] = [:]
         for oauthHost in kimiCodeOAuthHosts {
             for base in kimiCodeBaseURLs {
-                names[kimiCodeStorageName(oauthHost: oauthHost, baseURL: base)] = URL(string: base)!
+                let name = kimiCodeStorageName(oauthHost: oauthHost, baseURL: base)
+                slots[name] = KimiCodeSlot(storageName: name, oauthHost: oauthHost, baseURL: URL(string: base)!)
             }
         }
-        return names
+        return slots
     }()
 
     /// The Kimi Code sign-in on this Mac, read afresh on every call so a token
@@ -582,12 +611,13 @@ public enum LocalCredentials {
     /// Kimi Code 0.3x and its desktop app keep the session in
     /// `~/.kimi-code/credentials/<name>.json`; the older Python CLI kept it in
     /// `~/.kimi/credentials/kimi-code.json`. Among the files that count (see
-    /// `kimiCodeSessions`), whichever runs out last is the live one — a
-    /// region switch leaves the other behind.
-    /// Only read: the access token lasts 15 minutes and Kimi Code renews it
-    /// when it needs it, rotating the refresh token as it goes. A renewal
-    /// from here would leave Kimi Code holding a dead refresh token, and its
-    /// next renewal would sign the owner out.
+    /// `kimiCodeSessions`), the one config.toml says Kimi Code signs in
+    /// with comes first; otherwise whichever runs out last is the live one —
+    /// a region switch leaves the other behind.
+    ///
+    /// Only read here. Renewing is `KimiCodeRenewal`'s, under Kimi Code's
+    /// own lock: the access token lasts 15 minutes, and every renewal
+    /// rotates the refresh token Kimi Code shares.
     public static func kimiCodeSession(now: Date = Date()) -> KimiCodeSession? {
         kimiCodeSession(codeHome: kimiCodeHome, legacyHome: kimiLegacyHome, now: now)
     }
@@ -609,10 +639,17 @@ public enum LocalCredentials {
     static var kimiLegacyHome: URL { home.appendingPathComponent(".kimi") }
 
     static func kimiCodeSession(codeHome: URL, legacyHome: URL, now: Date) -> KimiCodeSession? {
+        let usable = kimiCodeSessions(codeHome: codeHome, legacyHome: legacyHome).filter { !$0.needsSignIn(now: now) }
+        // The sign-in Kimi Code uses is the one it keeps renewed, and the one
+        // QuotaBar may renew; a file left by an earlier region can outlast it.
+        if let active = KimiCodeConfig.activeSlot(codeHome: codeHome),
+           let session = usable.first(where: { $0.storageName == active.storageName })
+        {
+            return session
+        }
         var best: KimiCodeSession?
-        for candidate in kimiCodeSessions(codeHome: codeHome, legacyHome: legacyHome)
-            where !candidate.needsSignIn(now: now)
-            && (best == nil || (candidate.expiresAt ?? .distantPast) > (best?.expiresAt ?? .distantPast))
+        for candidate in usable
+            where best == nil || (candidate.expiresAt ?? .distantPast) > (best?.expiresAt ?? .distantPast)
         {
             best = candidate
         }
@@ -642,7 +679,7 @@ public enum LocalCredentials {
             hasOwnFile = true
             guard let root = kimiCodeFile(file) else { continue }
             let written = modificationDate(file) ?? .distantPast
-            if let session = kimiCodeSession(in: root, baseURL: base, fileName: file.lastPathComponent) {
+            if let session = kimiCodeSession(in: root, baseURL: base, fileName: file.lastPathComponent, storageName: stem) {
                 found.append((session, written))
             } else if (root["access_token"] as? String)?.isEmpty == true {
                 signedOutAt = max(signedOutAt ?? .distantPast, written)
@@ -689,8 +726,10 @@ public enum LocalCredentials {
     /// current apps and fractional from the Python CLI. After a refused
     /// renewal Kimi Code blanks both tokens and zeroes the expiry — signed
     /// out, so no session. The refresh token is decoded here, on this Mac,
-    /// for its `exp` alone, and never kept or sent.
-    static func kimiCodeSession(in root: [String: Any], baseURL: URL, fileName: String) -> KimiCodeSession? {
+    /// for its `exp` alone, and not kept: a renewal reads the file again.
+    static func kimiCodeSession(
+        in root: [String: Any], baseURL: URL, fileName: String, storageName: String? = nil) -> KimiCodeSession?
+    {
         guard let access = root["access_token"] as? String, !access.isEmpty else { return nil }
         let fromFile = QwenProvider.number(root["expires_at"]).flatMap(Dates.parseEpoch)
         let fromToken = jwtPayload(access).flatMap { QwenProvider.number($0["exp"]) }.flatMap(Dates.parseEpoch)
@@ -701,7 +740,8 @@ public enum LocalCredentials {
             hasRefreshToken: !refresh.isEmpty,
             refreshExpiresAt: jwtPayload(refresh).flatMap { QwenProvider.number($0["exp"]) }.flatMap(Dates.parseEpoch),
             baseURL: baseURL,
-            fileName: fileName)
+            fileName: fileName,
+            storageName: storageName)
     }
 
     // MARK: Grok (~/.grok/auth.json written by the grok CLI)

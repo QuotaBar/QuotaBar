@@ -29,6 +29,13 @@ public struct HTTPResponse: Sendable {
     }
 }
 
+/// One request — method, URL, headers, body, timeout in seconds — sent the
+/// way `HTTP.send` sends it: through the configured proxy, with transport
+/// failures as `ProviderError.network`.
+public typealias HTTPSend = @Sendable (
+    _ method: String, _ url: URL, _ headers: [String: String], _ body: Data?, _ timeout: TimeInterval
+) async throws -> HTTPResponse
+
 public enum HTTP {
     private static let sessionLock = NSLock()
     nonisolated(unsafe) private static var currentSession = makeSession(proxy: nil)
@@ -62,15 +69,18 @@ public enum HTTP {
         }
     }
 
+    /// `timeout` is the request's own, which takes the place of the
+    /// session's 20 seconds.
     public static func send(
         _ method: String,
         _ url: URL,
         headers: [String: String] = [:],
-        body: Data? = nil) async throws -> HTTPResponse
+        body: Data? = nil,
+        timeout: TimeInterval = 20) async throws -> HTTPResponse
     {
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.timeoutInterval = 20
+        request.timeoutInterval = timeout
         for (name, value) in headers {
             request.setValue(value, forHTTPHeaderField: name)
         }
@@ -86,6 +96,12 @@ public enum HTTP {
         } catch {
             throw ProviderError.network(error.localizedDescription)
         }
+    }
+
+    /// `send` as a value, for code that takes its transport as a parameter
+    /// so a test can answer in its place.
+    public static let live: HTTPSend = { method, url, headers, body, timeout in
+        try await send(method, url, headers: headers, body: body, timeout: timeout)
     }
 
     public static func get(_ url: URL, headers: [String: String] = [:]) async throws -> HTTPResponse {
