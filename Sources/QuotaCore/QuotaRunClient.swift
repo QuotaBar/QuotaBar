@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-// MARK: - Quota Run wire client (docs/quota-run.md)
+// MARK: - Quota Run wire client (contract: docs/quota-run.md in the quota.run repository)
 
 /// base64url without padding — every key, nonce and signature on the wire.
 public enum Base64URL {

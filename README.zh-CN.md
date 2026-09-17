@@ -312,7 +312,7 @@ xcrun notarytool store-credentials QuotaBar \
 - `Sources/QuotaBar`：应用本体，由 AppKit 状态栏项和面板承载 SwiftUI 界面，包括用量数据、
   菜单栏图标、下拉面板、设置、刘海岛、停靠条、桌面卡片、分享卡片和本地接口。
 - `Tests/QuotaCoreTests`：解析样例、花费回归、配置迁移、更新校验。所有可测试的逻辑都在 QuotaCore 里。
-- `docs/quota-run.md`：应用与 Quota Run 服务端之间的接口契约。官网和 Quota Run 服务在单独的仓库里。
+- 官网和 Quota Run 服务在单独的仓库里。
 
 新增服务商的方法，以及修改前值得了解的设计决策，见 [ARCHITECTURE.md](ARCHITECTURE.md)。
 应用的每次改动都按日期记录在 [CHANGELOG.md](CHANGELOG.md)（英文版 [CHANGELOG.en.md](CHANGELOG.en.md)）。
