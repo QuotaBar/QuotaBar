@@ -173,6 +173,10 @@ final class UsageStore: ObservableObject {
     private var systemObservers: [NSObjectProtocol] = []
     /// When Kimi Code last wrote its sign-in files; see `noteKimiCodeSignIn`.
     private var kimiCodeWritten: [String: Date]?
+    /// Bumped each time a provider's pasted credential is replaced or
+    /// cleared: a read that started before belongs to the credential that
+    /// was, and is dropped when it lands.
+    private var credentialGeneration: [ProviderID: Int] = [:]
 
     /// Builds a store wired to the real config but with no timers, network
     /// calls or notification prompts — used by `--snapshot` and previews.
@@ -382,6 +386,7 @@ final class UsageStore: ObservableObject {
     private func refreshNow(_ ids: [ProviderID]) async {
         guard !ids.isEmpty else { return }
         for id in ids { markLoading(id) }
+        let generations = Dictionary(uniqueKeysWithValues: ids.map { ($0, credentialGeneration[$0, default: 0]) })
         do {
             let config = self.config
             await withTaskGroup(of: (ProviderID, Result<UsageSnapshot, Error>).self) { group in
@@ -395,7 +400,11 @@ final class UsageStore: ObservableObject {
                     }
                 }
                 for await (id, result) in group {
-                    self.apply(id, result)
+                    // Read with a credential replaced since: the read with the
+                    // new one is already on its way (`setCredential`).
+                    if self.credentialGeneration[id, default: 0] == generations[id] {
+                        self.apply(id, result)
+                    }
                     // A read may have renewed the Kimi Code sign-in, which
                     // rewrites its file: that is no news to read again for.
                     if id == .kimi { self.kimiCodeWritten = LocalCredentials.kimiCodeFilesWritten() }
@@ -1022,12 +1031,16 @@ final class UsageStore: ObservableObject {
 
     func setCredential(_ value: String, for id: ProviderID) {
         config.setCredential(value, for: id)
+        credentialGeneration[id, default: 0] &+= 1
         // A replaced credential may be a different account entirely, which
         // would splice two unrelated series into one trend line.
         UsageHistoryStore.shared.clear(id)
         history[id] = []
         refreshConfigured()
-        if isEnabled(id) { refresh(id) }
+        // Read now even while a read is out: that one used the credential
+        // this replaces — a Kimi Code sign-in can take a minute and more to
+        // renew — and its result is dropped when it lands.
+        if isEnabled(id) { refresh([id]) }
     }
 
     /// Wipes every recorded trend line.

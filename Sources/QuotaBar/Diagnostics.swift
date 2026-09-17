@@ -149,7 +149,7 @@ enum Diagnostics {
                 do {
                     let snapshot = try await ProviderRegistry.make(id).fetch(config: config)
                     if let plan = snapshot.planName { out += "  plan: \(plan)\n" }
-                    if let source = snapshot.source { out += "  source: \(source)\(snapshot.edition.map { " · \($0)" } ?? "")\n" }
+                    if let source = snapshot.sourceLabel { out += "  source: \(source)\(snapshot.editionLabel.map { " · \($0)" } ?? "")\n" }
                     if let credits = snapshot.resetCredits {
                         out += "  resetCredits: \(credits.available) available, \(credits.totalEarned.map(String.init) ?? "?") given\n"
                         for credit in credits.credits {
@@ -376,7 +376,7 @@ enum Diagnostics {
         var out = "\(id.displayName)\n"
         if let snapshot = item.1 {
             out += "  plan: \(snapshot.planName ?? "—")\n"
-            if let source = snapshot.source { out += "  source: \(source)\(snapshot.edition.map { " · \($0)" } ?? "")\n" }
+            if let source = snapshot.sourceLabel { out += "  source: \(source)\(snapshot.editionLabel.map { " · \($0)" } ?? "")\n" }
             for window in snapshot.windows {
                 let used = window.usedPercent.map { QuotaFormat.percent($0) + " used" } ?? "—"
                 let reset = window.resetsAt.map { " · " + QuotaFormat.resetLabel(to: $0) } ?? ""

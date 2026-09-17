@@ -613,7 +613,8 @@ public enum LocalCredentials {
     /// `~/.kimi/credentials/kimi-code.json`. Among the files that count (see
     /// `kimiCodeSessions`), the one config.toml says Kimi Code signs in
     /// with comes first; otherwise whichever runs out last is the live one —
-    /// a region switch leaves the other behind.
+    /// a region switch leaves the other behind. Once config.toml says Kimi
+    /// Code is signed out, none of its files is.
     ///
     /// Only read here. Renewing is `KimiCodeRenewal`'s, under Kimi Code's
     /// own lock: the access token lasts 15 minutes, and every renewal
@@ -639,7 +640,12 @@ public enum LocalCredentials {
     static var kimiLegacyHome: URL { home.appendingPathComponent(".kimi") }
 
     static func kimiCodeSession(codeHome: URL, legacyHome: URL, now: Date) -> KimiCodeSession? {
-        let usable = kimiCodeSessions(codeHome: codeHome, legacyHome: legacyHome).filter { !$0.needsSignIn(now: now) }
+        var usable = kimiCodeSessions(codeHome: codeHome, legacyHome: legacyHome).filter { !$0.needsSignIn(now: now) }
+        // Signed out of Kimi Code: a file an earlier edition left behind is
+        // no sign-in of its, however long it would still last.
+        if KimiCodeConfig.saysSignedOut(codeHome: codeHome) {
+            usable.removeAll { !$0.isLegacy }
+        }
         // The sign-in Kimi Code uses is the one it keeps renewed, and the one
         // QuotaBar may renew; a file left by an earlier region can outlast it.
         if let active = KimiCodeConfig.activeSlot(codeHome: codeHome),

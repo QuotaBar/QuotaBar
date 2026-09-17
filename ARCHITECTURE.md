@@ -694,22 +694,45 @@ Two processes renewing at once is therefore the failure to design against.
   (`KimiCodeLock`). Never touch or remove a lock directory QuotaBar does not
   hold: Kimi Code compares the mtime on every touch, and a change it did not
   make kills its lock mid-renewal. A stale lock is taken over only after it
-  has looked stale, unchanged, for a second.
+  has looked stale, unchanged, for 3.5 s of awake time (`ProcessInfo.systemUptime`,
+  which stops during sleep as Node's timers do): right after a wake a live
+  holder's mtime looks old by the wall clock until its next touch, 2.5 s later.
 - **Read, lock, read again.** A renewal that another process finished while
   QuotaBar waited ends the wait; so does one found under the lock.
 - **Wait less, never renew unlocked.** Kimi Code waits a minute for the lock;
-  a refresh waits 15 seconds and then says Kimi Code is busy.
+  a refresh waits 15 seconds and then says Kimi Code is busy. A second or
+  third try of the request goes out only while the lock is still QuotaBar's.
+  The holder's touches run on the wall clock (`schedule(wallDeadline:)`), so
+  after a wake the next one is due at once, and a lock not touched for over
+  5 s by the wall clock is given up as compromised, as proper-lockfile does.
 - **Save at once, byte for byte.** `JSON.stringify(token, null, 2) + "\n"` with
   Kimi Code's key order, written to a temporary file, synced, `chmod 0600`,
   renamed. `JSONSerialization` does not do: it writes `"key" : value`, escapes
-  `/` and reorders keys.
+  `/` and reorders keys. Saved even under a lock lost meanwhile, as Kimi Code
+  does, and over Kimi Code's signed-out marker: only a renewal racing this
+  one can leave the marker while the request is out, refused because this
+  one spent the token, and this reply holds the live pair
+  (`KimiCodeRenewal.saveDecision`). Not over a removed file (signed out) or a
+  different live refresh token (signed in anew). A save that fails twice is
+  kept in memory and made under the lock before anything else is sent; the
+  card says it could not be saved.
 - **A refusal writes nothing.** Kimi Code re-reads after 100 ms and otherwise
   writes a signed-out marker; QuotaBar re-reads and otherwise only says to sign
   in again, and does not send that refresh token again for five minutes.
 - **Only what Kimi Code uses.** The slot `~/.kimi-code/config.toml` names, for
-  the two known host pairs, with `device_id` present (never created here).
+  the known host pairs (both editions, and the two mixed pairs
+  `auth.kimi.com` + `api.kimi.ai` and `auth.kimi.ai` + `api.kimi.com`), with
+  `device_id` present (never created here). A config.toml without
+  `managed:kimi-code` in it means Kimi Code signed out, and no file counts.
   The older Python CLI's `~/.kimi` file is a separate sign-in with its own
   lock, and is only read.
+- **Only the running app.** `--json`, `--provider` and `--windows` only read
+  (`KimiCodeEnvironment.mayRenew`): a one-off command may be timed out or
+  killed with its request out, and the refresh token the server rotated would
+  be lost. The app turns renewal on as it starts
+  (`KimiCodeRenewal.allowInThisProcess`), and quitting (`applicationShouldTerminate`)
+  starts no new request and waits up to 35 s for the one out to be saved
+  before the lock is given back.
 
 QuotaBar renews later than Kimi Code (a minute before expiry rather than half
 way), since it needs the token for one request. Tests drive all of this with

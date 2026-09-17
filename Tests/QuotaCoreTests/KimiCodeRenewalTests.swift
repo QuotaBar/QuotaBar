@@ -43,12 +43,14 @@ final class ScriptedNetwork: @unchecked Sendable {
 /// only when slept on, so waits cost nothing.
 final class SteppedClock: @unchecked Sendable {
     private let lock = NSLock()
+    private let start: Date
     private var current: Date
     private var slept: [TimeInterval] = []
     /// Runs on every sleep, after the clock has moved.
     var onSleep: (@Sendable () -> Void)?
 
     init(_ start: Date = Date()) {
+        self.start = start
         current = start
     }
 
@@ -56,6 +58,11 @@ final class SteppedClock: @unchecked Sendable {
 
     var now: @Sendable () -> Date {
         { [self] in lock.withLock { current } }
+    }
+
+    /// Moves with `now`: this clock never sleeps through anything.
+    var uptime: @Sendable () -> TimeInterval {
+        { [self] in lock.withLock { 1_000 + current.timeIntervalSince(start) } }
     }
 
     var sleep: @Sendable (TimeInterval) async -> Void {
@@ -140,11 +147,16 @@ final class KimiCodeRenewalTests: XCTestCase {
         return text
     }
 
-    private func environment(_ network: ScriptedNetwork, lockWait: TimeInterval = 3, renewal: KimiCodeRenewal = KimiCodeRenewal()) -> KimiCodeEnvironment {
+    private func environment(
+        _ network: ScriptedNetwork, lockWait: TimeInterval = 3, touchInterval: TimeInterval = KimiCodeLock.touchInterval,
+        renewal: KimiCodeRenewal = KimiCodeRenewal(), mayRenew: Bool = true) -> KimiCodeEnvironment
+    {
         KimiCodeEnvironment(
             codeHome: codeHome, legacyHome: legacyHome, send: network.send,
-            now: clock.now, sleep: clock.sleep, lockWait: lockWait, appVersion: "9.9.9", renewal: renewal)
+            now: clock.now, uptime: clock.uptime, sleep: clock.sleep, lockWait: lockWait, touchInterval: touchInterval,
+            appVersion: "9.9.9", renewal: renewal, mayRenew: mayRenew)
     }
+
 
     private func fileText() throws -> String {
         try String(contentsOf: credentials, encoding: .utf8)
@@ -192,7 +204,8 @@ final class KimiCodeRenewalTests: XCTestCase {
         let get = try XCTUnwrap(network.gets.first)
         XCTAssertEqual(get.url.absoluteString, "https://api.kimi.ai/coding/v1/usages")
         XCTAssertEqual(get.headers["Authorization"], "Bearer new-access")
-        XCTAssertEqual(snapshot.edition, KimiEdition.global.label)
+        XCTAssertEqual(snapshot.edition, "global")
+        XCTAssertEqual(snapshot.source, "signIn")
         XCTAssertEqual(snapshot.chipLabel, "Allegretto · \(KimiEdition.global.label)")
         XCTAssertEqual(snapshot.windows.first?.usedPercent ?? -1, 25, accuracy: 0.001)
 
@@ -363,7 +376,8 @@ final class KimiCodeRenewalTests: XCTestCase {
     }
 
     /// A lock left by a Kimi Code that died is taken over once it has stayed
-    /// stale, and the renewal goes ahead.
+    /// stale through a touch a live holder would have made, and the renewal
+    /// goes ahead.
     func testAStaleLockIsTakenOver() async throws {
         try writeCredentials(expiresIn: -120)
         try FileManager.default.createDirectory(at: lockDirectory, withIntermediateDirectories: true)
@@ -373,6 +387,204 @@ final class KimiCodeRenewalTests: XCTestCase {
         XCTAssertEqual(network.posts.count, 1)
         XCTAssertFalse(FileManager.default.fileExists(atPath: lockDirectory.path))
         XCTAssertTrue(try fileText().contains("\"new-access\""))
+        // Looked at every half second, taken at the eighth look: 3.5 s on.
+        XCTAssertEqual(clock.sleeps, Array(repeating: 0.5, count: 7))
+    }
+
+    // MARK: Racing a renewal while the request is out
+
+    /// Kimi Code took the lock over while QuotaBar's request was out, tried
+    /// the same refresh token, was refused because QuotaBar had spent it,
+    /// and left its signed-out marker. QuotaBar's reply holds the live pair:
+    /// it is saved over the marker.
+    func testARenewalIsSavedOverAMarkerLeftDuringTheRequest() async throws {
+        try writeCredentials(expiresIn: -60)
+        let target = credentials
+        let rotated = rotatedRefresh
+        let network = ScriptedNetwork { request in
+            if request.method == "POST" {
+                let marker = KimiCodeTokenFile.render(
+                    accessToken: "", refreshToken: "", expiresAt: 0, scope: "kimi-code", tokenType: "Bearer", expiresIn: 0)
+                try marker.write(to: target, atomically: true, encoding: .utf8)
+                return ScriptedNetwork.json(200, #"{"access_token":"new-access","refresh_token":"\#(rotated)","expires_in":900}"#)
+            }
+            return ScriptedNetwork.json(200, KimiFixtures.usages)
+        }
+        _ = try await KimiProvider.fetchLocal(environment(network))
+        XCTAssertEqual(network.gets.first?.headers["Authorization"], "Bearer new-access")
+        let text = try fileText()
+        XCTAssertTrue(text.contains("\"access_token\": \"new-access\""))
+        XCTAssertTrue(text.contains("\"refresh_token\": \"\(rotated)\""))
+    }
+
+    /// The owner signed in anew while the request was out (Kimi Code saves a
+    /// sign-in without the lock): that sign-in stays, and is read with.
+    func testANewSignInDuringTheRequestIsNotOverwritten() async throws {
+        try writeCredentials(expiresIn: -60)
+        let target = credentials
+        let other = KimiFixtures.jwt(exp: Int(Date().timeIntervalSince1970) + 20 * 86_400, type: "refresh")
+        let clock = self.clock!
+        let signedIn = KimiCodeTokenFile.render(
+            accessToken: "other-access", refreshToken: other,
+            expiresAt: Double(Int(clock.now().timeIntervalSince1970) + 900), scope: "kimi-code", tokenType: "Bearer", expiresIn: 900)
+        let network = ScriptedNetwork { request in
+            if request.method == "POST" {
+                try signedIn.write(to: target, atomically: true, encoding: .utf8)
+                return ScriptedNetwork.json(200, #"{"access_token":"new-access","refresh_token":"r2","expires_in":900}"#)
+            }
+            return ScriptedNetwork.json(200, KimiFixtures.usages)
+        }
+        _ = try await KimiProvider.fetchLocal(environment(network))
+        XCTAssertEqual(try fileText(), signedIn)
+        XCTAssertEqual(network.gets.first?.headers["Authorization"], "Bearer other-access")
+    }
+
+    /// Signed out while the request was out: the file stays removed.
+    func testASignOutDuringTheRequestIsNotUndone() async throws {
+        try writeCredentials(expiresIn: -60)
+        let target = credentials
+        let network = ScriptedNetwork { request in
+            if request.method == "POST" {
+                try FileManager.default.removeItem(at: target)
+                return ScriptedNetwork.json(200, #"{"access_token":"new-access","refresh_token":"r2","expires_in":900}"#)
+            }
+            return ScriptedNetwork.json(200, KimiFixtures.usages)
+        }
+        _ = try await KimiProvider.fetchLocal(environment(network))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: target.path))
+    }
+
+    /// The lock was taken over while the first try failed on the network:
+    /// no second try goes out under it.
+    func testNoRetryUnderALockTakenOver() async throws {
+        try writeCredentials(expiresIn: -60)
+        let lock = lockDirectory
+        let network = ScriptedNetwork { request in
+            if request.method == "POST" {
+                // Kimi Code takes the lock over: rmdir, mkdir, a time of its own.
+                if rmdir(lock.path) == 0, mkdir(lock.path, 0o777) == 0 {
+                    try? FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-1)], ofItemAtPath: lock.path)
+                }
+                try await Task.sleep(nanoseconds: 300_000_000)
+                throw ProviderError.network("lost")
+            }
+            return ScriptedNetwork.json(200, KimiFixtures.usages)
+        }
+        do {
+            _ = try await KimiProvider.fetchLocal(environment(network, touchInterval: 0.05))
+            XCTFail("expected an error")
+        } catch ProviderError.unavailable(let message) {
+            XCTAssertEqual(message, KimiProvider.renewalBusyHint)
+        }
+        XCTAssertEqual(network.posts.count, 1)
+        // Someone else's now: left in place.
+        XCTAssertTrue(FileManager.default.fileExists(atPath: lock.path))
+    }
+
+    // MARK: A renewal that could not be saved
+
+    /// The server rotated the refresh token but the save failed twice: the
+    /// card says so, and the next read saves the renewal before anything
+    /// else — the dead refresh token on disk is never sent.
+    func testAFailedSaveIsKeptAndMadeBeforeAnythingIsSent() async throws {
+        let before = try writeCredentials(expiresIn: -60)
+        let target = credentials
+        let rotated = rotatedRefresh
+        let renewal = KimiCodeRenewal()
+        let network = ScriptedNetwork { request in
+            if request.method == "POST" {
+                // A directory with something in it where the file was: no
+                // rename lands on it.
+                try FileManager.default.removeItem(at: target)
+                try FileManager.default.createDirectory(at: target, withIntermediateDirectories: false)
+                try Data().write(to: target.appendingPathComponent("occupied"))
+                return ScriptedNetwork.json(200, #"{"access_token":"new-access","refresh_token":"\#(rotated)","expires_in":900}"#)
+            }
+            return ScriptedNetwork.json(200, KimiFixtures.usages)
+        }
+        do {
+            _ = try await KimiProvider.fetchLocal(environment(network, renewal: renewal))
+            XCTFail("expected an error")
+        } catch ProviderError.unavailable(let message) {
+            XCTAssertEqual(message, KimiProvider.renewalFailedHint(KimiCodeRenewal.unsavedDetail))
+        }
+        XCTAssertTrue(network.gets.isEmpty)
+        XCTAssertFalse(renewal.hasRequestOut)
+
+        // The file comes back as it was.
+        try FileManager.default.removeItem(at: target)
+        try before.write(to: target, atomically: false, encoding: .utf8)
+        let again = ScriptedNetwork { request in
+            XCTAssertNotEqual(request.method, "POST", "the spent refresh token must not be sent")
+            return ScriptedNetwork.json(200, KimiFixtures.usages)
+        }
+        _ = try await KimiProvider.fetchLocal(environment(again, renewal: renewal))
+        XCTAssertTrue(again.posts.isEmpty)
+        XCTAssertEqual(again.gets.first?.headers["Authorization"], "Bearer new-access")
+        XCTAssertTrue(try fileText().contains("\"refresh_token\": \"\(rotated)\""))
+    }
+
+    // MARK: Who may renew, and quitting
+
+    /// A one-off command only reads: nothing is sent to the sign-in server,
+    /// and a token that has run out is said to be the app's to renew.
+    func testAOneOffRunNeverRenews() async throws {
+        let before = try writeCredentials(expiresIn: -60)
+        let network = renewingNetwork()
+        do {
+            _ = try await KimiProvider.fetchLocal(environment(network, mayRenew: false))
+            XCTFail("expected an error")
+        } catch ProviderError.unavailable(let message) {
+            XCTAssertEqual(message, KimiProvider.readOnlyRunHint)
+        }
+        XCTAssertTrue(network.requests.isEmpty)
+
+        // Due but not yet out: read as it is.
+        try writeCredentials(expiresIn: 45)
+        _ = try await KimiProvider.fetchLocal(environment(network, mayRenew: false))
+        XCTAssertTrue(network.posts.isEmpty)
+        XCTAssertEqual(network.gets.first?.headers["Authorization"], "Bearer old-access")
+
+        // Turned down: still no renewal.
+        try writeCredentials(expiresIn: 600)
+        let refusing = ScriptedNetwork { _ in ScriptedNetwork.json(401, "{}") }
+        do {
+            _ = try await KimiProvider.fetchLocal(environment(refusing, mayRenew: false))
+            XCTFail("expected an error")
+        } catch ProviderError.unavailable(let message) {
+            XCTAssertEqual(message, KimiProvider.readOnlyRunHint)
+        }
+        XCTAssertTrue(refusing.posts.isEmpty)
+        XCTAssertNotEqual(try fileText(), before)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: codeHome.appendingPathComponent("oauth").path))
+    }
+
+    /// Quitting: a request that is out is counted until its reply is saved,
+    /// and once stopped nothing new is sent.
+    func testQuittingWaitsForTheRequestOutAndStartsNothing() async throws {
+        try writeCredentials(expiresIn: -60)
+        let renewal = KimiCodeRenewal()
+        let rotated = rotatedRefresh
+        let seenOut = LockedFlag()
+        let network = ScriptedNetwork { request in
+            if request.method == "POST" {
+                seenOut.set(renewal.hasRequestOut)
+                return ScriptedNetwork.json(200, #"{"access_token":"new-access","refresh_token":"\#(rotated)","expires_in":900}"#)
+            }
+            return ScriptedNetwork.json(200, KimiFixtures.usages)
+        }
+        _ = try await KimiProvider.fetchLocal(environment(network, renewal: renewal))
+        XCTAssertTrue(seenOut.value)
+        XCTAssertFalse(renewal.hasRequestOut)
+
+        try writeCredentials(expiresIn: -60)
+        renewal.stop()
+        let after = renewingNetwork()
+        do {
+            _ = try await KimiProvider.fetchLocal(environment(after, renewal: renewal))
+            XCTFail("expected an error")
+        } catch ProviderError.unavailable(_) {}
+        XCTAssertTrue(after.requests.isEmpty)
     }
 
     // MARK: Refusals
@@ -595,6 +807,29 @@ final class KimiCodeRenewalTests: XCTestCase {
         XCTAssertEqual(Set(network.gets.compactMap { $0.headers["Authorization"] }), ["Bearer new-access"])
     }
 
+    // MARK: Signed out
+
+    /// Kimi Code signed out — config.toml no longer names its sign-in — and a
+    /// file from the other edition is left: no sign-in, and nothing sent.
+    func testAFileLeftAfterSigningOutIsNoSignIn() async throws {
+        try writeCredentials(expiresIn: 600)
+        try "default_model = \"\"\n[providers.other]\ntype = \"openai\"\n"
+            .write(to: codeHome.appendingPathComponent("config.toml"), atomically: true, encoding: .utf8)
+        XCTAssertNil(LocalCredentials.kimiCodeSession(codeHome: codeHome, legacyHome: legacyHome, now: clock.now()))
+        let network = renewingNetwork()
+        do {
+            _ = try await KimiProvider.fetchLocal(environment(network))
+            XCTFail("expected an error")
+        } catch {
+            XCTAssertEqual(sessionExpiredMessage(error), KimiProvider.signInAgainHint)
+        }
+        XCTAssertTrue(network.requests.isEmpty)
+
+        // Without config.toml (an older Kimi Code) the file still counts.
+        try FileManager.default.removeItem(at: codeHome.appendingPathComponent("config.toml"))
+        XCTAssertNotNil(LocalCredentials.kimiCodeSession(codeHome: codeHome, legacyHome: legacyHome, now: clock.now()))
+    }
+
     // MARK: Helpers
 
     private func mtime(_ url: URL) throws -> Int64 {
@@ -624,8 +859,10 @@ final class KimiCodeLockTests: XCTestCase {
         try? FileManager.default.removeItem(at: root)
     }
 
-    private func attempt(now: Date = Date(), sighting: inout KimiCodeLock.StaleSighting?, touch: TimeInterval = 2.5) -> KimiCodeLock.Attempt {
-        KimiCodeLock.attempt(directory: directory, now: now, sighting: &sighting, touchInterval: touch)
+    private func attempt(
+        now: Date = Date(), uptime: TimeInterval = 1_000, sighting: inout KimiCodeLock.StaleSighting?, touch: TimeInterval = 2.5) -> KimiCodeLock.Attempt
+    {
+        KimiCodeLock.attempt(directory: directory, now: now, uptime: uptime, sighting: &sighting, touchInterval: touch)
     }
 
     private func mtime() -> Int64? {
@@ -661,15 +898,22 @@ final class KimiCodeLockTests: XCTestCase {
     }
 
     /// Stale means untouched for over five seconds, and QuotaBar takes it
-    /// only once it has stayed so, unchanged, for a second.
+    /// only once it has stayed so, unchanged, through more than a live
+    /// holder's touch interval of awake time. Wall-clock time alone — a Mac
+    /// that slept — does not count.
     func testAStaleLockIsTakenOverAfterASecondLook() throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
         try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-10)], ofItemAtPath: directory.path)
         let now = Date()
         var sighting: KimiCodeLock.StaleSighting?
-        guard case .locked = attempt(now: now, sighting: &sighting) else { return XCTFail("first look only notes it") }
-        guard case .locked = attempt(now: now.addingTimeInterval(0.5), sighting: &sighting) else { return XCTFail("too soon") }
-        guard case let .acquired(lock) = attempt(now: now.addingTimeInterval(1.1), sighting: &sighting) else {
+        guard case .locked = attempt(now: now, uptime: 1_000, sighting: &sighting) else { return XCTFail("first look only notes it") }
+        guard case .locked = attempt(now: now.addingTimeInterval(1.1), uptime: 1_001.1, sighting: &sighting) else {
+            return XCTFail("a live holder may not have touched yet")
+        }
+        guard case .locked = attempt(now: now.addingTimeInterval(600), uptime: 1_002, sighting: &sighting) else {
+            return XCTFail("asleep meanwhile: no awake time for a touch")
+        }
+        guard case let .acquired(lock) = attempt(now: now.addingTimeInterval(601.5), uptime: 1_000 + KimiCodeLock.secondLook, sighting: &sighting) else {
             return XCTFail("expected a takeover")
         }
         XCTAssertGreaterThan(mtime() ?? 0, KimiCodeLock.milliseconds(now) - 1_000)
@@ -682,9 +926,21 @@ final class KimiCodeLockTests: XCTestCase {
         try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-10)], ofItemAtPath: directory.path)
         let now = Date()
         var sighting: KimiCodeLock.StaleSighting?
-        _ = attempt(now: now, sighting: &sighting)
+        _ = attempt(now: now, uptime: 1_000, sighting: &sighting)
         try FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: directory.path)
-        guard case .locked = attempt(now: now.addingTimeInterval(1.5), sighting: &sighting) else { return XCTFail("expected locked") }
+        guard case .locked = attempt(now: now.addingTimeInterval(4), uptime: 1_004, sighting: &sighting) else { return XCTFail("expected locked") }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.path))
+    }
+
+    /// Not touched for longer than the stale threshold — the Mac slept, the
+    /// process stalled — the lock may have passed to someone else: given up.
+    func testALockNotTouchedInTimeIsCompromised() throws {
+        var sighting: KimiCodeLock.StaleSighting?
+        guard case let .acquired(lock) = attempt(sighting: &sighting, touch: 60) else { return XCTFail("expected the lock") }
+        XCTAssertFalse(lock.isCompromised)
+        lock.backdateLastTouch(by: KimiCodeLock.staleAfter + 1)
+        XCTAssertTrue(lock.isCompromised)
+        lock.release()
         XCTAssertTrue(FileManager.default.fileExists(atPath: directory.path))
     }
 
@@ -856,6 +1112,27 @@ final class KimiPastedCredentialTests: XCTestCase {
         XCTAssertEqual(KimiPastedCredential.classify("key=="), .apiKey("key=="))
     }
 
+    /// The ways a key or cookie is commonly copied with something around it.
+    func testNearMissPastesAreUnderstood() {
+        // Quoted, as RFC 6265 allows.
+        XCTAssertEqual(KimiPastedCredential.classify("kimi-auth=\"\(cookieJWT)\""), .cookie(cookieJWT))
+        XCTAssertEqual(KimiPastedCredential.classify("Cookie: a=b; kimi-auth=\"\(cookieJWT)\"; c=d"), .cookie(cookieJWT))
+        // A colon, or a DevTools storage row.
+        XCTAssertEqual(KimiPastedCredential.classify("kimi-auth: \(cookieJWT)"), .cookie(cookieJWT))
+        XCTAssertEqual(KimiPastedCredential.classify("kimi-auth\t\(cookieJWT)\t.kimi.com\t/\t2026-10-17T00:00:00.000Z"), .cookie(cookieJWT))
+        // A whole Authorization header.
+        XCTAssertEqual(KimiPastedCredential.classify("Authorization: Bearer sk-kimi-0123456789abcdef"), .apiKey("sk-kimi-0123456789abcdef"))
+        XCTAssertEqual(KimiPastedCredential.classify("authorization:bearer\tsk-kimi-0123456789abcdef"), .apiKey("sk-kimi-0123456789abcdef"))
+        XCTAssertEqual(KimiPastedCredential.classify("Bearer\tsk-kimi-0123456789abcdef"), .apiKey("sk-kimi-0123456789abcdef"))
+        XCTAssertEqual(KimiPastedCredential.classify("Authorization: Bearer \(cookieJWT)"), .cookie(cookieJWT))
+        // Another cookie whose name only starts the same.
+        XCTAssertEqual(KimiPastedCredential.classify("kimi-auth-other=x; lang=zh"), .cookieWithoutToken)
+        // Never sent as a key: spaces, colons or semicolons in it.
+        XCTAssertEqual(KimiPastedCredential.classify("x-api-key: sk-kimi-0123456789abcdef"), .unrecognized)
+        XCTAssertEqual(KimiPastedCredential.classify("sk-kimi-0123 456789abcdef"), .unrecognized)
+        XCTAssertEqual(KimiPastedCredential.classify("Bearer"), .apiKey("Bearer"))
+    }
+
     func testFingerprintsDoNotRevealTheSecret() {
         let fingerprint = KimiPastedCredential.fingerprint("sk-kimi-secret")
         XCTAssertEqual(fingerprint.count, 16)
@@ -879,11 +1156,20 @@ final class KimiAPIKeyTests: XCTestCase {
         try? FileManager.default.removeItem(at: root)
     }
 
-    private func provider(_ network: ScriptedNetwork) -> KimiProvider {
+    private func provider(_ network: ScriptedNetwork, lastReading: UsageSnapshot? = nil) -> KimiProvider {
         KimiProvider(environment: KimiCodeEnvironment(
             codeHome: root.appendingPathComponent(".kimi-code"), legacyHome: root.appendingPathComponent(".kimi"),
-            send: network.send, sleep: { _ in }, appVersion: "test", renewal: KimiCodeRenewal()))
+            send: network.send, sleep: { _ in }, appVersion: "test", renewal: KimiCodeRenewal(),
+            lastReading: { lastReading }))
     }
+
+    /// A cookie of its own for each test: which edition a cookie belongs to
+    /// is remembered for the run.
+    private func freshCookie() -> String {
+        KimiFixtures.jwt(exp: 1_900_000_000, type: "access-\(UUID().uuidString)")
+    }
+
+    private static let gatewayUsages = #"{"usages":[{"scope":"FEATURE_CODING","detail":{"limit":"100","used":"10","resetTime":"2026-09-20T00:00:00Z"}}]}"#
 
     /// A global key: refused by kimi.com, read from kimi.ai — and next time
     /// kimi.ai is asked straight away.
@@ -902,8 +1188,9 @@ final class KimiAPIKeyTests: XCTestCase {
         XCTAssertEqual(network.gets.map { $0.url.absoluteString }, [
             "https://api.kimi.com/coding/v1/usages", "https://api.kimi.ai/coding/v1/usages",
         ])
-        XCTAssertEqual(snapshot.edition, KimiEdition.global.label)
-        XCTAssertEqual(snapshot.source, L10n.t("API key", "API Key"))
+        XCTAssertEqual(snapshot.edition, "global")
+        XCTAssertEqual(snapshot.source, "apiKey")
+        XCTAssertEqual(snapshot.sourceLabel, L10n.t("API key", "API Key"))
 
         _ = try await kimi.fetch(config: config)
         XCTAssertEqual(network.gets.count, 3)
@@ -922,7 +1209,7 @@ final class KimiAPIKeyTests: XCTestCase {
         }
         let snapshot = try await provider(network).fetch(config: config)
         XCTAssertEqual(network.gets.count, 1)
-        XCTAssertEqual(snapshot.edition, KimiEdition.china.label)
+        XCTAssertEqual(snapshot.edition, "china")
     }
 
     func testAKeyBothEditionsRefuseSaysSo() async throws {
@@ -937,35 +1224,130 @@ final class KimiAPIKeyTests: XCTestCase {
         XCTAssertEqual(Set(network.gets.compactMap { $0.url.host }), ["api.kimi.com", "api.kimi.ai"])
     }
 
-    /// Recognised with no plan on one edition, refused by the other: the
-    /// more telling answer wins.
-    func testNoPlanOutranksARefusal() async throws {
-        config.setCredential("sk-kimi-\(UUID().uuidString)", for: .kimi)
+    /// Recognised with no plan, a rate limit, a server or network failure:
+    /// that edition's answer. Only a refusal sends the key to the other.
+    func testOnlyARefusalMovesOnToTheOtherEdition() async throws {
+        let answers: [(Int?, (Error) -> Bool)] = [
+            (402, { if case ProviderError.noPlan(KimiProvider.apiKeyNoPlanHint(.china)) = $0 { return true }; return false }),
+            (403, { if case ProviderError.noPlan = $0 { return true }; return false }),
+            (429, { if case ProviderError.rateLimited = $0 { return true }; return false }),
+            (503, { if case ProviderError.http(503) = $0 { return true }; return false }),
+            (nil, { if case ProviderError.network = $0 { return true }; return false }),
+        ]
+        for (status, expected) in answers {
+            let key = "sk-kimi-\(UUID().uuidString)"
+            config.setCredential(key, for: .kimi)
+            let network = ScriptedNetwork { request in
+                guard request.url.host == "api.kimi.com" else { return ScriptedNetwork.json(200, KimiFixtures.usages) }
+                guard let status else { throw ProviderError.network("offline") }
+                return ScriptedNetwork.json(status, "{}")
+            }
+            let kimi = provider(network)
+            do {
+                _ = try await kimi.fetch(config: config)
+                XCTFail("expected an error for \(status.map(String.init) ?? "network")")
+            } catch {
+                XCTAssertTrue(expected(error), "\(status.map(String.init) ?? "network"): \(error)")
+            }
+            XCTAssertEqual(network.gets.map { $0.url.host }, ["api.kimi.com"], "\(status.map(String.init) ?? "network")")
+        }
+
+        // A key recognised with no plan is asked of that edition only, next time too.
+        let key = "sk-kimi-\(UUID().uuidString)"
+        config.setCredential(key, for: .kimi)
         let network = ScriptedNetwork { request in
-            request.url.host == "api.kimi.com" ? ScriptedNetwork.json(402, "{}") : ScriptedNetwork.json(401, "{}")
+            request.url.host == "api.kimi.ai" ? ScriptedNetwork.json(402, "{}") : ScriptedNetwork.json(401, "{}")
         }
-        do {
-            _ = try await provider(network).fetch(config: config)
-            XCTFail("expected an error")
-        } catch ProviderError.noPlan(let message) {
-            XCTAssertEqual(message, KimiProvider.apiKeyNoPlanHint(.china))
-        }
+        for _ in 0..<2 { _ = try? await provider(network).fetch(config: config) }
+        XCTAssertEqual(network.gets.map { $0.url.host }, ["api.kimi.com", "api.kimi.ai", "api.kimi.ai"])
     }
 
     /// A pasted cookie reads kimi.com's gateway and is labelled China.
     func testACookieReadsTheKimiComGateway() async throws {
-        let cookie = KimiFixtures.jwt(exp: 1_900_000_000, type: "access")
+        let cookie = freshCookie()
         config.setCredential("kimi-auth=\(cookie)", for: .kimi)
         let network = ScriptedNetwork { request in
             XCTAssertEqual(request.url.host, "www.kimi.com")
             XCTAssertEqual(request.headers["Cookie"], "kimi-auth=\(cookie)")
+            XCTAssertEqual(request.headers["Origin"], "https://www.kimi.com")
             return request.url.path.hasSuffix("GetUsages")
-                ? ScriptedNetwork.json(200, #"{"usages":[{"scope":"FEATURE_CODING","detail":{"limit":"100","used":"10","resetTime":"2026-09-20T00:00:00Z"}}]}"#)
+                ? ScriptedNetwork.json(200, Self.gatewayUsages)
                 : ScriptedNetwork.json(404, "{}")
         }
         let kimi = provider(network)
+        XCTAssertNil(kimi.sourceInfo(config: config)?.consoleURL)
         let snapshot = try await kimi.fetch(config: config)
-        XCTAssertEqual(snapshot.edition, KimiEdition.china.label)
+        XCTAssertEqual(snapshot.edition, "china")
+        XCTAssertEqual(snapshot.source, "cookie")
         XCTAssertEqual(kimi.sourceInfo(config: config)?.consoleURL, KimiEdition.china.consoleURL)
     }
+
+    /// A kimi.ai cookie: refused by kimi.com, read from kimi.ai with that
+    /// site's own Origin, labelled Global — and only kimi.ai asked after.
+    func testACookieFromKimiAIIsFoundThere() async throws {
+        let cookie = freshCookie()
+        config.setCredential(cookie, for: .kimi)
+        let network = ScriptedNetwork { request in
+            guard request.url.host == "www.kimi.ai" else { return ScriptedNetwork.json(401, "{}") }
+            XCTAssertEqual(request.headers["Origin"], "https://www.kimi.ai")
+            XCTAssertEqual(request.headers["Referer"], "https://www.kimi.ai/code/console")
+            return request.url.path.hasSuffix("GetUsages") ? ScriptedNetwork.json(200, Self.gatewayUsages) : ScriptedNetwork.json(404, "{}")
+        }
+        let kimi = provider(network)
+        let snapshot = try await kimi.fetch(config: config)
+        XCTAssertEqual(snapshot.edition, "global")
+        XCTAssertEqual(kimi.sourceInfo(config: config)?.consoleURL, KimiEdition.global.consoleURL)
+        let first = network.requests.count
+        _ = try await kimi.fetch(config: config)
+        XCTAssertEqual(Set(network.requests.dropFirst(first).compactMap { $0.url.host }), ["www.kimi.ai"])
+    }
+
+    /// A refused cookie — a bare JWT, as "Sign in in a browser" once stored —
+    /// is never sent to a Code API host as a key.
+    func testARefusedCookieGoesNowhereElse() async throws {
+        let cookie = freshCookie()
+        config.setCredential(cookie, for: .kimi)
+        let network = ScriptedNetwork { _ in ScriptedNetwork.json(401, "{}") }
+        do {
+            _ = try await provider(network).fetch(config: config)
+            XCTFail("expected an error")
+        } catch ProviderError.sessionExpired(let message) {
+            XCTAssertEqual(message, KimiProvider.rejectedCookieHint(signedInLocally: false))
+        }
+        XCTAssertEqual(Set(network.requests.compactMap { $0.url.host }), ["www.kimi.com", "www.kimi.ai"])
+    }
+
+    /// Pasted text that is neither a key nor a cookie: nothing is sent.
+    func testUnrecognizedTextSendsNothing() async throws {
+        config.setCredential("x-api-key: sk-kimi-0123", for: .kimi)
+        let network = ScriptedNetwork { _ in ScriptedNetwork.json(200, KimiFixtures.usages) }
+        do {
+            _ = try await provider(network).fetch(config: config)
+            XCTFail("expected an error")
+        } catch ProviderError.sessionExpired(let message) {
+            XCTAssertEqual(message, KimiProvider.unrecognizedPasteHint)
+        }
+        XCTAssertTrue(network.requests.isEmpty)
+    }
+
+    /// After a relaunch, before any refresh: Settings takes the edition from
+    /// the last reading kept on disk, when it came from the same kind of
+    /// credential.
+    func testSettingsTakesTheEditionFromTheLastReading() {
+        config.setCredential("sk-kimi-\(UUID().uuidString)", for: .kimi)
+        let network = ScriptedNetwork { _ in ScriptedNetwork.json(500, "{}") }
+        let global = UsageSnapshot(edition: "global", source: "apiKey")
+        XCTAssertEqual(provider(network, lastReading: global).sourceInfo(config: config)?.consoleURL, KimiEdition.global.consoleURL)
+        let otherSource = UsageSnapshot(edition: "global", source: "signIn")
+        XCTAssertNil(provider(network, lastReading: otherSource).sourceInfo(config: config)?.consoleURL)
+        XCTAssertTrue(network.requests.isEmpty)
+    }
+}
+
+/// A flag set from a network closure and read by the test.
+final class LockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored = false
+    var value: Bool { lock.withLock { stored } }
+    func set(_ value: Bool) { lock.withLock { stored = value } }
 }

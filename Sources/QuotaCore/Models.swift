@@ -434,8 +434,8 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
                 "已登录 Cursor.app 时自动读取；否则粘贴 WorkosCursorSessionToken cookie（开发者工具 → 应用 → Cookie → cursor.com）。")
         case .kimi:
             return L10n.t(
-                "1. Automatic if the Kimi Code app or CLI (`kimi`) is signed in, China or Global edition; QuotaBar keeps that sign-in renewed.\n2. Or paste a Kimi Code API key, from the Kimi Code console of your edition (kimi.com or kimi.ai).\n3. Or paste a kimi-auth cookie from kimi.com (DevTools → Application → Cookies).\nSomething pasted is used before the sign-in on this Mac.",
-                "1. 已登录 Kimi Code 应用或 CLI（`kimi`）时自动读取，国内版、国际版均可，QuotaBar 会让这份登录保持续期。\n2. 或粘贴 Kimi Code API Key，在你所用版本的 Kimi Code 控制台（kimi.com 或 kimi.ai）获取。\n3. 或粘贴 kimi.com 的 kimi-auth cookie（开发者工具 → 应用 → Cookie）。\n粘贴的凭据优先于本机登录使用。")
+                "1. Automatic if the Kimi Code app or CLI (`kimi`) is signed in, China or Global edition; QuotaBar renews the sign-in Kimi Code uses while QuotaBar runs. The older Python CLI's sign-in in ~/.kimi is only read.\n2. Or paste a Kimi Code API key, from the Kimi Code console of your edition (kimi.com or kimi.ai).\n3. Or paste a kimi-auth cookie from kimi.com or kimi.ai (DevTools → Application → Cookies); the edition is found by itself.\nSomething pasted is used before the sign-in on this Mac.",
+                "1. 已登录 Kimi Code 应用或 CLI（`kimi`）时自动读取，国内版、国际版均可；QuotaBar 运行时会续期 Kimi Code 正在使用的登录。旧版 Python CLI 在 ~/.kimi 的登录只读取。\n2. 或粘贴 Kimi Code API Key，在你所用版本的 Kimi Code 控制台（kimi.com 或 kimi.ai）获取。\n3. 或粘贴 kimi.com 或 kimi.ai 的 kimi-auth cookie（开发者工具 → 应用 → Cookie），版本自动识别。\n粘贴的凭据优先于本机登录使用。")
         case .zai:
             return L10n.t("API key (z.ai → API Keys).", "API Key（z.ai → API Keys）。")
         case .opencodeGo:
@@ -779,12 +779,14 @@ public struct UsageSnapshot: Sendable {
     public var resetCredits: ResetCredits?
     /// A prepaid account's balance, spend and keys; see `BalanceSheet`.
     public var balance: BalanceSheet?
-    /// Which edition of a service with separate regional accounts answered —
-    /// "Global", "国内版" — for the chip beside the plan. Kept apart from
-    /// `planName`, which Quota Run groups history by.
+    /// Which edition of a service with separate regional accounts answered,
+    /// as a stable id — `KimiEdition.rawValue`, "china" or "global" — worded
+    /// when shown (`editionLabel`), so a cached reading, the JSON other tools
+    /// read and a comparison of two readings do not follow the language.
+    /// Kept apart from `planName`, which Quota Run groups history by.
     public var edition: String?
-    /// The credential the reading came from — "Kimi Code sign-in", "API key"
-    /// — for providers that take more than one.
+    /// The credential the reading came from, as a stable id —
+    /// `KimiSource.rawValue` — for providers that take more than one.
     public var source: String?
 
     public init(
@@ -807,10 +809,20 @@ public struct UsageSnapshot: Sendable {
         self.source = source
     }
 
+    /// "Global", "国内版".
+    public var editionLabel: String? {
+        edition.map { KimiEdition(rawValue: $0)?.label ?? $0 }
+    }
+
+    /// "API key", "Kimi Code 本机登录".
+    public var sourceLabel: String? {
+        source.map { KimiSource(rawValue: $0)?.label ?? $0 }
+    }
+
     /// The chip beside the provider's name: the plan and the edition, either
     /// one alone, or nothing. Not yet upper-cased; each surface styles it.
     public var chipLabel: String? {
-        let parts = [planName, edition]
+        let parts = [planName, editionLabel]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")

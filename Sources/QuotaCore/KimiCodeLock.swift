@@ -21,8 +21,12 @@ import Foundation
 ///   of a lock QuotaBar does not hold is never touched.
 /// - **A lock whose mtime is more than 5 seconds old is stale**: its holder
 ///   died. It may be removed with `rmdir` and taken with a fresh `mkdir`.
-///   QuotaBar is a little stricter than Kimi Code and only takes over a lock
-///   that has looked stale, with the same mtime, for at least a second.
+///   QuotaBar is stricter than Kimi Code and only takes over a lock that has
+///   looked stale, with the same mtime, across more than one of a live
+///   holder's touches (`secondLook`), timed by the clock that stops while
+///   the Mac sleeps — as a holder's own timer does. Right after a wake a
+///   live holder's mtime looks old by the wall clock, and only a holder that
+///   misses a touch while awake is gone.
 /// - **Release** is `rmdir`. QuotaBar removes the directory only while its
 ///   mtime is still the one it set, so it never removes a lock that has
 ///   since passed to someone else.
@@ -36,6 +40,9 @@ public final class KimiCodeLock: @unchecked Sendable {
     public static let touchInterval: TimeInterval = 2.5
     /// Kimi Code's `retries.minTimeout`.
     public static let retryInterval: TimeInterval = 0.5
+    /// How long, awake, a stale lock has to stay unchanged before it is taken
+    /// over: one of a live holder's touches, and a second more.
+    public static let secondLook: TimeInterval = touchInterval + 1
 
     /// The lock directory, `<sentinel>.lock`.
     public let directory: URL
@@ -58,7 +65,9 @@ public final class KimiCodeLock: @unchecked Sendable {
         self.ownMtime = mtime
         self.lastTouch = Date()
         let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now() + touchInterval, repeating: touchInterval)
+        // By the wall clock, which runs on while the Mac sleeps: after a wake
+        // the touch is due at once, and finds the lock too old to trust.
+        timer.schedule(wallDeadline: .now() + touchInterval, repeating: touchInterval)
         timer.setEventHandler { [weak self] in self?.touch() }
         self.timer = timer
         timer.resume()
@@ -72,10 +81,11 @@ public final class KimiCodeLock: @unchecked Sendable {
     // MARK: Taking it
 
     /// A lock that looked stale, remembered so it is taken over only when it
-    /// still looks the same a second later.
+    /// still looks the same `secondLook` later.
     public struct StaleSighting: Sendable, Equatable {
         let mtime: Int64
-        let seenAt: Date
+        /// `ProcessInfo.systemUptime` when first seen: stops while asleep.
+        let seenAt: TimeInterval
     }
 
     public enum Attempt {
@@ -88,10 +98,13 @@ public final class KimiCodeLock: @unchecked Sendable {
     }
 
     /// `mkdir <sentinel>.lock` once, with proper-lockfile's handling of a
-    /// directory that is already there.
+    /// directory that is already there. `now` is the wall clock the mtime is
+    /// judged by; `uptime` the clock that stops while asleep, which the
+    /// second look is timed by.
     public static func attempt(
         directory: URL,
         now: Date,
+        uptime: TimeInterval = ProcessInfo.processInfo.systemUptime,
         sighting: inout StaleSighting?,
         touchInterval: TimeInterval = KimiCodeLock.touchInterval) -> Attempt
     {
@@ -111,11 +124,11 @@ public final class KimiCodeLock: @unchecked Sendable {
             sighting = nil
             return .locked
         }
-        guard let seen = sighting, seen.mtime == mtime, now.timeIntervalSince(seen.seenAt) >= 1 else {
-            if sighting?.mtime != mtime { sighting = StaleSighting(mtime: mtime, seenAt: now) }
+        guard let seen = sighting, seen.mtime == mtime, uptime - seen.seenAt >= secondLook else {
+            if sighting?.mtime != mtime { sighting = StaleSighting(mtime: mtime, seenAt: uptime) }
             return .locked
         }
-        // Stale for a second or more, unchanged: its holder is gone.
+        // Stale and untouched through a touch a live holder would have made.
         sighting = nil
         guard rmdir(path) == 0 || errno == ENOENT else { return .failed(errno) }
         if mkdir(path, 0o777) == 0 { return took(directory, touchInterval: touchInterval) }
@@ -137,16 +150,27 @@ public final class KimiCodeLock: @unchecked Sendable {
     // MARK: Holding it
 
     /// True once someone else has touched, replaced or removed the directory,
-    /// or it could not be touched within the stale threshold: others may
-    /// take the lock, so nothing new may be started under it.
+    /// or it has not been touched within the stale threshold by the wall
+    /// clock — a Mac that slept, a stalled process: others may take the lock,
+    /// so nothing new may be started under it. proper-lockfile gives such a
+    /// lock up the same way.
     public var isCompromised: Bool {
-        guardLock.withLock { compromised }
+        guardLock.withLock {
+            if !released, !compromised, Date().timeIntervalSince(lastTouch) > Self.staleAfter { compromise() }
+            return compromised
+        }
     }
 
     func touch() {
         guardLock.lock()
         defer { guardLock.unlock() }
         guard !released, !compromised else { return }
+        // Too long since the last touch: the lock has looked stale to others
+        // meanwhile, and may be theirs whatever its mtime says now.
+        guard Date().timeIntervalSince(lastTouch) <= Self.staleAfter else {
+            compromise()
+            return
+        }
         let path = directory.path
         var info = stat()
         guard stat(path, &info) == 0 else {
@@ -169,6 +193,11 @@ public final class KimiCodeLock: @unchecked Sendable {
         compromised = true
         timer?.cancel()
         timer = nil
+    }
+
+    /// For tests: as if the last touch was `seconds` earlier.
+    func backdateLastTouch(by seconds: TimeInterval) {
+        guardLock.withLock { lastTouch = lastTouch.addingTimeInterval(-seconds) }
     }
 
     // MARK: Giving it back

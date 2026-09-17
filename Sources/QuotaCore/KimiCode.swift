@@ -58,6 +58,26 @@ public enum KimiEdition: String, Sendable, CaseIterable, Codable {
     }
 }
 
+/// Where a Kimi reading came from, as `UsageSnapshot.source` keeps it: a
+/// stable id, worded only when shown.
+public enum KimiSource: String, Sendable, CaseIterable {
+    /// The Kimi Code app or CLI's sign-in on this Mac.
+    case signIn
+    /// The older Python CLI's sign-in in `~/.kimi`.
+    case legacySignIn
+    case apiKey
+    case cookie
+
+    public var label: String {
+        switch self {
+        case .signIn: L10n.t("Kimi Code sign-in", "Kimi Code 本机登录")
+        case .legacySignIn: L10n.t("Older Kimi CLI sign-in", "旧版 Kimi CLI 登录")
+        case .apiKey: L10n.t("API key", "API Key")
+        case .cookie: L10n.t("kimi-auth cookie", "kimi-auth Cookie")
+        }
+    }
+}
+
 // MARK: - Credential files
 
 /// One of the credential files Kimi Code may sign in to: the name it saves
@@ -108,7 +128,8 @@ struct KimiCodeTokenFile {
     enum Read {
         case missing
         /// There, but not a JSON object — Kimi Code reads that as missing
-        /// too; QuotaBar never writes over it.
+        /// too. QuotaBar writes over it only with a renewal the server has
+        /// already granted (`KimiCodeRenewal.saveDecision`).
         case unreadable
         case token(KimiCodeTokenFile)
     }
@@ -337,6 +358,19 @@ enum KimiCodeConfig {
     /// The slot Kimi Code signs in with, when it is one of the known ones and
     /// the hosts config.toml names are the ones that slot stands for. Any
     /// other hosts are none of QuotaBar's business.
+    /// Kimi Code says it is signed out: config.toml is there and has no Kimi
+    /// Code sign-in in it — its logout removes `managed:kimi-code` along
+    /// with the credential file in use, and leaves files from an earlier
+    /// edition behind. Only when the name is gone from the file altogether,
+    /// so a table this reader cannot follow never counts as signed out; and
+    /// never without config.toml, which older Kimi Code did not write.
+    static func saysSignedOut(codeHome: URL) -> Bool {
+        guard let text = try? String(contentsOf: codeHome.appendingPathComponent("config.toml"), encoding: .utf8) else {
+            return false
+        }
+        return managedSignIn(toml: text) == nil && !text.contains("managed:kimi-code")
+    }
+
     static func activeSlot(codeHome: URL) -> KimiCodeSlot? {
         guard let signIn = managedSignIn(codeHome: codeHome),
               let slot = LocalCredentials.kimiCodeSlots[signIn.storageName]
@@ -540,23 +574,29 @@ public enum KimiPastedCredential: Equatable, Sendable {
     case cookie(String)
     /// A Cookie header with no kimi-auth in it: nothing to send.
     case cookieWithoutToken
-    /// Anything else: a Kimi Code API key.
+    /// A single word that is no cookie: a Kimi Code API key.
     case apiKey(String)
+    /// Text around a key or token that cannot be told apart — spaces,
+    /// colons or semicolons in it: nothing is sent.
+    case unrecognized
 
-    /// - `kimi-auth=…` anywhere (a Cookie header, a curl line) → its value.
+    /// - `Authorization:` and `Bearer` in front (copied from a request) are
+    ///   dropped first.
+    /// - `kimi-auth` followed by `=`, `:` or a space or tab (a Cookie header,
+    ///   a curl line, a DevTools row) → its value, quotes taken off.
     /// - Any other Cookie header → nothing usable.
     /// - A bare JWT (three base64url parts, the first a JSON header with
-    ///   `alg`) → a kimi-auth value, which is what "Sign in in a browser"
-    ///   stores.
-    /// - Anything else → an API key.
+    ///   `alg`) → a kimi-auth value.
+    /// - One unbroken word → an API key; anything else is unrecognized.
     public static func classify(_ raw: String) -> KimiPastedCredential {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Copied from an Authorization header.
-        if text.lowercased().hasPrefix("bearer ") {
-            text = String(text.dropFirst(7)).trimmingCharacters(in: .whitespaces)
-        }
-        if let range = text.range(of: "kimi-auth=", options: .caseInsensitive) {
-            let value = text[range.upperBound...].prefix { !";, \t\r\n'\"".contains($0) }
+        text = text.replacingOccurrences(of: #"^authorization\s*:\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
+        text = text.replacingOccurrences(of: #"^bearer\s+"#, with: "", options: [.regularExpression, .caseInsensitive])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let range = text.range(of: #"(?<![\w-])kimi-auth(\s*[=:]\s*|\s+)"#, options: [.regularExpression, .caseInsensitive]) {
+            var rest = text[range.upperBound...]
+            if let quote = rest.first, quote == "\"" || quote == "'" { rest = rest.dropFirst() }
+            let value = rest.prefix { !";, \t\r\n'\"".contains($0) }
             return value.isEmpty ? .cookieWithoutToken : .cookie(String(value))
         }
         if text.lowercased().hasPrefix("cookie:")
@@ -565,6 +605,9 @@ public enum KimiPastedCredential: Equatable, Sendable {
             return .cookieWithoutToken
         }
         if isJWT(text) { return .cookie(text) }
+        guard !text.isEmpty, text.rangeOfCharacter(from: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ":;"))) == nil else {
+            return .unrecognized
+        }
         return .apiKey(text)
     }
 

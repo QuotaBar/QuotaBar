@@ -9,9 +9,9 @@
 
 #### 新增
 
-- Kimi Code 可以直接读取本机 Kimi Code 应用或 CLI（`kimi`）的登录，不用再粘贴 kimi-auth cookie，国内版（kimi.com）和国际版（kimi.ai）都会自动识别。额度来自 Kimi Code 自己使用的用量接口，显示 5 小时和每周额度（套餐有月额度时一并显示）以及各自的重置时间。Kimi Code 保存的登录令牌只有 15 分钟有效，快过期时 QuotaBar 会替它续期，额度一直能显示，不用再去用一次 Kimi Code。续期完全按 Kimi Code 自己的方式进行：先取得 Kimi Code 使用的同一把续期锁，再重新读一次登录文件，Kimi Code 刚续期过就直接用它的结果，续期后按 Kimi Code 的格式原样写回，因此两边不会同时续期、把对方的登录挤掉。Kimi Code 正在续期时，卡片提示下次刷新再读取；网络或服务器出错时保留上一次的读数，下次刷新重试；续期被拒绝时 QuotaBar 不改动登录文件，只提示重新登录。Kimi Code 在本机的登录变化后（登录、退出、切换版本），QuotaBar 在一分钟内重新读取额度。Kimi Code 超过 30 天没用、登录已经无法续期，或者已经退出登录时，卡片提示重新登录，也不会改用旧版 Python CLI 留在 `~/.kimi` 里的失效登录；旧版 CLI 的登录只读取、不续期。
-- Kimi Code 也可以在设置里粘贴 Kimi Code API Key（在所用版本的 Kimi Code 控制台获取）。QuotaBar 先向国内版查询、被拒绝再查国际版，之后直接查询认出的版本；两边都拒绝时卡片会说明。粘贴的内容按格式自动区分 API Key 和 kimi-auth cookie（cookie 读取 kimi.com），并优先于本机登录使用，清除后改为读取本机登录；cookie 或 API Key 被拒绝时，卡片会提示清除它或换一个。
-- Kimi Code 卡片的套餐标签旁显示所用版本（国内版 / 国际版）。设置 → 服务商 → Kimi Code 新增「当前使用」一行，写明用的是本机登录、API Key 还是 kimi-auth cookie，以及对应的版本；「如何登录」列出这三种方式；「控制台」链接按版本打开 kimi.com 或 kimi.ai。
+- Kimi Code 可以直接读取本机 Kimi Code 应用或 CLI（`kimi`）的登录，不用再粘贴 kimi-auth cookie，国内版（kimi.com）和国际版（kimi.ai）都会自动识别。额度来自 Kimi Code 自己使用的用量接口，显示 5 小时和每周额度（套餐有月额度时一并显示）以及各自的重置时间。Kimi Code 保存的登录令牌只有 15 分钟有效，快过期时 QuotaBar 会替它续期，额度一直能显示，不用再去用一次 Kimi Code。续期完全按 Kimi Code 自己的方式进行：先取得 Kimi Code 使用的同一把续期锁，再重新读一次登录文件，Kimi Code 刚续期过就直接用它的结果，续期后按 Kimi Code 的格式原样写回，因此两边不会同时续期、把对方的登录挤掉；Kimi Code 可能已接管续期锁时（例如 Mac 刚从睡眠中唤醒），不再重试续期。Kimi Code 正在续期时，卡片提示下次刷新再读取；网络或服务器出错时保留上一次的读数，下次刷新重试；续期被拒绝时 QuotaBar 不改动登录文件，只提示重新登录。续期进行期间如果已经退出登录或重新登录，续期结果不会覆盖它们；续期结果无法保存时，卡片会说明，并在下次刷新时先保存、再发送其他请求。只有运行中的 QuotaBar 应用会续期：`QuotaBar --json` 等一次性命令只读取登录，退出应用时会等正在进行的续期保存完毕。Kimi Code 在本机的登录变化后（登录、退出、切换版本），QuotaBar 在一分钟内重新读取额度。Kimi Code 超过 30 天没用、登录已经无法续期，或者已经退出登录时，卡片提示重新登录（本机还留着另一个版本的登录也是如此），也不会改用旧版 Python CLI 留在 `~/.kimi` 里的失效登录；旧版 CLI 的登录只读取、不续期。
+- Kimi Code 也可以在设置里粘贴 Kimi Code API Key（在所用版本的 Kimi Code 控制台获取）。QuotaBar 先向国内版查询，只有国内版拒绝这个 Key 时才查国际版；其他结果（没有套餐、服务器或网络错误）都以回应的版本为准，某个版本回应过之后只查询这个版本。kimi-auth cookie 也按同样方式先查 kimi.com、再查 kimi.ai，只会发往这两个网站。粘贴的内容按格式自动区分 API Key 和 kimi-auth cookie，并优先于本机登录使用，清除后改为读取本机登录。复制来的 `Authorization: Bearer …` 请求头、带引号的 cookie、浏览器开发者工具里的 cookie 行都能识别；既不是 Key 也不是 cookie 的内容不会发送到任何地方。cookie 或 API Key 被拒绝时，卡片会提示清除它或换一个。
+- Kimi Code 卡片的套餐标签旁显示所用版本（国内版 / 国际版）。设置 → 服务商 → Kimi Code 新增「当前使用」一行，写明用的是本机登录、API Key 还是 kimi-auth cookie，以及对应的版本；「如何登录」列出这三种方式；「控制台」链接按版本打开 kimi.com 或 kimi.ai，重新启动应用后也是如此。`QuotaBar --json` 和本地 API 用 `china` / `global` 表示版本，不随界面语言变化。切换版本或凭据后，趋势线重新开始，也不会被当成额度窗口重置。
 
 #### 修复
 

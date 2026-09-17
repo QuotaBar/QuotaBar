@@ -11,6 +11,9 @@ public struct KimiCodeEnvironment: Sendable {
     public var legacyHome: URL
     public var send: HTTPSend
     public var now: @Sendable () -> Date
+    /// The clock that stops while the Mac sleeps, as a lock holder's timer
+    /// does: what a stale lock's second look is timed by.
+    public var uptime: @Sendable () -> TimeInterval
     public var sleep: @Sendable (TimeInterval) async -> Void
     /// How long a refresh waits for a renewal Kimi Code is in the middle of.
     /// Kimi Code itself waits a minute; a background refresh has less
@@ -21,33 +24,52 @@ public struct KimiCodeEnvironment: Sendable {
     /// For the User-Agent and `X-Msh-Version`.
     public var appVersion: String
     public var renewal: KimiCodeRenewal
+    /// Whether a read may renew the sign-in at all. Only the running app
+    /// may (`KimiCodeRenewal.allowInThisProcess`): a one-off command can be
+    /// timed out or killed with its request out, losing a refresh token the
+    /// server has already rotated, so it only reads.
+    public var mayRenew: Bool
+    /// The last reading kept on disk, which tells a pasted credential's
+    /// edition before this run of the app has asked.
+    public var lastReading: @Sendable () -> UsageSnapshot?
 
     public init(
         codeHome: URL,
         legacyHome: URL,
         send: @escaping HTTPSend,
         now: @escaping @Sendable () -> Date = { Date() },
+        uptime: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
         sleep: @escaping @Sendable (TimeInterval) async -> Void = KimiCodeEnvironment.realSleep,
         lockWait: TimeInterval = 15,
         lockRetry: TimeInterval = KimiCodeLock.retryInterval,
         touchInterval: TimeInterval = KimiCodeLock.touchInterval,
         appVersion: String? = nil,
-        renewal: KimiCodeRenewal = .shared)
+        renewal: KimiCodeRenewal = .shared,
+        mayRenew: Bool = true,
+        lastReading: @escaping @Sendable () -> UsageSnapshot? = { nil })
     {
         self.codeHome = codeHome
         self.legacyHome = legacyHome
         self.send = send
         self.now = now
+        self.uptime = uptime
         self.sleep = sleep
         self.lockWait = lockWait
         self.lockRetry = lockRetry
         self.touchInterval = touchInterval
         self.appVersion = appVersion ?? KimiCodeIdentity.appVersion
         self.renewal = renewal
+        self.mayRenew = mayRenew
+        self.lastReading = lastReading
     }
 
     public static var live: KimiCodeEnvironment {
-        KimiCodeEnvironment(codeHome: LocalCredentials.kimiCodeHome, legacyHome: LocalCredentials.kimiLegacyHome, send: HTTP.live)
+        KimiCodeEnvironment(
+            codeHome: LocalCredentials.kimiCodeHome,
+            legacyHome: LocalCredentials.kimiLegacyHome,
+            send: HTTP.live,
+            mayRenew: KimiCodeRenewal.isAllowedInThisProcess,
+            lastReading: { SnapshotCache.shared.snapshot(for: .kimi) })
     }
 
     public static let realSleep: @Sendable (TimeInterval) async -> Void = { seconds in
@@ -91,16 +113,21 @@ public enum KimiCodeRenewability: Sendable {
 ///    waiting: a renewal that lands meanwhile ends the wait.
 /// 3. Read the file again under the lock, and stop if the work is done.
 /// 4. `POST {oauthHost}/api/oauth/token` with the refresh token, three
-///    tries for a network or server failure.
+///    tries for a network or server failure — a try after the first only
+///    while the lock is still QuotaBar's.
 /// 5. Save what comes back at once, in Kimi Code's own format: the refresh
-///    token has already been rotated on the server.
+///    token has already been rotated on the server. A save that fails is
+///    kept in memory and made before anything else is sent.
 ///
 /// A refused renewal (401, 403, `invalid_grant`) is looked at again 100 ms
 /// later, in case Kimi Code renewed first; otherwise it means signing in
 /// again. Unlike Kimi Code, QuotaBar then writes nothing — no signed-out
 /// marker — and leaves the file for Kimi Code to judge. Nothing is ever
-/// written without the lock, over a file that is missing or signed out, or
-/// for hosts other than Kimi Code's own.
+/// written without the lock, over a file that was removed or holds another
+/// live sign-in, or for hosts other than Kimi Code's own.
+///
+/// Only the running app renews (`allowInThisProcess`), and quitting waits
+/// for a request that is out (`stop`, `waitForRequests`).
 public final class KimiCodeRenewal: @unchecked Sendable {
     public static let shared = KimiCodeRenewal()
 
@@ -146,8 +173,83 @@ public final class KimiCodeRenewal: @unchecked Sendable {
     private let state = NSLock()
     private var tail: Task<Void, Never>?
     private var refused: [String: Date] = [:]
+    /// Renewals the server granted that could not be saved, by credential
+    /// file: the only copy of the rotated refresh token.
+    private var unsaved: [String: Unsaved] = [:]
+    /// Requests out whose reply may carry rotated tokens, and those replies
+    /// until saved.
+    private var requestsOut = 0
+    private var stopping = false
 
     public init() {}
+
+    private struct Unsaved {
+        let renewed: RenewedToken
+        /// The refresh token the renewal spent, still the one on disk.
+        let replacing: String
+    }
+
+    // MARK: Which process renews
+
+    private static let processLock = NSLock()
+    nonisolated(unsafe) private static var allowedInProcess = false
+
+    /// Renewing is for the menu-bar app, which runs on and can finish what it
+    /// starts; called once, as it starts. Everything else in the process —
+    /// `--json`, `--provider`, `--windows` — only reads the sign-in.
+    public static func allowInThisProcess() {
+        processLock.withLock { allowedInProcess = true }
+    }
+
+    public static var isAllowedInThisProcess: Bool {
+        processLock.withLock { allowedInProcess }
+    }
+
+    // MARK: Quitting
+
+    /// Starts nothing new from here on: no renewal, no further try.
+    public func stop() {
+        state.withLock { stopping = true }
+    }
+
+    /// A renewal request is out, or its reply not yet saved.
+    public var hasRequestOut: Bool {
+        state.withLock { requestsOut > 0 }
+    }
+
+    /// Returns once no renewal request is out and every reply is saved, or
+    /// after `timeout` — a request gives up after 30 seconds by itself.
+    public func waitForRequests(timeout: TimeInterval) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while hasRequestOut, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+    }
+
+    private func checkNotStopping() throws {
+        if state.withLock({ stopping }) { throw Failure.unavailable(Self.quittingDetail) }
+    }
+
+    /// Counts a request as out, unless quitting has begun — in one step, so
+    /// a quit either waits for the request or the request is never sent.
+    private func sendingRequest() throws {
+        try state.withLock {
+            guard !stopping else { throw Failure.unavailable(Self.quittingDetail) }
+            requestsOut += 1
+        }
+    }
+
+    private func requestSettled() {
+        state.withLock { requestsOut -= 1 }
+    }
+
+    private static var quittingDetail: String {
+        L10n.t("QuotaBar is quitting", "QuotaBar 正在退出")
+    }
+
+    static var unsavedDetail: String {
+        L10n.t("could not save the renewed sign-in to ~/.kimi-code", "无法把续期后的登录保存到 ~/.kimi-code")
+    }
 
     /// For this Mac's `~/.kimi-code`.
     public static func renewability(of session: LocalCredentials.KimiCodeSession) -> KimiCodeRenewability {
@@ -189,14 +291,25 @@ public final class KimiCodeRenewal: @unchecked Sendable {
     // MARK: The steps
 
     private func renew(_ context: Context, rejected: String?, environment env: KimiCodeEnvironment) async throws -> Outcome {
+        try checkNotStopping()
         let file = context.credentialsFile
-        guard case let .token(before) = KimiCodeTokenFile.read(file), !before.isRevoked else {
-            throw Failure.signInAgain
+        let pending = unsavedRenewal(for: file)
+        // The refresh token on disk this renewal starts from.
+        let known: String
+        if let pending {
+            // A renewal whose save failed: saving it comes first, and the
+            // dead refresh token on disk is never sent.
+            known = pending.replacing
+        } else {
+            guard case let .token(before) = KimiCodeTokenFile.read(file), !before.isRevoked else {
+                throw Failure.signInAgain
+            }
+            if let token = Self.usable(before, rejected: rejected, now: env.now()) {
+                return Outcome(accessToken: token, renewedHere: false)
+            }
+            try checkRenewable(before, now: env.now())
+            known = before.refreshToken
         }
-        if let token = Self.usable(before, rejected: rejected, now: env.now()) {
-            return Outcome(accessToken: token, renewedHere: false)
-        }
-        try checkRenewable(before, now: env.now())
 
         do {
             try Self.prepareSentinel(context.lockSentinel)
@@ -208,23 +321,29 @@ public final class KimiCodeRenewal: @unchecked Sendable {
         let deadline = env.now().addingTimeInterval(env.lockWait)
         while held == nil {
             if case let .acquired(lock) = KimiCodeLock.attempt(
-                directory: context.lockDirectory, now: env.now(), sighting: &sighting, touchInterval: env.touchInterval)
+                directory: context.lockDirectory, now: env.now(), uptime: env.uptime(),
+                sighting: &sighting, touchInterval: env.touchInterval)
             {
                 held = lock
                 break
             }
-            // Kimi Code is renewing: once it has saved, its token will do.
+            // Kimi Code is renewing, or signed in anew: once it has saved,
+            // its token will do.
             if case let .token(current) = KimiCodeTokenFile.read(file), !current.isRevoked,
-               current.refreshToken != before.refreshToken,
+               current.refreshToken != known,
                let token = Self.usable(current, rejected: rejected, now: env.now())
             {
+                if pending != nil { forgetUnsaved(file) }
                 return Outcome(accessToken: token, renewedHere: false)
             }
             guard env.now() < deadline else { throw Failure.busy }
+            try checkNotStopping()
             await env.sleep(env.lockRetry)
         }
         guard let lock = held else { throw Failure.busy }
         defer { lock.release() }
+
+        if let pending { try settle(pending, in: file) }
 
         guard case let .token(current) = KimiCodeTokenFile.read(file), !current.isRevoked else {
             // Signed out while waiting; a file removed by signing out stays removed.
@@ -236,10 +355,12 @@ public final class KimiCodeRenewal: @unchecked Sendable {
         try checkRenewable(current, now: env.now())
         guard !lock.isCompromised else { throw Failure.busy }
 
-        return try await post(context, token: current, environment: env)
+        return try await post(context, token: current, lock: lock, environment: env)
     }
 
-    private func post(_ context: Context, token current: KimiCodeTokenFile, environment env: KimiCodeEnvironment) async throws -> Outcome {
+    private func post(
+        _ context: Context, token current: KimiCodeTokenFile, lock: KimiCodeLock, environment env: KimiCodeEnvironment) async throws -> Outcome
+    {
         let url = URL(string: "\(KimiCodeConfig.trimmedEndpoint(context.slot.oauthHost))/api/oauth/token")!
         var headers = KimiCodeIdentity.headers(deviceID: context.deviceID, appVersion: env.appVersion)
         headers["Content-Type"] = "application/x-www-form-urlencoded"
@@ -253,6 +374,14 @@ public final class KimiCodeRenewal: @unchecked Sendable {
         let attempts = 3
         var failure = L10n.t("no reply", "没有回应")
         for attempt in 0..<attempts {
+            if attempt > 0 {
+                await env.sleep(pow(2, Double(attempt - 1)))
+                // Another try is another renewal of the same refresh token:
+                // only under a lock no one else can have taken meanwhile.
+                guard !lock.isCompromised else { throw Failure.busy }
+            }
+            try sendingRequest()
+            defer { requestSettled() }
             let last = attempt == attempts - 1
             let response: HTTPResponse
             do {
@@ -260,7 +389,6 @@ public final class KimiCodeRenewal: @unchecked Sendable {
             } catch {
                 failure = (error as? LocalizedError)?.errorDescription ?? L10n.t("network error", "网络错误")
                 if last { break }
-                await env.sleep(pow(2, Double(attempt)))
                 continue
             }
             let payload = (try? JSONSerialization.jsonObject(with: response.data)) as? [String: Any] ?? [:]
@@ -268,8 +396,9 @@ public final class KimiCodeRenewal: @unchecked Sendable {
                 guard let renewed = Self.token(from: payload, now: env.now()) else {
                     throw Failure.unavailable(L10n.t("unexpected reply from \(url.host ?? "")", "\(url.host ?? "")返回的数据无法识别"))
                 }
-                save(renewed, to: context.credentialsFile)
-                return Outcome(accessToken: renewed.accessToken, renewedHere: true)
+                // Saved even if the lock was lost while the request was out,
+                // as Kimi Code does: the refresh token on disk is dead either way.
+                return try save(renewed, replacing: current.refreshToken, to: context.credentialsFile, now: env.now())
             }
             if response.status == 401 || response.status == 403 || payload["error"] as? String == "invalid_grant" {
                 await env.sleep(0.1)
@@ -283,18 +412,80 @@ public final class KimiCodeRenewal: @unchecked Sendable {
             }
             failure = "HTTP \(response.status)"
             guard [429, 500, 502, 503, 504].contains(response.status), !last else { break }
-            await env.sleep(pow(2, Double(attempt)))
         }
         throw Failure.unavailable(failure)
     }
 
-    /// Written even if the lock was lost while the request was out, as Kimi
-    /// Code does: the server has rotated the refresh token, and the one on
-    /// disk is dead either way. Not over a file that went missing or was
-    /// signed out meanwhile — that sign-in was ended on purpose. A failed
-    /// save still hands back the new access token; the quota can be read.
-    private func save(_ renewed: RenewedToken, to file: URL) {
-        guard case let .token(latest) = KimiCodeTokenFile.read(file), !latest.isRevoked else { return }
+    // MARK: Saving
+
+    enum SaveDecision: Equatable {
+        /// Written, keeping the keys of what is there.
+        case write
+        /// Left as it is.
+        case leave
+    }
+
+    /// Whether a renewal that spent `replacing` may be written over what the
+    /// file holds now, read under the lock.
+    ///
+    /// - **Removed**: signing out removes the file, and that stands.
+    /// - **Another live sign-in**: someone signed in anew meanwhile (Kimi
+    ///   Code saves a sign-in without the lock); theirs stands.
+    /// - **The same refresh token**, as expected — or **Kimi Code's
+    ///   signed-out marker**, which only a renewal racing this one can have
+    ///   left there (its try with the same token was refused because this
+    ///   one had spent it): written, since this renewal holds the live pair.
+    ///   QuotaBar still never writes a marker of its own.
+    /// - **Not a sign-in file at all**: Kimi Code reads it as missing and
+    ///   would write over it too.
+    static func saveDecision(_ latest: KimiCodeTokenFile.Read, replacing: String) -> SaveDecision {
+        switch latest {
+        case .missing:
+            return .leave
+        case .unreadable:
+            return .write
+        case let .token(token):
+            return !token.isRevoked && token.refreshToken != replacing ? .leave : .write
+        }
+    }
+
+    /// Saves a renewal the server has granted, tried twice. A save that
+    /// still fails is kept for the next renewal to make first, and said.
+    private func save(_ renewed: RenewedToken, replacing: String, to file: URL, now: Date) throws -> Outcome {
+        let latest = KimiCodeTokenFile.read(file)
+        guard Self.saveDecision(latest, replacing: replacing) == .write else {
+            // Someone else's sign-in is on disk, and is the one to read with.
+            if case let .token(theirs) = latest, let token = Self.usable(theirs, rejected: nil, now: now) {
+                return Outcome(accessToken: token, renewedHere: false)
+            }
+            return Outcome(accessToken: renewed.accessToken, renewedHere: true)
+        }
+        guard (try? Self.write(renewed, over: latest, to: file)) != nil
+            || (try? Self.write(renewed, over: KimiCodeTokenFile.read(file), to: file)) != nil
+        else {
+            state.withLock { unsaved[file.path] = Unsaved(renewed: renewed, replacing: replacing) }
+            throw Failure.unavailable(Self.unsavedDetail)
+        }
+        return Outcome(accessToken: renewed.accessToken, renewedHere: true)
+    }
+
+    /// A renewal whose save failed earlier, made now under the lock — or
+    /// dropped, when the file shows the sign-in ended or was replaced.
+    private func settle(_ pending: Unsaved, in file: URL) throws {
+        let latest = KimiCodeTokenFile.read(file)
+        guard Self.saveDecision(latest, replacing: pending.replacing) == .write else {
+            forgetUnsaved(file)
+            return
+        }
+        guard (try? Self.write(pending.renewed, over: latest, to: file)) != nil else {
+            throw Failure.unavailable(Self.unsavedDetail)
+        }
+        forgetUnsaved(file)
+    }
+
+    private static func write(_ renewed: RenewedToken, over latest: KimiCodeTokenFile.Read, to file: URL) throws {
+        var keeping: KimiCodeTokenFile?
+        if case let .token(token) = latest { keeping = token }
         let text = KimiCodeTokenFile.render(
             accessToken: renewed.accessToken,
             refreshToken: renewed.refreshToken,
@@ -302,8 +493,16 @@ public final class KimiCodeRenewal: @unchecked Sendable {
             scope: renewed.scope,
             tokenType: renewed.tokenType,
             expiresIn: renewed.expiresIn,
-            keeping: latest)
-        try? KimiCodeTokenFile.write(text, to: file)
+            keeping: keeping)
+        try KimiCodeTokenFile.write(text, to: file)
+    }
+
+    private func unsavedRenewal(for file: URL) -> Unsaved? {
+        state.withLock { unsaved[file.path] }
+    }
+
+    private func forgetUnsaved(_ file: URL) {
+        state.withLock { _ = unsaved.removeValue(forKey: file.path) }
     }
 
     // MARK: Rules

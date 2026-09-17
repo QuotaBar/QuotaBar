@@ -54,8 +54,8 @@ struct ProviderCardView: View {
                         .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
                         // Where the reading came from, for providers with
                         // more than one way in.
-                        .help(snapshot?.source.map { source in
-                            [source, snapshot?.edition].compactMap { $0 }.joined(separator: " · ")
+                        .help(snapshot?.sourceLabel.map { source in
+                            [source, snapshot?.editionLabel].compactMap { $0 }.joined(separator: " · ")
                         } ?? "")
                 }
                 Spacer(minLength: 6)
