@@ -101,7 +101,7 @@ codesign --verify --strict --verbose=2 "$APP"
 # ---- Notarize ---------------------------------------------------------------
 
 NOTARIZE="${NOTARIZE:-0}"
-NOTARY_PROFILE="${NOTARY_PROFILE:-QuotaBar}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-GiantAccel}"
 
 if [ "$NOTARIZE" = "1" ]; then
   if [ "$SIGNED_PROPERLY" != "1" ]; then

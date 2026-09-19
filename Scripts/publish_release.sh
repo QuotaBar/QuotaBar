@@ -13,7 +13,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-REPO="${REPO:-gentpan/QuotaBar}"
+REPO="${REPO:-QuotaBar/QuotaBar}"
 TAP="${TAP:-gentpan/homebrew-tap}"
 HOST="${SITE_HOST:-root@15.204.80.137}"
 KEY="${SITE_KEY:-$HOME/.ssh/gentpan.pem}"

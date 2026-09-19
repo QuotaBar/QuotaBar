@@ -14,7 +14,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 DIST="${DIST:-dist}"
-NOTARY_PROFILE="${NOTARY_PROFILE:-QuotaBar}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-GiantAccel}"
 SIGN_ID="${SIGN_ID:-$(security find-identity -v -p codesigning 2>/dev/null \
   | grep 'Developer ID Application' | head -1 | sed -E 's/.*"(.*)".*/\1/' || true)}"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"

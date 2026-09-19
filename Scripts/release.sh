@@ -9,9 +9,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-REPO="${REPO:-gentpan/QuotaBar}"
+REPO="${REPO:-QuotaBar/QuotaBar}"
 DIST="${DIST:-dist}"
-NOTARY_PROFILE="${NOTARY_PROFILE:-QuotaBar}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-GiantAccel}"
 # Resolved the same way package_app.sh does, so the disk image is signed with
 # the identity that just signed the app.
 SIGN_ID_USED="${SIGN_ID:-$(security find-identity -v -p codesigning 2>/dev/null \
