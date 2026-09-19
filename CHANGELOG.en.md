@@ -5,6 +5,12 @@ Server moves, the website, and build or release scripts don't change the app its
 
 ## Unreleased
 
+### 2026-09-19
+
+#### Fixed
+
+- The Kimi Code card showed a spent quota as "0% used": Kimi's usage reply carries both its newer ratio pools and the older counts, and the pools said 0 while the counts read 100 / 100 for the 5-hour window and 21 / 100 for the week. The pools used to win whenever present; now each window reads both and shows whichever reports more used, with "used / limit".
+
 ### 2026-09-17
 
 #### Added

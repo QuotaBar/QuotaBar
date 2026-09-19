@@ -399,17 +399,51 @@ final class KimiCodeUsageTests: XCTestCase {
         XCTAssertEqual(session.title, WindowTitle.forSeconds(18_000))
         XCTAssertEqual(session.windowSeconds, 18_000)
         XCTAssertEqual(session.usedPercent ?? -1, 12, accuracy: 0.0001)
-        XCTAssertEqual(session.resetsAt, iso("2026-09-17T11:51:33Z"))
-        // Pools carry no counts.
-        XCTAssertNil(session.detail)
+        // The count wins the tie, so its reset time (with fractions) is kept.
+        XCTAssertEqual(session.resetsAt, iso("2026-09-17T11:51:33.809775Z"))
+        // Pool and count agree, and the count also gives "used / limit".
+        XCTAssertEqual(session.detail, "12 / 100")
 
         let weekly = snapshot.windows[1]
         XCTAssertEqual(weekly.title, WindowTitle.forSeconds(604_800))
         XCTAssertEqual(weekly.windowSeconds, 604_800)
         XCTAssertEqual(weekly.usedPercent ?? -1, 26, accuracy: 0.0001)
-        XCTAssertEqual(weekly.resetsAt, iso("2026-09-20T17:51:33Z"))
+        XCTAssertEqual(weekly.detail, "26 / 100")
+        XCTAssertEqual(weekly.resetsAt, iso("2026-09-20T17:51:33.809775Z"))
         XCTAssertEqual(weekly.horizon, .long)
         XCTAssertEqual(session.horizon, .short)
+    }
+
+    /// The reply read on 2026-09-19: the pools said nothing had been used
+    /// while the counts had the 5-hour window spent (100 of 100, no
+    /// `remaining`) and 21 of 100 used this week. The card showed 0%.
+    func testPoolsAtZeroDoNotHideSpentCounts() throws {
+        let snapshot = try parse(#"""
+        {"usage":{"limit":"100","used":"21","remaining":"79","resetTime":"2026-09-20T17:51:33.809775Z"},
+         "limits":[{"window":{"duration":300,"timeUnit":"TIME_UNIT_MINUTE"},
+                    "detail":{"limit":"100","used":"100","resetTime":"2026-09-19T08:51:33.809775Z"}}],
+         "usages":{"limit_5h":{"used_ratio":0,"reset_time":"2026-09-19T08:51:33Z"},
+                   "limit_7d":{"used_ratio":0,"reset_time":"2026-09-20T17:51:33Z"}}}
+        """#)
+        XCTAssertEqual(snapshot.windows.map(\.windowSeconds), [18_000, 604_800])
+        XCTAssertEqual(snapshot.windows[0].usedPercent, 100)
+        XCTAssertEqual(snapshot.windows[0].detail, "100 / 100")
+        XCTAssertEqual(snapshot.windows[0].resetsAt, iso("2026-09-19T08:51:33.809775Z"))
+        XCTAssertEqual(snapshot.windows[1].usedPercent ?? -1, 21, accuracy: 0.0001)
+        XCTAssertEqual(snapshot.windows[1].detail, "21 / 100")
+    }
+
+    /// And the other way round: a pool ahead of its count wins, keeping the
+    /// count's reset time when it has none of its own.
+    func testAPoolAheadOfItsCountWins() throws {
+        let snapshot = try parse(#"""
+        {"usage":{"limit":"100","used":"10","resetTime":"2026-09-20T17:51:33Z"},
+         "usages":{"limit_7d":{"used_ratio":0.4}}}
+        """#)
+        XCTAssertEqual(snapshot.windows.count, 1)
+        XCTAssertEqual(snapshot.windows[0].usedPercent ?? -1, 40, accuracy: 0.0001)
+        XCTAssertNil(snapshot.windows[0].detail)
+        XCTAssertEqual(snapshot.windows[0].resetsAt, iso("2026-09-20T17:51:33Z"))
     }
 
     /// Before the pools, only the counts: weekly from `usage`, the rest from
@@ -456,9 +490,11 @@ final class KimiCodeUsageTests: XCTestCase {
          "limits":[{"window":{"duration":300,"timeUnit":"TIME_UNIT_MINUTE"},"detail":{"limit":"100","remaining":"1"}},
                    {"window":{"duration":1,"timeUnit":"TIME_UNIT_DAY"},"detail":{"limit":"10","used":"4"}}]}
         """#)
-        // The legacy 5-hour row is covered by its pool; the daily one is not.
+        // The 5-hour count (99 used) is ahead of its pool (50%) and wins; the
+        // daily count has no pool and stands alone.
         XCTAssertEqual(snapshot.windows.map(\.windowSeconds), [18_000, 86_400, 2_592_000])
-        XCTAssertEqual(snapshot.windows[0].usedPercent ?? -1, 50, accuracy: 0.0001)
+        XCTAssertEqual(snapshot.windows[0].usedPercent ?? -1, 99, accuracy: 0.0001)
+        XCTAssertEqual(snapshot.windows[0].detail, "99 / 100")
         XCTAssertEqual(snapshot.windows[1].title, WindowTitle.forSeconds(86_400))
         XCTAssertEqual(snapshot.windows[1].detail, "4 / 10")
         XCTAssertEqual(snapshot.windows[2].title, WindowTitle.forSeconds(2_592_000))

@@ -601,25 +601,40 @@ public struct KimiProvider: QuotaProvider {
             throw ProviderError.badResponse
         }
         let pools = root["usages"] as? [String: Any] ?? [:]
-        var windows: [UsageWindow] = []
-        if let pool = ratioWindow(pools["limit_5h"], seconds: 18_000) { windows.append(pool) }
-        if let pool = ratioWindow(pools["limit_7d"], seconds: 604_800) {
-            windows.append(pool)
-        } else if let weekly = countWindow(root["usage"], title: WindowTitle.forSeconds(604_800), seconds: 604_800) {
-            windows.append(weekly)
-        }
-        if let pool = ratioWindow(pools["limit_month_total"], seconds: 2_592_000) { windows.append(pool) }
 
-        let covered = Set(windows.compactMap(\.windowSeconds))
+        // The counts: `usage` is the week, each `limits[]` entry a window of
+        // its own length. The first count per length is the one compared
+        // with a pool below; any other stands alone.
+        var counts: [Int: UsageWindow] = [:]
+        var standalone: [UsageWindow] = []
+        if let weekly = countWindow(root["usage"], title: WindowTitle.forSeconds(604_800), seconds: 604_800) {
+            counts[604_800] = weekly
+        }
         for entry in root["limits"] as? [[String: Any]] ?? [] {
             let seconds = windowSeconds(entry["window"])
-            if let seconds, covered.contains(seconds) { continue }
             let named = ["name", "title", "scope"].lazy.compactMap { entry[$0] as? String }.first { !$0.isEmpty }
             let title = seconds.map(WindowTitle.forSeconds) ?? named ?? L10n.t("Rate limit", "速率限制")
-            if let window = countWindow(entry["detail"] ?? entry, title: title, seconds: seconds) {
-                windows.append(window)
+            guard let window = countWindow(entry["detail"] ?? entry, title: title, seconds: seconds) else { continue }
+            if let seconds, counts[seconds] == nil {
+                counts[seconds] = window
+            } else {
+                standalone.append(window)
             }
         }
+
+        // Both forms can come in one reply and disagree: on 2026-09-19 the
+        // pools said 0 for the 5-hour window while its count read 100 of
+        // 100, and the week 0 against 21 of 100. So each window takes
+        // whichever says more is used — a quota shown as untouched when it
+        // is spent is the one mistake that costs the owner — with the count
+        // preferred on a tie, since it also gives "used / limit".
+        var windows: [UsageWindow] = []
+        for (key, seconds) in [("limit_5h", 18_000), ("limit_7d", 604_800), ("limit_month_total", 2_592_000)] {
+            let pool = ratioWindow(pools[key], seconds: seconds)
+            if let window = fuller(pool, counts.removeValue(forKey: seconds)) { windows.append(window) }
+        }
+        windows += counts.sorted { $0.key < $1.key }.map(\.value)
+        windows += standalone
         guard !windows.isEmpty else { throw ProviderError.badResponse }
 
         // Shortest first, as the other providers list them.
@@ -627,6 +642,18 @@ public struct KimiProvider: QuotaProvider {
             .sorted { ($0.element.windowSeconds ?? .max, $0.offset) < ($1.element.windowSeconds ?? .max, $1.offset) }
             .map(\.element)
         return UsageSnapshot(planName: planName(root["user"], version: root["version"]), windows: ordered)
+    }
+
+    /// The pool or the count for one window, whichever reports more used; the
+    /// count on a tie. The one kept borrows the other's reset time if it has
+    /// none.
+    static func fuller(_ pool: UsageWindow?, _ count: UsageWindow?) -> UsageWindow? {
+        guard let pool else { return count }
+        guard let count else { return pool }
+        let countWins = (count.usedPercent ?? -1) >= (pool.usedPercent ?? -1)
+        var chosen = countWins ? count : pool
+        if chosen.resetsAt == nil { chosen.resetsAt = (countWins ? pool : count).resetsAt }
+        return chosen
     }
 
     /// `{"used_ratio": 0.42, "reset_time": "…"}`. A missing, negative or

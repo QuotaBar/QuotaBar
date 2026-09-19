@@ -50,9 +50,18 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.8** (2026-09-16) · **12** changes in development · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.8** (2026-09-16) · **13** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-09-19</b> · Unreleased · 1 fixed</summary>
+
+**Fixed**
+
+- The Kimi Code card showed a spent quota as "0% used": Kimi's usage reply carries both its newer ratio pools and the older counts, and the pools said 0 while the counts read 100 / 100 for the 5-hour window and 21 / 100 for the week. The pools used to win whenever present; now each window reads both and shows whichever reports more used, with "used / limit".
+
+</details>
+
+<details>
 <summary><b>2026-09-17</b> · Unreleased · 3 added · 2 style · 5 fixed</summary>
 
 **Added**
@@ -86,15 +95,6 @@ Latest release **0.5.8** (2026-09-16) · **12** changes in development · [full 
 **Removed**
 
 - The Share Usage Card window no longer opens by itself after an update. It used to open once on the first launch of each new version with usage that week, so several updates in a row opened it every time and looked like something had gone wrong. The card is still one click away in the menu panel, the share icon on the island's overview page, and Settings → Usage.
-
-</details>
-
-<details>
-<summary><b>2026-09-16</b> · 0.5.8 · 1 fixed</summary>
-
-**Fixed**
-
-- The update window cut off long release notes: it was a fixed 420pt tall, so a long list pushed the version title off the top and Later and Install and Relaunch off the bottom, and each change stopped at three lines with an ellipsis. The window now follows its content, every change shows in full, and a long list scrolls inside the window with the title and buttons always in view. An older build updating to this one still shows its old window; updates after this one use the new one.
 
 </details>
 
