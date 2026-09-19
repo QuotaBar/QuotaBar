@@ -50,9 +50,18 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.9** (2026-09-19) · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.9** (2026-09-19) · **1** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-09-19</b> · Unreleased · 1 style</summary>
+
+**Style**
+
+- On the Codex card, "gpt-reserve" is now named "Reserve · Luna". It is OpenAI's reserve for Codex: once the plan's own limit is used up, Codex moves to Luna, a faster model for simpler tasks, and draws on this separate weekly allowance until the plan resets. The card used to show only the raw id, which said nothing. The model name comes from the reply, so a different reserve model is named correctly, and hovering the name explains it. While the reserve is in use it carries a green "In use" tag and stays on the card instead of folding away; otherwise the card follows your choice under "Limits on the Card". Existing hide and ring choices are unaffected.
+
+</details>
+
+<details>
 <summary><b>2026-09-19</b> · 0.5.9 · 1 fixed</summary>
 
 **Fixed**
@@ -87,19 +96,6 @@ Latest release **0.5.9** (2026-09-19) · [full changelog](CHANGELOG.en.md)
 - In Settings → Providers, Cursor, Grok, OpenCode Go and GitHub Copilot said Keychain even with nothing pasted, while they were using the sign-in on this Mac. The label went by whether a provider can take a pasted credential, not by which one it was using. They now say Auto when using this Mac's sign-in, and Keychain only for a pasted credential. Kimi Code, which reads this Mac's sign-in from this version on, does the same.
 - Pasting a credential in Settings while that provider was still being read could do nothing until the next refresh, or the read with the old credential could land last and put its error back. The new credential is now read at once, and the old read's answer is dropped.
 - QuotaBar crashed when a provider sent a figure too large to turn into a whole number or a date, such as a Kimi Code limit as large as the largest 64-bit integer, or a reset time with no end. Such a figure now just leaves out the count or the reset time.
-
-</details>
-
-<details>
-<summary><b>2026-09-16</b> · 0.5.9 · 1 fixed · 1 removed</summary>
-
-**Fixed**
-
-- The edge dock's folded handle ignored the provider picked on the dock. With Antigravity picked (the green dot under its ring), the handle still showed the dock's most spent provider, such as Cursor, as a full red bar and flashed. The handle always went by the dock's tightest provider, whichever one was picked. Its fill, colour and low-quota flash now follow the picked provider, and don't flash when it has plenty left. Only with nothing picked do they follow the dock's tightest provider.
-
-**Removed**
-
-- The Share Usage Card window no longer opens by itself after an update. It used to open once on the first launch of each new version with usage that week. Several updates in a row opened it every time, which looked like something had gone wrong. The card is still one click away in the menu panel, the share icon on the island's overview page, and Settings → Usage.
 
 </details>
 

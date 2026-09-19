@@ -152,10 +152,14 @@ public struct CodexProvider: QuotaProvider {
     struct RateLimit: Decodable {
         let primaryWindow: Window?
         let secondaryWindow: Window?
+        let allowed: Bool?
+        let limitReached: Bool?
 
         enum CodingKeys: String, CodingKey {
             case primaryWindow = "primary_window"
             case secondaryWindow = "secondary_window"
+            case allowed
+            case limitReached = "limit_reached"
         }
     }
 
@@ -163,11 +167,15 @@ public struct CodexProvider: QuotaProvider {
         let limitName: String?
         let meteredFeature: String?
         let rateLimit: RateLimit?
+        /// The model this limit's requests go to, e.g. "gpt-5.6-luna" for the
+        /// reserve.
+        let normalModelSlug: String?
 
         enum CodingKeys: String, CodingKey {
             case limitName = "limit_name"
             case meteredFeature = "metered_feature"
             case rateLimit = "rate_limit"
+            case normalModelSlug = "normal_model_slug"
         }
     }
 
@@ -245,9 +253,18 @@ public struct CodexProvider: QuotaProvider {
 
         var windows: [UsageWindow] = []
         windows.append(contentsOf: convert(body.rateLimit, prefix: nil, active: true))
+        let planLimitReached = body.rateLimit?.limitReached == true || body.rateLimit?.allowed == false
         for extra in body.additionalRateLimits ?? [] {
             let name = extra.limitName ?? extra.meteredFeature
-            windows.append(contentsOf: convert(extra.rateLimit, prefix: name, active: false))
+            var converted = convert(extra.rateLimit, prefix: name, active: false)
+            if let reserve = Reserve(extra, planLimitReached: planLimitReached) {
+                for index in converted.indices {
+                    converted[index].label = reserve.label
+                    converted[index].note = reserve.note
+                    converted[index].inUse = reserve.inUse
+                }
+            }
+            windows.append(contentsOf: converted)
         }
         if let creditWindow = creditWindow(body.credits) {
             windows.append(creditWindow)
@@ -267,6 +284,36 @@ public struct CodexProvider: QuotaProvider {
             account: body.email ?? body.accountId ?? fallbackAccount,
             windows: windows,
             resetCredits: resetCredits)
+    }
+
+    /// Codex's reserve: once a plan's own limit is reached, requests go to a
+    /// lighter model ("Luna") with a weekly allowance of its own, reported as
+    /// `gpt-reserve`. OpenAI's own banner for it reads "You're now using Luna,
+    /// a faster model for simpler tasks."
+    struct Reserve: Equatable {
+        let label: String
+        let note: String
+        let inUse: Bool
+
+        init?(_ limit: AdditionalLimit, planLimitReached: Bool) {
+            guard let name = limit.limitName, name.lowercased().contains("reserve") else { return nil }
+            let model = Self.modelName(limit.normalModelSlug)
+            label = model.map { L10n.t("Reserve · \($0)", "备用 · \($0)") } ?? L10n.t("Reserve", "备用")
+            let modelText = model ?? L10n.t("a lighter model", "较轻的模型")
+            note = L10n.t(
+                "Once the plan's own limit is used up, Codex moves to \(modelText), a faster model for simpler tasks, and draws on this reserve until the plan resets.",
+                "套餐本身的额度用完后，Codex 会改用 \(modelText)（更快、适合简单任务的模型），消耗这份备用额度，直到套餐额度重置。")
+            inUse = planLimitReached && limit.rateLimit?.allowed != false && limit.rateLimit?.limitReached != true
+        }
+
+        /// "gpt-5.6-luna" → "Luna": the last part that is a word, not a version.
+        static func modelName(_ slug: String?) -> String? {
+            guard let slug = slug?.trimmingCharacters(in: .whitespacesAndNewlines), !slug.isEmpty else { return nil }
+            let word = slug.split(separator: "-").last { part in
+                part.count > 1 && part.allSatisfy(\.isLetter) && part.lowercased() != "gpt"
+            }
+            return word.map { $0.prefix(1).uppercased() + $0.dropFirst().lowercased() }
+        }
     }
 
     private static func convert(_ limit: RateLimit?, prefix: String?, active: Bool) -> [UsageWindow] {

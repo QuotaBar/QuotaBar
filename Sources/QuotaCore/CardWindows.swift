@@ -12,12 +12,15 @@ public extension UsageSnapshot {
     /// has no 5-hour limit, the week alone; GPT-5.3-Codex-Spark's limits stay
     /// folded. Claude also puts its per-model limits up front (Fable, the
     /// newest model's week), so it shows the 5-hour, the week and Fable.
+    /// A window the provider is serving requests from right now — Codex's
+    /// reserve once the plan's own limit is spent — joins them, since that
+    /// is the allowance being used up.
     ///
     /// Other providers keep the two most useful windows: the one the ring
     /// follows, then the first of the other horizon.
     ///
     /// `picked` is the window the owner chose for the ring: it is always up
-    /// front, since the card marks it. `shown` is the owner's own choice from
+    /// front, since the card marks it; so is a window in use. `shown` is the owner's own choice from
     /// the card's menu, used while any of it still matches a window — window
     /// ids are the provider's titles, and a language switch renames them.
     func upFrontWindows(for provider: ProviderID, picked: String? = nil, shown: [String]? = nil) -> [UsageWindow] {
@@ -31,6 +34,11 @@ public extension UsageSnapshot {
         if let picked, !ids.contains(picked), windows.contains(where: { $0.id == picked }) {
             ids.insert(picked)
         }
+        // Being drawn on right now outranks a choice made before it was: the
+        // reserve shows while it is in use, then goes back to the owner's list.
+        for window in windows where window.inUse {
+            ids.insert(window.id)
+        }
         return windows.filter { ids.contains($0.id) }
     }
 
@@ -38,7 +46,7 @@ public extension UsageSnapshot {
         let chosen: [UsageWindow]
         switch provider {
         case .codex, .claude:
-            let plan = windows.filter { $0.scope == nil || (provider == .claude && $0.usedPercent != nil) }
+            let plan = windows.filter { $0.scope == nil || $0.inUse || (provider == .claude && $0.usedPercent != nil) }
             chosen = plan.isEmpty ? Array(windows.prefix(1)) : plan
         default:
             chosen = twoMostUseful(picked: picked)

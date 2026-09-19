@@ -386,7 +386,8 @@ enum Diagnostics {
             for window in snapshot.windows {
                 let used = window.usedPercent.map { QuotaFormat.percent($0) + " used" } ?? "—"
                 let reset = window.resetsAt.map { " · " + QuotaFormat.resetLabel(to: $0) } ?? ""
-                out += "  \(window.title): \(used)\(window.detail.map { " · " + $0 } ?? "")\(reset)\n"
+                let name = window.label.map { "\($0) (\(window.title))" } ?? window.title
+                out += "  \(name): \(used)\(window.detail.map { " · " + $0 } ?? "")\(reset)\(window.inUse ? " · in use" : "")\n"
             }
             if let sheet = snapshot.balance {
                 out += "  balance: \(sheet.balanceLine.isEmpty ? "—" : sheet.balanceLine)\(sheet.canCallAPI == false ? " · not enough for API calls" : "")\(sheet.estimated ? " · usage estimated" : "")\n"

@@ -810,7 +810,7 @@ private struct IslandTile: View {
     }
 
     private var label: some View {
-        Text(window.scope ?? window.shortLabel.map(horizonName) ?? window.title)
+        Text(window.label ?? window.scope ?? window.shortLabel.map(horizonName) ?? window.title)
             .font(.system(size: 11, weight: .medium))
             .foregroundStyle(.white.opacity(0.55))
             .lineLimit(1)

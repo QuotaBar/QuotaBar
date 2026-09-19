@@ -95,7 +95,7 @@ extension UsageStore {
             try? await Task.sleep(for: .seconds(6))
             guard let self else { return }
             let window = self.headlineWindow(for: id) ?? self.states[id]?.snapshot?.windows.first
-            let name = window.map { $0.scope ?? $0.title } ?? L10n.t("5-hour", "5 小时")
+            let name = window.map { $0.displayName } ?? L10n.t("5-hour", "5 小时")
             var before = self.meterReading
             before.preferred = 96
             before.short = 96

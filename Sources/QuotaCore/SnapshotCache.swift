@@ -44,7 +44,7 @@ extension ResetCredits: Codable {
 
 extension UsageWindow: Codable {
     private enum CodingKeys: String, CodingKey {
-        case id, title, usedPercent, detail, resetsAt, isActive, windowSeconds, scope
+        case id, title, usedPercent, detail, resetsAt, isActive, windowSeconds, scope, label, note, inUse
     }
 
     public init(from decoder: Decoder) throws {
@@ -56,7 +56,10 @@ extension UsageWindow: Codable {
             resetsAt: try c.decodeIfPresent(Date.self, forKey: .resetsAt),
             isActive: (try? c.decodeIfPresent(Bool.self, forKey: .isActive)) ?? false,
             windowSeconds: try c.decodeIfPresent(Int.self, forKey: .windowSeconds),
-            scope: try c.decodeIfPresent(String.self, forKey: .scope))
+            scope: try c.decodeIfPresent(String.self, forKey: .scope),
+            label: try c.decodeIfPresent(String.self, forKey: .label),
+            note: try c.decodeIfPresent(String.self, forKey: .note),
+            inUse: (try? c.decodeIfPresent(Bool.self, forKey: .inUse)) ?? false)
         if let id = try c.decodeIfPresent(String.self, forKey: .id) { self.id = id }
     }
 
@@ -70,6 +73,9 @@ extension UsageWindow: Codable {
         try c.encode(isActive, forKey: .isActive)
         try c.encodeIfPresent(windowSeconds, forKey: .windowSeconds)
         try c.encodeIfPresent(scope, forKey: .scope)
+        try c.encodeIfPresent(label, forKey: .label)
+        try c.encodeIfPresent(note, forKey: .note)
+        if inUse { try c.encode(inUse, forKey: .inUse) }
     }
 }
 

@@ -337,6 +337,26 @@ enum Snapshot {
         return store
     }
 
+    /// Codex with the plan's week spent and the Luna reserve in use, parsed
+    /// through the real decoder from the shape recorded on 2026-09-19.
+    private static func codexReserveStore() -> UsageStore {
+        let json = """
+        {"email":"you@example.com","plan_type":"pro",
+         "rate_limit":{"allowed":false,"limit_reached":true,
+           "primary_window":{"used_percent":100,"limit_window_seconds":604800,"reset_after_seconds":17880}},
+         "additional_rate_limits":[{"limit_name":"gpt-reserve","metered_feature":"base_model_inference",
+           "rate_limit":{"allowed":true,"limit_reached":false,
+             "primary_window":{"used_percent":19,"limit_window_seconds":604800,"reset_after_seconds":411591}},
+           "normal_model_slug":"gpt-5.6-luna"}]}
+        """
+        let snapshot = (try? CodexProvider.parse(Data(json.utf8))) ?? UsageSnapshot(windows: [])
+        let store = UsageStore.preview(enabled: [.codex], states: [.codex: .loaded(snapshot)])
+        store.serviceStatus[.codex] = ServiceStatus(
+            level: .operational, description: "",
+            pageURL: URL(string: "https://status.openai.com")!, checkedAt: Date())
+        return store
+    }
+
     private static func notUpdatingPreview(directory url: URL, notch: IslandCoordinator.NotchMetrics, shape: UnevenRoundedRectangle) {
         let backing = Color(hex: "D8D8D8")
         let chart = ConfigStore.shared.experience.islandChart
@@ -376,6 +396,13 @@ enum Snapshot {
                 .background(Color(white: 0.06))
                 .environment(\.colorScheme, .dark)
             render(card, to: url, name: "panel-card-not-updating-\(suffix)", backing: Color(white: 0.06))
+            render(
+                ProviderCardView(store: codexReserveStore(), id: .codex)
+                    .frame(width: 340)
+                    .padding(12)
+                    .background(Color(white: 0.06))
+                    .environment(\.colorScheme, .dark),
+                to: url, name: "panel-card-codex-reserve-\(suffix)", backing: Color(white: 0.06))
             let callout = ProviderCallout(store: failingStore(), id: .claude)
                 .padding(20)
                 .environment(\.colorScheme, .dark)

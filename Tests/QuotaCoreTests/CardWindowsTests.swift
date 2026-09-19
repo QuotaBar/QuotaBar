@@ -18,6 +18,21 @@ final class CardWindowsTests: XCTestCase {
         XCTAssertEqual(ids(snapshot.upFrontWindows(for: .codex)), ["Week"])
     }
 
+    /// With the plan's week spent, the reserve being drawn on joins it up
+    /// front; while the plan has room, the reserve stays folded.
+    func testCodexShowsTheReserveWhileItIsInUse() {
+        var reserve = window("Week", 604_800, scope: "gpt-reserve")
+        reserve.label = "备用 · Luna"
+        let idle = UsageSnapshot(planName: "Pro 20x", account: nil, windows: [window("Week", 604_800), reserve])
+        XCTAssertEqual(ids(idle.upFrontWindows(for: .codex)), ["Week"])
+        reserve.inUse = true
+        let drawing = UsageSnapshot(planName: "Pro 20x", account: nil, windows: [window("Week", 604_800, used: 100), reserve])
+        XCTAssertEqual(ids(drawing.upFrontWindows(for: .codex)), ["Week", "Week · gpt-reserve"])
+        // Also over a list chosen from the card's menu before the reserve mattered.
+        XCTAssertEqual(ids(drawing.upFrontWindows(for: .codex, shown: ["Week"])), ["Week", "Week · gpt-reserve"])
+        XCTAssertEqual(ids(idle.upFrontWindows(for: .codex, shown: ["Week"])), ["Week"])
+    }
+
     func testCodexPlusShowsTheFiveHourAndTheWeek() {
         let snapshot = UsageSnapshot(planName: "Plus", account: nil, windows: [
             window("5h", 18_000),

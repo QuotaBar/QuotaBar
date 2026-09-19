@@ -3,6 +3,14 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
+## Unreleased
+
+### 2026-09-19
+
+#### Style
+
+- On the Codex card, "gpt-reserve" is now named "Reserve · Luna". It is OpenAI's reserve for Codex: once the plan's own limit is used up, Codex moves to Luna, a faster model for simpler tasks, and draws on this separate weekly allowance until the plan resets. The card used to show only the raw id, which said nothing. The model name comes from the reply, so a different reserve model is named correctly, and hovering the name explains it. While the reserve is in use it carries a green "In use" tag and stays on the card instead of folding away; otherwise the card follows your choice under "Limits on the Card". Existing hide and ring choices are unaffected.
+
 ## 0.5.9 · 2026-09-19
 
 ### 2026-09-19

@@ -54,6 +54,75 @@ final class CodexParsingTests: XCTestCase {
     }
     """
 
+    /// Recorded 2026-09-19 with the plan's weekly limit spent: Codex serves
+    /// requests from `gpt-reserve`, the lighter "Luna" model's own week.
+    private let reserveResponse = """
+    {
+      "email": "dev@example.com",
+      "plan_type": "pro",
+      "rate_limit": {
+        "allowed": false,
+        "limit_reached": true,
+        "primary_window": {"used_percent": 100, "limit_window_seconds": 604800, "reset_after_seconds": 17880, "reset_at": 1789846613},
+        "secondary_window": null
+      },
+      "additional_rate_limits": [
+        {
+          "limit_name": "gpt-reserve",
+          "metered_feature": "base_model_inference",
+          "rate_limit": {
+            "allowed": true,
+            "limit_reached": false,
+            "primary_window": {"used_percent": 19, "limit_window_seconds": 604800, "reset_after_seconds": 411591, "reset_at": 1790240325},
+            "secondary_window": null
+          },
+          "normal_model_slug": "gpt-5.6-luna"
+        }
+      ]
+    }
+    """
+
+    func testTheReserveIsNamedForItsModelAndMarkedInUse() throws {
+        L10n.override = .zhHans
+        defer { L10n.override = .system }
+        let snapshot = try CodexProvider.parse(Data(reserveResponse.utf8))
+        let reserve = try XCTUnwrap(snapshot.windows.first { $0.scope == "gpt-reserve" })
+        XCTAssertEqual(reserve.label, "备用 · Luna")
+        XCTAssertEqual(reserve.displayName, "备用 · Luna")
+        XCTAssertTrue(reserve.inUse)
+        XCTAssertTrue(reserve.note?.contains("Luna") == true)
+        XCTAssertEqual(reserve.usedPercent, 19)
+        // The id and scope stay the provider's, so saved picks keep matching.
+        XCTAssertEqual(reserve.scope, "gpt-reserve")
+        XCTAssertTrue(reserve.id.hasPrefix("gpt-reserve"))
+        // The plan's own window is untouched.
+        let plan = try XCTUnwrap(snapshot.windows.first { $0.scope == nil })
+        XCTAssertNil(plan.label)
+        XCTAssertFalse(plan.inUse)
+    }
+
+    func testTheReserveIsNotInUseWhileThePlanHasRoom() throws {
+        L10n.override = .en
+        defer { L10n.override = .system }
+        // Only the plan's own limit says false / true; the reserve's already
+        // says true / false.
+        let roomy = reserveResponse
+            .replacingOccurrences(of: #""allowed": false"#, with: #""allowed": true"#)
+            .replacingOccurrences(of: #""limit_reached": true"#, with: #""limit_reached": false"#)
+        let snapshot = try CodexProvider.parse(Data(roomy.utf8))
+        let reserve = try XCTUnwrap(snapshot.windows.first { $0.scope == "gpt-reserve" })
+        XCTAssertEqual(reserve.displayName, "Reserve · Luna")
+        XCTAssertFalse(reserve.inUse)
+    }
+
+    func testReserveModelNames() {
+        XCTAssertEqual(CodexProvider.Reserve.modelName("gpt-5.6-luna"), "Luna")
+        XCTAssertEqual(CodexProvider.Reserve.modelName("gpt-6-nova-mini"), "Mini")
+        XCTAssertNil(CodexProvider.Reserve.modelName("gpt-5.6"))
+        XCTAssertNil(CodexProvider.Reserve.modelName(nil))
+        XCTAssertNil(CodexProvider.Reserve.modelName(""))
+    }
+
     func testPrimaryWindowIsLabelledFromItsActualLength() throws {
         let snapshot = try CodexProvider.parse(Data(proResponse.utf8))
 

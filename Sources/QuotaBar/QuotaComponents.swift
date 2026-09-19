@@ -129,14 +129,19 @@ struct QuotaRowView: View {
         let picked = store.pickedHeadlineWindow(for: id) == window.id
         VStack(alignment: .leading, spacing: compact ? 3 : 5) {
             HStack(spacing: 5) {
-                Text(window.scope ?? window.title)
+                Text(window.displayName)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.white)
                     .lineLimit(1)
+                    .help(window.note ?? "")
                 if let badge = window.shortLabel, window.scope != nil {
                     Text(badge)
                         .font(.system(size: 9, weight: .semibold, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.45))
+                }
+                if window.inUse {
+                    InUseChip()
+                        .help(window.note ?? "")
                 }
                 if followed, used != nil {
                     Image(systemName: picked ? "circle.inset.filled" : "circle")
@@ -744,5 +749,20 @@ enum CardImageExporter {
         item.setData(png, forType: .png)
         if let text { item.setString(text, forType: .string) }
         return pasteboard.writeObjects([item])
+    }
+}
+
+
+/// "In use" beside a window the provider is serving requests from right now —
+/// Codex's reserve once the plan's own limit is spent.
+struct InUseChip: View {
+    var body: some View {
+        Text(L10n.t("In use", "使用中"))
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(Palette.live)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(Palette.live.opacity(0.14)))
+            .fixedSize()
     }
 }

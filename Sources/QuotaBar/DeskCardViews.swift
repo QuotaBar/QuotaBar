@@ -253,7 +253,7 @@ private struct DeskFocus: View {
                 Spacer(minLength: 10)
                 HStack(spacing: 0) {
                     DeskStat(value: windows.other?.usedPercent.map { "\(Int(store.deskShown($0).rounded()))%" } ?? "—",
-                             label: windows.other?.scope ?? windows.other?.title ?? "—", color: Desk.green)
+                             label: windows.other?.displayName ?? "—", color: Desk.green)
                     StatDivider()
                     DeskStat(value: id.costSource.map { QuotaFormat.moneyCompact(store.cost.spend(.today).bySource[$0] ?? 0) } ?? (windows.lead?.pace()?.verdict == .over ? L10n.t("Fast", "偏快") : "—"),
                              label: id.costSource != nil ? L10n.t("Today", "今日花费") : L10n.t("Pace", "节奏"))
@@ -279,7 +279,7 @@ private struct DeskFocus: View {
 
     private func caption(_ window: UsageWindow?, compact: Bool) -> String {
         guard let window else { return L10n.t("No reading yet", "还没有读数") }
-        let name = window.scope ?? window.title
+        let name = window.displayName
         if compact {
             return "\(name) · \(window.resetsAt.map { QuotaFormat.tick(to: $0) } ?? store.deskShownLabel)"
         }
@@ -296,7 +296,7 @@ private struct DeskWindowLine: View {
         let used = window.usedPercent ?? 0
         VStack(spacing: 4) {
             HStack {
-                Text(window.scope ?? window.title).font(.system(size: 11, weight: .medium)).foregroundStyle(.white.opacity(0.8)).lineLimit(1)
+                Text(window.displayName).font(.system(size: 11, weight: .medium)).foregroundStyle(.white.opacity(0.8)).lineLimit(1)
                 Spacer()
                 Text(window.resetsAt.map { QuotaFormat.tick(to: $0) } ?? "").font(.system(size: 10, design: .monospaced)).foregroundStyle(.white.opacity(0.4))
                 Text("\(Int(store.deskShown(used).rounded()))%").font(.system(size: 11, weight: .semibold, design: .monospaced)).foregroundStyle(Desk.figureColor(used)).frame(width: 36, alignment: .trailing)
@@ -339,7 +339,7 @@ private struct DeskGauge: View {
                     Spacer()
                 }
                 Spacer(minLength: 2)
-                Text(windows.lead.map { ($0.scope ?? $0.title) + ($0.resetsAt.map { " · " + QuotaFormat.tick(to: $0) } ?? "") } ?? "—")
+                Text(windows.lead.map { ($0.displayName) + ($0.resetsAt.map { " · " + QuotaFormat.tick(to: $0) } ?? "") } ?? "—")
                     .font(.system(size: 10)).foregroundStyle(.white.opacity(0.5)).lineLimit(1).frame(maxWidth: .infinity)
             } else {
                 // Medium is 224pt tall: at the large card's ring and gaps its
@@ -348,7 +348,7 @@ private struct DeskGauge: View {
                 Spacer(minLength: medium ? 6 : 8)
                 HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(windows.lead?.scope ?? windows.lead?.title ?? "—").font(.system(size: 12)).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
+                        Text(windows.lead?.displayName ?? "—").font(.system(size: 12)).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
                         HStack(alignment: .firstTextBaseline, spacing: 3) {
                             Text(windows.lead == nil ? "—" : "\(Int(store.deskShown(used).rounded()))")
                                 .font(.system(size: 46, weight: .semibold, design: .monospaced)).foregroundStyle(Desk.figureColor(used))
@@ -364,7 +364,7 @@ private struct DeskGauge: View {
                     tile("clock", windows.lead?.resetsAt.map { QuotaFormat.tick(to: $0) } ?? "—", L10n.t("to reset", "后重置"), padding: medium ? 6 : 8)
                     tile("flame", pace.map { $0.runOutSeconds.map { QuotaFormat.tick(to: Date().addingTimeInterval($0)) } ?? L10n.t("OK", "够用") } ?? "—",
                          L10n.t("runs out", "预计用完"), tint: pace?.verdict == .over || pace?.verdict == .spent ? Palette.red : Desk.green, padding: medium ? 6 : 8)
-                    tile("calendar", windows.other?.usedPercent.map { "\(Int(store.deskShown($0).rounded()))%" } ?? "—", windows.other?.scope ?? windows.other?.title ?? "—", padding: medium ? 6 : 8)
+                    tile("calendar", windows.other?.usedPercent.map { "\(Int(store.deskShown($0).rounded()))%" } ?? "—", windows.other?.displayName ?? "—", padding: medium ? 6 : 8)
                 }
                 if card.size == .large {
                     Spacer(minLength: 12)

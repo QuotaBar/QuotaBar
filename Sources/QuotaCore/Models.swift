@@ -576,6 +576,16 @@ public struct UsageWindow: Sendable, Identifiable {
     /// What the window is scoped to — a model or a metered feature — when it
     /// applies to less than the whole account.
     public var scope: String?
+    /// A name to show instead of the provider's own id, when that id means
+    /// nothing to a reader: Codex's `gpt-reserve` is shown as "Reserve · Luna".
+    /// Display only — `id` and `scope` stay the provider's, so saved picks,
+    /// hidden windows and run records keep matching.
+    public var label: String?
+    /// What the window is, for a hover; nil for the plain ones.
+    public var note: String?
+    /// The provider says requests are being served from this window right now
+    /// — Codex's reserve once the plan's own limit is reached.
+    public var inUse: Bool
 
     public init(
         title: String,
@@ -584,7 +594,10 @@ public struct UsageWindow: Sendable, Identifiable {
         resetsAt: Date? = nil,
         isActive: Bool = false,
         windowSeconds: Int? = nil,
-        scope: String? = nil)
+        scope: String? = nil,
+        label: String? = nil,
+        note: String? = nil,
+        inUse: Bool = false)
     {
         self.id = title
         self.title = title
@@ -594,6 +607,15 @@ public struct UsageWindow: Sendable, Identifiable {
         self.isActive = isActive
         self.windowSeconds = windowSeconds
         self.scope = scope
+        self.label = label
+        self.note = note
+        self.inUse = inUse
+    }
+
+    /// The name shown for the window: its label, else the scope it applies
+    /// to, else its title.
+    public var displayName: String {
+        label ?? scope ?? title
     }
 
     /// Badge text, when the provider reported a window length.

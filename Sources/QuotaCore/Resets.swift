@@ -72,7 +72,7 @@ public enum ResetDetector {
             events.append(ResetEvent(
                 provider: provider,
                 windowID: window.id,
-                name: window.scope ?? window.title,
+                name: window.displayName,
                 previousUsed: was,
                 usedNow: used,
                 resetAt: resetAt,

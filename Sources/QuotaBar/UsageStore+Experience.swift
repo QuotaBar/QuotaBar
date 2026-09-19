@@ -178,7 +178,7 @@ extension UsageStore {
         for (kind, id, window) in fresh {
             let content = UNMutableNotificationContent()
             content.title = kind.title
-            content.subtitle = "\(id.displayName) · \(window.scope ?? window.title)"
+            content.subtitle = "\(id.displayName) · \(window.displayName)"
             content.body = paceBody(kind, window)
             content.threadIdentifier = "bar.quota.pace"
             UNUserNotificationCenter.current().add(UNNotificationRequest(
