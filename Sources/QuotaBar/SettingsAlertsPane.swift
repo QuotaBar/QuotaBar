@@ -136,13 +136,10 @@ struct AlertsPane: View {
     }
 }
 
-/// A budget amount in the currency it is kept in: typed, then saved on
-/// Return or when the field loses focus. Empty turns the budget off.
+/// A spend budget, in the currency it is kept in.
 private struct BudgetField: View {
     @ObservedObject var store: UsageStore
     let period: BudgetPeriod
-    @State private var text = ""
-    @FocusState private var focused: Bool
 
     private var budget: SpendBudget { store.experience.spendBudget }
 
@@ -156,39 +153,17 @@ private struct BudgetField: View {
     }
 
     var body: some View {
-        HStack(spacing: Design.space2) {
-            Text(CurrencyRates.symbol(for: currency).trimmingCharacters(in: .whitespaces))
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(minWidth: 18)
-            GlassTextField(placeholder: L10n.t("No budget", "不设置"), text: $text, onSubmit: save)
-                .focused($focused)
-                .frame(maxWidth: 160)
-            Text(CurrencyRates.displayName(for: currency))
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
-            Spacer(minLength: 0)
-        }
-        .onAppear { text = stored.map(Self.format) ?? "" }
-        .onChange(of: focused) { _, isFocused in if !isFocused { save() } }
-        // Leaving the page with an unsaved figure still keeps it.
-        .onDisappear(perform: save)
-    }
-
-    private static func format(_ value: Double) -> String {
-        value.rounded() == value ? String(Int(value)) : String(format: "%.2f", value)
-    }
-
-    private func save() {
-        let cleaned = text.replacingOccurrences(of: ",", with: "").trimmingCharacters(in: .whitespaces)
-        let value = Double(cleaned).flatMap { $0 > 0 ? $0 : nil }
-        guard value != stored else { return }
         let code = currency
-        store.updateExperience { prefs in
-            if period == .day { prefs.spendBudget.daily = value } else { prefs.spendBudget.monthly = value }
-            prefs.spendBudget.currency = code
+        AmountField(
+            placeholder: L10n.t("No budget", "不设置"),
+            currency: code,
+            stored: stored)
+        { value in
+            store.updateExperience { prefs in
+                if period == .day { prefs.spendBudget.daily = value } else { prefs.spendBudget.monthly = value }
+                prefs.spendBudget.currency = code
+            }
+            store.evaluateSpendNotices()
         }
-        text = value.map(Self.format) ?? ""
-        store.evaluateSpendNotices()
     }
 }

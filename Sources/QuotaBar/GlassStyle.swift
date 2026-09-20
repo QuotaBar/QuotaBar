@@ -726,6 +726,55 @@ struct GlassTextField: View {
     }
 }
 
+/// An amount in the currency it is kept in: typed, then saved on Return or
+/// when the field loses focus, and empty clears it. The spend budgets and the
+/// balance floor are the same field and differed only in what they save, so
+/// they share it.
+struct AmountField: View {
+    let placeholder: String
+    /// The currency the amount is kept in, for the symbol and its name.
+    let currency: String
+    /// What is saved now; the field shows it and saves only a change.
+    let stored: Double?
+    /// Nil for an empty field: the budget or the floor is off.
+    let save: (Double?) -> Void
+
+    @State private var text = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        HStack(spacing: Design.space2) {
+            Text(CurrencyRates.symbol(for: currency).trimmingCharacters(in: .whitespaces))
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 18)
+            GlassTextField(placeholder: placeholder, text: $text, onSubmit: commit)
+                .focused($focused)
+                .frame(maxWidth: 160)
+            Text(CurrencyRates.displayName(for: currency))
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+            Spacer(minLength: 0)
+        }
+        .onAppear { text = stored.map(Self.format) ?? "" }
+        .onChange(of: focused) { _, isFocused in if !isFocused { commit() } }
+        // Leaving the page with an unsaved figure still keeps it.
+        .onDisappear(perform: commit)
+    }
+
+    static func format(_ value: Double) -> String {
+        value.rounded() == value ? String(Int(value)) : String(format: "%.2f", value)
+    }
+
+    private func commit() {
+        let cleaned = text.replacingOccurrences(of: ",", with: "").trimmingCharacters(in: .whitespaces)
+        let value = Double(cleaned).flatMap { $0 > 0 ? $0 : nil }
+        guard value != stored else { return }
+        save(value)
+        text = value.map(Self.format) ?? ""
+    }
+}
+
 /// Status pill — "ready", "not configured", "off".
 struct StatusPill: View {
     let text: String

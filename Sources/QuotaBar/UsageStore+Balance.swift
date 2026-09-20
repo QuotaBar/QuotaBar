@@ -50,12 +50,10 @@ extension UsageStore {
     }
 }
 
-/// The floor in Settings: an amount in the currency it is kept in, saved on
-/// Return or when the field loses focus. Empty turns the alert off.
+/// The floor in Settings: below this balance, one notification. Empty turns
+/// the alert off.
 struct BalanceFloorField: View {
     @ObservedObject var store: UsageStore
-    @State private var text = ""
-    @FocusState private var focused: Bool
 
     private var floor: BalanceFloor { store.experience.balanceFloor }
 
@@ -65,39 +63,18 @@ struct BalanceFloorField: View {
     }
 
     var body: some View {
-        HStack(spacing: Design.space2) {
-            Text(CurrencyRates.symbol(for: currency).trimmingCharacters(in: .whitespaces))
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(minWidth: 18)
-            GlassTextField(placeholder: L10n.t("No alert", "不提醒"), text: $text, onSubmit: save)
-                .focused($focused)
-                .frame(maxWidth: 160)
-            Text(CurrencyRates.displayName(for: currency))
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
-            Spacer(minLength: 0)
-        }
-        .onAppear { text = floor.amount.map(Self.format) ?? "" }
-        .onChange(of: focused) { _, isFocused in if !isFocused { save() } }
-        .onDisappear(perform: save)
-    }
-
-    private static func format(_ value: Double) -> String {
-        value.rounded() == value ? String(Int(value)) : String(format: "%.2f", value)
-    }
-
-    private func save() {
-        let cleaned = text.replacingOccurrences(of: ",", with: "").trimmingCharacters(in: .whitespaces)
-        let value = Double(cleaned).flatMap { $0 > 0 ? $0 : nil }
-        guard value != floor.amount else { return }
         let code = currency
-        store.updateExperience { prefs in
-            prefs.balanceFloor = BalanceFloor(amount: value, currency: code)
-            // A new floor judges every account afresh.
-            prefs.balanceFloorNotified = []
+        AmountField(
+            placeholder: L10n.t("No alert", "不提醒"),
+            currency: code,
+            stored: floor.amount)
+        { value in
+            store.updateExperience { prefs in
+                prefs.balanceFloor = BalanceFloor(amount: value, currency: code)
+                // A new floor judges every account afresh.
+                prefs.balanceFloorNotified = []
+            }
+            store.evaluateBalanceNotices()
         }
-        text = value.map(Self.format) ?? ""
-        store.evaluateBalanceNotices()
     }
 }

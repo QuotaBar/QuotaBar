@@ -130,18 +130,7 @@ final class EdgeDockCoordinator {
             let inside = live.contains(point)
             if panel.ignoresMouseEvents == inside { panel.ignoresMouseEvents = !inside }
         }
-        update()
-        if let global = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged], handler: { _ in
-            MainActor.assumeIsolated { update() }
-        }) {
-            mouseMonitors.append(global)
-        }
-        if let local = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged], handler: { event in
-            MainActor.assumeIsolated { update() }
-            return event
-        }) {
-            mouseMonitors.append(local)
-        }
+        mouseMonitors = MouseThrough.monitors(update: update)
         refreshMouseThrough = update
     }
     private var refreshMouseThrough: (() -> Void)?

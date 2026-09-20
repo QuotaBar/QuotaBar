@@ -174,18 +174,7 @@ final class IslandCoordinator {
             let inside = self.silhouetteContains(screenPoint: NSEvent.mouseLocation)
             if panel.ignoresMouseEvents == inside { panel.ignoresMouseEvents = !inside }
         }
-        update()
-        if let global = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged], handler: { _ in
-            MainActor.assumeIsolated { update() }
-        }) {
-            mouseMonitors.append(global)
-        }
-        if let local = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged], handler: { event in
-            MainActor.assumeIsolated { update() }
-            return event
-        }) {
-            mouseMonitors.append(local)
-        }
+        mouseMonitors = MouseThrough.monitors(update: update)
     }
 
     /// Re-places the panel after a setting changed the strip's width.
