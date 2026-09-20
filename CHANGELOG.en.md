@@ -5,6 +5,13 @@ Server moves, the website, and build or release scripts don't change the app its
 
 ## Unreleased
 
+### 2026-09-21
+
+#### Fixed
+
+- The island kept a Mac busy while nothing was happening — about 8% of a core with the screen unchanged. The light that runs round the collapsed outline was redrawn 30 times a second; it now runs while a read is in flight, on hover, for a banner and near a limit, and stops when nothing is happening. Turn on "Light always running" under Settings → Presentation → Island to have it run as before; the switch says what that costs. The halo outside the outline is unchanged. (#5)
+- The low-quota outline flash and the counting spend figure are drawn by the system's own animation rather than recomputed every frame, and the figure stops its timeline once it has settled.
+
 ### 2026-09-19
 
 #### Style

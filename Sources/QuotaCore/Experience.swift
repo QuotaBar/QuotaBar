@@ -222,8 +222,11 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
     // Motion and glow
     public var reduceMotion: Bool = false
     public var islandGlow: Bool = true
-    /// Glow and sweep only while refreshing, hovered or alerting.
-    public var lowPowerGlow: Bool = false
+    /// The light keeps running round the island's outline even with nothing
+    /// happening. Off — the default — it runs while a read is in flight, on
+    /// hover, and near a limit. Continuous, it costs about 8% of a core for
+    /// as long as the island is on screen (issue #5).
+    public var islandSweepAlways: Bool = false
     /// The island opens for a few seconds when a window crosses its warning.
     public var islandAutoPeek: Bool = true
     public var islandChart: IslandChartStyle = .stepped
@@ -290,7 +293,7 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case resetTimeFormat, clockStyle, alwaysShowPace, urgencyStyle, tokenCounting, currency
         case panelDensity, showSpendCard, panelTranslucent, spendMetric, expandedCards, welcomeDismissed, providersDetected
-        case reduceMotion, islandGlow, lowPowerGlow, islandAutoPeek, islandChart, widgetSortsByUrgency
+        case reduceMotion, islandGlow, islandSweepAlways, islandAutoPeek, islandChart, widgetSortsByUrgency
         case deskCards, deskCardsMigrated
         case hideWhenSharing, hotkey, paceAlerts, localAPI, proxy, betaUpdates
         case resetEffects, resetNotify, resetCreditNotify, resetCreditNotified, hiddenProviders, cardWindows, hiddenWindows
@@ -325,7 +328,7 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
         providersDetected = value(.providersDetected, d.providersDetected)
         reduceMotion = value(.reduceMotion, d.reduceMotion)
         islandGlow = value(.islandGlow, d.islandGlow)
-        lowPowerGlow = value(.lowPowerGlow, d.lowPowerGlow)
+        islandSweepAlways = value(.islandSweepAlways, d.islandSweepAlways)
         islandAutoPeek = value(.islandAutoPeek, d.islandAutoPeek)
         islandChart = choice(.islandChart, d.islandChart)
         widgetSortsByUrgency = value(.widgetSortsByUrgency, d.widgetSortsByUrgency)

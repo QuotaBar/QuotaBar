@@ -349,8 +349,12 @@ struct IslandView: View {
                 IslandGlow(
                     shape: silhouette,
                     color: glowColor,
-                    ambient: !expanded && (!store.experience.lowPowerGlow || glowEvent),
-                    sweeping: !expanded && !bridge.occluded && (!store.experience.lowPowerGlow || glowEvent) && !Motion.reduced)
+                    // The halo is a shadow, drawn once and composited; the
+                    // sweep is motion, and motion with nothing happening is
+                    // what kept a core busy (issue #5).
+                    ambient: !expanded,
+                    sweeping: !expanded && !bridge.occluded && !Motion.reduced
+                        && (store.experience.islandSweepAlways || glowEvent))
             }
             if lowQuota != .none, !expanded {
                 LowQuotaFlash(shape: silhouette, color: Palette.alert(lowQuota), animating: !bridge.occluded)
@@ -437,7 +441,8 @@ struct IslandView: View {
         }
     }
 
-    /// Under low power the glow shows only while something is happening.
+    /// What makes the light run when it is not set to run always: a read in
+    /// flight, the pointer on the island, a banner, or a quota near its end.
     private var glowEvent: Bool {
         hovering || bridge.banner != nil || store.enabled.contains { store.isLoading($0) } || store.isComputingCost || severity != .none || lowQuota != .none
     }
@@ -817,16 +822,23 @@ struct LowQuotaFlash<S: Shape>: View {
     /// Seconds from bright to dim and back.
     static var period: Double { 1.2 }
 
+    @State private var dim = false
+
     var body: some View {
         let live = animating && !Motion.reduced
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: !live)) { context in
-            let wave = live ? (1 - cos(context.date.timeIntervalSinceReferenceDate * 2 * .pi / Self.period)) / 2 : 1
-            shape
-                .stroke(color, lineWidth: 4)
-                .shadow(color: color.opacity(0.9), radius: 3 + 7 * wave)
-                .opacity(0.25 + 0.75 * wave)
-        }
-        .allowsHitTesting(false)
+        // One animation Core Animation runs on the layer, not a frame drawn
+        // 30 times a second: the stroke and its bloom are rendered once and
+        // only the opacity moves (issue #5).
+        shape
+            .stroke(color, lineWidth: 4)
+            .shadow(color: color.opacity(0.9), radius: 7)
+            .opacity(live && dim ? 0.25 : 1)
+            .animation(
+                live ? .easeInOut(duration: Self.period / 2).repeatForever(autoreverses: true) : .default,
+                value: dim)
+            .onAppear { dim = live }
+            .onChange(of: live) { _, now in dim = now }
+            .allowsHitTesting(false)
     }
 }
 

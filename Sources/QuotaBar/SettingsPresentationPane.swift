@@ -40,10 +40,13 @@ struct PresentationPane: View {
                         get: { store.experience.islandGlow },
                         set: { value in store.updateExperience { $0.islandGlow = value } }))
                 SettingToggle(
-                    L10n.t("Low power", "低功耗"), caption: L10n.t("Glow only while refreshing, hovered or alerting.", "只在刷新、悬停或告警时发光。"),
+                    L10n.t("Light always running", "光晕一直转"),
+                    caption: L10n.t(
+                        "Off, the light runs while a read is in flight, on hover and near a limit. Always running keeps a Mac busy: about 8% of a core for as long as the island is on screen.",
+                        "关闭时只在读取数据、鼠标悬停和接近上限时转。一直转会让 Mac 一直忙着：刘海岛显示期间约占 8% 的单核。"),
                     isOn: Binding(
-                        get: { store.experience.lowPowerGlow },
-                        set: { value in store.updateExperience { $0.lowPowerGlow = value } }))
+                        get: { store.experience.islandSweepAlways },
+                        set: { value in store.updateExperience { $0.islandSweepAlways = value } }))
                 .disabled(!store.experience.islandGlow)
                 .opacity(!store.experience.islandGlow ? 0.45 : 1)
                 SettingToggle(

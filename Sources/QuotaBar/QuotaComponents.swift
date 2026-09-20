@@ -556,37 +556,50 @@ struct CountUpMoney: View {
     var color: Color = .white
     var compact = false
 
-    @State private var start: Double = 0
+    @State private var from: Double = 0
     @State private var target: Double = 0
     @State private var began = Date.distantPast
+    /// Drives the timeline's `paused`, which is read when the schedule is
+    /// made and not again: computing it from the clock inside `body` left
+    /// the timeline running at 60fps for the life of the view, long after
+    /// the figure had settled (issue #5).
+    @State private var counting = false
     private static let duration = 0.65
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 60, paused: !animating)) { context in
+        TimelineView(.animation(minimumInterval: 1 / 60, paused: !counting)) { context in
             Text(format(value(at: context.date)))
                 .font(font)
                 .foregroundStyle(color)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
         }
-        .onAppear {
-            start = 0
-            target = usd
-            began = Motion.reduced ? .distantPast : Date()
-        }
-        .onChange(of: usd) { _, new in
-            start = value(at: Date())
-            target = new
-            began = Motion.reduced ? .distantPast : Date()
-        }
+        .onAppear { count(from: 0, to: usd) }
+        .onChange(of: usd) { _, new in count(from: value(at: Date()), to: new) }
+        .onDisappear { counting = false }
     }
 
-    private var animating: Bool { Date().timeIntervalSince(began) < Self.duration }
+    /// Counts to a new figure, and stops the timeline once it is there.
+    private func count(from start: Double, to end: Double) {
+        from = start
+        target = end
+        guard !Motion.reduced else {
+            began = .distantPast
+            counting = false
+            return
+        }
+        began = Date()
+        counting = true
+        Task {
+            try? await Task.sleep(for: .seconds(Self.duration))
+            counting = false
+        }
+    }
 
     private func value(at date: Date) -> Double {
         let t = min(1, max(0, date.timeIntervalSince(began) / Self.duration))
         let eased = 1 - pow(1 - t, 3)
-        return start + (target - start) * eased
+        return from + (target - from) * eased
     }
 
     private func format(_ value: Double) -> String {
