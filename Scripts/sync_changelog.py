@@ -24,7 +24,7 @@ from collections import Counter
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
-REPO = "https://github.com/gentpan/QuotaBar"
+REPO = "https://github.com/QuotaBar/QuotaBar"
 RECENT_DAYS = 3
 WEEKS = 26
 KIND_EN = {"新增": "Added", "样式": "Style", "修复": "Fixed", "删除": "Removed", "移除": "Removed"}

@@ -6,20 +6,20 @@
 
 **Every AI coding limit, at a glance — in the menu bar, the notch, at the screen's edge or on the desktop.**
 
-[![Release](https://img.shields.io/github/v/release/gentpan/QuotaBar?color=6ee02b&label=release)](https://github.com/gentpan/QuotaBar/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/gentpan/QuotaBar/total?color=6ee02b&label=downloads)](https://github.com/gentpan/QuotaBar/releases)
-[![Stars](https://img.shields.io/github/stars/gentpan/QuotaBar?style=flat&color=f5c518&label=stars)](https://github.com/gentpan/QuotaBar/stargazers)
-[![Last commit](https://img.shields.io/github/last-commit/gentpan/QuotaBar?color=black&label=last%20commit)](https://github.com/gentpan/QuotaBar/commits/main)
-[![Commit activity](https://img.shields.io/github/commit-activity/m/gentpan/QuotaBar?color=black&label=commits)](https://github.com/gentpan/QuotaBar/graphs/commit-activity)
-[![CI](https://github.com/gentpan/QuotaBar/actions/workflows/ci.yml/badge.svg)](https://github.com/gentpan/QuotaBar/actions/workflows/ci.yml)
-[![macOS](https://img.shields.io/badge/macOS-14%2B-black)](https://github.com/gentpan/QuotaBar/releases/latest)
+[![Release](https://img.shields.io/github/v/release/QuotaBar/QuotaBar?color=6ee02b&label=release)](https://github.com/QuotaBar/QuotaBar/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/QuotaBar/QuotaBar/total?color=6ee02b&label=downloads)](https://github.com/QuotaBar/QuotaBar/releases)
+[![Stars](https://img.shields.io/github/stars/QuotaBar/QuotaBar?style=flat&color=f5c518&label=stars)](https://github.com/QuotaBar/QuotaBar/stargazers)
+[![Last commit](https://img.shields.io/github/last-commit/QuotaBar/QuotaBar?color=black&label=last%20commit)](https://github.com/QuotaBar/QuotaBar/commits/main)
+[![Commit activity](https://img.shields.io/github/commit-activity/m/QuotaBar/QuotaBar?color=black&label=commits)](https://github.com/QuotaBar/QuotaBar/graphs/commit-activity)
+[![CI](https://github.com/QuotaBar/QuotaBar/actions/workflows/ci.yml/badge.svg)](https://github.com/QuotaBar/QuotaBar/actions/workflows/ci.yml)
+[![macOS](https://img.shields.io/badge/macOS-14%2B-black)](https://github.com/QuotaBar/QuotaBar/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-black)](LICENSE)
 
 QuotaBar is a macOS menu-bar app that shows how much of each AI coding service's quota
 you have used, when each window resets, and roughly what it has cost — for twenty-three
 providers, read and worked out on your own Mac. No account, no telemetry.
 
-[Download](https://github.com/gentpan/QuotaBar/releases/latest) ·
+[Download](https://github.com/QuotaBar/QuotaBar/releases/latest) ·
 [Website](https://quota.bar) ·
 [Changelog](CHANGELOG.en.md) ·
 [Architecture](ARCHITECTURE.md)
@@ -38,7 +38,7 @@ brew trust gentpan/tap      # Homebrew 6 gates third-party taps
 brew install --cask quotabar
 ```
 
-Or download the `.dmg` from [Releases](https://github.com/gentpan/QuotaBar/releases/latest)
+Or download the `.dmg` from [Releases](https://github.com/QuotaBar/QuotaBar/releases/latest)
 and drag `QuotaBar.app` into `/Applications`. Builds are signed with a Developer ID
 certificate and notarized by Apple, so Gatekeeper opens them without a detour.
 
@@ -50,9 +50,20 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.9** (2026-09-19) · **1** changes in development · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.9** (2026-09-19) · **4** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-09-21</b> · Unreleased · 3 fixed</summary>
+
+**Fixed**
+
+- The GitHub link in About, the feedback entry, the update check and the issue numbers in release notes all point at the repository's current path, QuotaBar/QuotaBar, rather than redirecting from the old one. An update feed still set to the old path keeps working, mirror and all.
+- The island kept a Mac busy while nothing was happening — about 8% of a core with the screen unchanged. The light that runs round the collapsed outline was redrawn 30 times a second; it now runs while a read is in flight, on hover, for a banner and near a limit, and stops when nothing is happening. Turn on "Light always running" under Settings → Presentation → Island to have it run as before; the switch says what that costs. The halo outside the outline is unchanged. ([#5](https://github.com/QuotaBar/QuotaBar/issues/5))
+- The low-quota outline flash and the counting spend figure are drawn by the system's own animation rather than recomputed every frame, and the figure stops its timeline once it has settled.
+
+</details>
+
+<details>
 <summary><b>2026-09-19</b> · Unreleased · 1 style</summary>
 
 **Style**
@@ -70,35 +81,6 @@ Latest release **0.5.9** (2026-09-19) · **1** changes in development · [full c
 
 </details>
 
-<details>
-<summary><b>2026-09-17</b> · 0.5.9 · 6 added · 2 style · 7 fixed</summary>
-
-**Added**
-
-- Kimi Code reads the sign-in of the Kimi Code app or CLI (`kimi`) on this Mac, so there is no kimi-auth cookie to paste. It tells the China edition (kimi.com) from the Global one (kimi.ai) by itself. The card shows the 5-hour and weekly limits, and the monthly one when the plan has it, each with its reset time. After Kimi Code signs in, signs out, switches edition or renews its own sign-in, QuotaBar reads the quota again within 30 seconds.
-- The sign-in token Kimi Code saves runs out every 15 minutes. While QuotaBar runs, a refresh that finds the token has run out, or has less than a minute left, renews it before reading the quota, so the quota keeps showing without using Kimi Code first. QuotaBar and Kimi Code take turns to renew, and the result is saved in Kimi Code's own format. The two never renew at once and sign each other out, also just after the Mac wakes from sleep. If you sign out or sign in again in Kimi Code while a renewal is under way, what you did stands. `QuotaBar --json` and the other one-off commands only read the sign-in and never renew it. Quitting QuotaBar waits for a renewal under way to be saved.
-- When a renewal doesn't go through, the card says so. While Kimi Code is renewing, the quota is read at the next refresh. A network or server error keeps the last reading and tries again at the next refresh. A renewal that couldn't be saved is saved first at the next refresh, before anything else is sent. A refused renewal leaves Kimi Code's sign-in file untouched, and the card says to sign in again. When Kimi Code's sign-in has gone 30 days without a renewal from either Kimi Code or QuotaBar and can no longer be renewed, or it is signed out, the card also says to sign in again. A sign-in left on this Mac from the other edition, or a dead one left by the old Python CLI, is never used in its place.
-- Some sign-ins QuotaBar only reads and never renews. When the old CLI's sign-in runs out, the card says to sign in to the Kimi Code app or the current `kimi` CLI. When Kimi Code has not yet created this Mac's device id (it does so on first start), or the sign-in is not the one Kimi Code is using, the card says to open or use Kimi Code once after the token runs out. In each case, "In use" in Settings says it is read only, and why.
-- Kimi Code also takes a Kimi Code API key pasted in Settings, from the Kimi Code console of your edition. The kimi-auth cookie still works, and now a Global (kimi.ai) cookie does too. Sign in in a browser… in Settings also works for a Global account, whose sign-in ends on kimi.ai. QuotaBar tells a pasted key from a cookie by itself, and uses it ahead of the sign-in on this Mac; clear it to go back to that sign-in. A copied `Authorization: Bearer …` header, a quoted cookie or a cookie row from the browser's developer tools is understood. Text that is neither a key nor a cookie is not sent anywhere. QuotaBar asks the China edition first and the Global one only if China turns the key or cookie down, and until QuotaBar quits asks only the edition that answered. A cookie only ever goes to kimi.com and kimi.ai. If the key or cookie is refused, the card says to clear it or replace it.
-- The Kimi Code card shows the edition in use (China / Global) beside the plan. In Settings → Providers → Kimi Code, a new "In use" line says whether the sign-in on this Mac, an API key or a kimi-auth cookie is used, and for which edition, and "How to sign in" lists the three ways. The Console link, in Settings and on the menu panel's card, opens kimi.com or kimi.ai to match, also after a relaunch. `QuotaBar --json` and the local API give the edition as `china` or `global`, and the credential as `signIn`, `legacySignIn`, `apiKey` or `cookie`, whatever the language. Switching edition or credential starts the trend line afresh and is not taken for a quota reset.
-
-**Style**
-
-- A provider whose last refresh failed and that still shows older numbers now shows an amber "● Not updating" beside its service status. It appears on the island, on the menu panel's card and on the edge dock's card. Its tooltip gives the reason and how old the numbers are, and a click opens that provider in Settings. On the island its figures and bars are dimmed; on the menu panel's and the dock's cards its bars are dimmed. In those older numbers, a window whose reset time has passed shows "reset due" in amber, so it no longer looks current. QuotaBar doesn't guess how much has been used since the reset.
-- The menu panel's card and the edge dock's card write "Showing numbers from …" above older numbers, and the reason the refresh failed right under it. Before, the menu panel showed the reason only on hover, and the dock's card didn't even say how old the numbers were.
-
-**Fixed**
-
-- In the open island, "N not updating" in the footer did nothing when clicked and gave no hint of which providers or why. It was a count and nothing more. Rest the pointer on it, or click it, and a list above it shows each provider that is not updating. Each row gives its mark, its name and what its last refresh said, and how old the numbers are where older ones are still shown. Click one to open Settings → Providers at its row. A list opened by a click stays open, and a click on the note while the list is showing closes it.
-- When you clicked Refresh now in the island and the reads came straight back, the spinner showed for a blink and it looked as if the click had missed. The spinner only showed while reads were under way. Afterwards the footer went straight back to its usual note, with nothing to say how the refresh went. The spinner, in the island and on the menu panel's refresh-everything button, now stays for at least 0.8 seconds. Then the island's footer says "All up to date" or "Refreshed · N not updating" for about 2 seconds.
-- While a refresh was under way, a provider with no numbers whose last refresh had failed counted as loading. Its card on the menu panel and on the edge dock said "Loading…" in place of the error. The dot on the island and in the menu panel's footer turned from amber to green until the read came back. The cause: each refresh set every provider without numbers back to loading, and its last error went with it. It now keeps its error, and still counts as not updating, until the new read is back.
-- With Claude Code signed out on this Mac, the Claude card said "Not configured. Run `claude` once and sign in to create the OAuth session.", as if it had never been signed in. Signing out leaves Claude Code's keychain item in place but empties its sign-in tokens, and QuotaBar took that for no sign-in at all. It now says Claude Code is signed out on this Mac and to run `claude` in Terminal, then /login. Settings → Providers shows Claude as Sign in, and its open row says it is signed out. `QuotaBar --credentials` also says Claude Code is signed out.
-- In Settings → Providers, Cursor, Grok, OpenCode Go and GitHub Copilot said Keychain even with nothing pasted, while they were using the sign-in on this Mac. The label went by whether a provider can take a pasted credential, not by which one it was using. They now say Auto when using this Mac's sign-in, and Keychain only for a pasted credential. Kimi Code, which reads this Mac's sign-in from this version on, does the same.
-- Pasting a credential in Settings while that provider was still being read could do nothing until the next refresh, or the read with the old credential could land last and put its error back. The new credential is now read at once, and the old read's answer is dropped.
-- QuotaBar crashed when a provider sent a figure too large to turn into a whole number or a date, such as a Kimi Code limit as large as the largest 64-bit integer, or a reset time with no end. Such a figure now just leaves out the count or the reset time.
-
-</details>
-
 <!-- changelog:end -->
 
 ## Activity
@@ -108,10 +90,10 @@ Latest release **0.5.9** (2026-09-19) · **1** changes in development · [full c
 </p>
 
 <p align="center">
-  <a href="https://star-history.com/#gentpan/QuotaBar&Date">
+  <a href="https://star-history.com/#QuotaBar/QuotaBar&Date">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=gentpan/QuotaBar&type=Date&theme=dark">
-      <img alt="Star history" src="https://api.star-history.com/svg?repos=gentpan/QuotaBar&type=Date" width="760">
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=QuotaBar/QuotaBar&type=Date&theme=dark">
+      <img alt="Star history" src="https://api.star-history.com/svg?repos=QuotaBar/QuotaBar&type=Date" width="760">
     </picture>
   </a>
 </p>

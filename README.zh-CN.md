@@ -6,19 +6,19 @@
 
 **每个 AI 编码额度，抬眼就看见——在菜单栏、刘海、屏幕边缘或桌面上。**
 
-[![Release](https://img.shields.io/github/v/release/gentpan/QuotaBar?color=6ee02b&label=%E7%89%88%E6%9C%AC)](https://github.com/gentpan/QuotaBar/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/gentpan/QuotaBar/total?color=6ee02b&label=%E4%B8%8B%E8%BD%BD)](https://github.com/gentpan/QuotaBar/releases)
-[![Stars](https://img.shields.io/github/stars/gentpan/QuotaBar?style=flat&color=f5c518&label=%E6%98%9F%E6%A0%87)](https://github.com/gentpan/QuotaBar/stargazers)
-[![Last commit](https://img.shields.io/github/last-commit/gentpan/QuotaBar?color=black&label=%E6%9C%80%E8%BF%91%E6%8F%90%E4%BA%A4)](https://github.com/gentpan/QuotaBar/commits/main)
-[![Commit activity](https://img.shields.io/github/commit-activity/m/gentpan/QuotaBar?color=black&label=%E6%8F%90%E4%BA%A4)](https://github.com/gentpan/QuotaBar/graphs/commit-activity)
-[![CI](https://github.com/gentpan/QuotaBar/actions/workflows/ci.yml/badge.svg)](https://github.com/gentpan/QuotaBar/actions/workflows/ci.yml)
-[![macOS](https://img.shields.io/badge/macOS-14%2B-black)](https://github.com/gentpan/QuotaBar/releases/latest)
+[![Release](https://img.shields.io/github/v/release/QuotaBar/QuotaBar?color=6ee02b&label=%E7%89%88%E6%9C%AC)](https://github.com/QuotaBar/QuotaBar/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/QuotaBar/QuotaBar/total?color=6ee02b&label=%E4%B8%8B%E8%BD%BD)](https://github.com/QuotaBar/QuotaBar/releases)
+[![Stars](https://img.shields.io/github/stars/QuotaBar/QuotaBar?style=flat&color=f5c518&label=%E6%98%9F%E6%A0%87)](https://github.com/QuotaBar/QuotaBar/stargazers)
+[![Last commit](https://img.shields.io/github/last-commit/QuotaBar/QuotaBar?color=black&label=%E6%9C%80%E8%BF%91%E6%8F%90%E4%BA%A4)](https://github.com/QuotaBar/QuotaBar/commits/main)
+[![Commit activity](https://img.shields.io/github/commit-activity/m/QuotaBar/QuotaBar?color=black&label=%E6%8F%90%E4%BA%A4)](https://github.com/QuotaBar/QuotaBar/graphs/commit-activity)
+[![CI](https://github.com/QuotaBar/QuotaBar/actions/workflows/ci.yml/badge.svg)](https://github.com/QuotaBar/QuotaBar/actions/workflows/ci.yml)
+[![macOS](https://img.shields.io/badge/macOS-14%2B-black)](https://github.com/QuotaBar/QuotaBar/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-black)](LICENSE)
 
 QuotaBar 是一款 macOS 菜单栏应用，显示每个 AI 编码服务的额度用了多少、各个窗口何时重置、
 大约花了多少钱。支持 23 个服务商，全部在你自己的 Mac 上读取和计算。无需注册账号，没有任何统计上报。
 
-[下载](https://github.com/gentpan/QuotaBar/releases/latest) ·
+[下载](https://github.com/QuotaBar/QuotaBar/releases/latest) ·
 [官网](https://quota.bar) ·
 [更新日志](CHANGELOG.md) ·
 [架构说明](ARCHITECTURE.md)
@@ -37,7 +37,7 @@ brew trust gentpan/tap      # Homebrew 6 需要先信任第三方 tap
 brew install --cask quotabar
 ```
 
-也可以从 [Releases](https://github.com/gentpan/QuotaBar/releases/latest) 下载 `.dmg`，
+也可以从 [Releases](https://github.com/QuotaBar/QuotaBar/releases/latest) 下载 `.dmg`，
 把 `QuotaBar.app` 拖进「应用程序」。安装包使用 Developer ID 证书签名并经过 Apple 公证，
 Gatekeeper 可以直接打开。
 
@@ -49,9 +49,20 @@ Gatekeeper 可以直接打开。
 <!-- changelog:start -->
 <!-- 由 Scripts/sync_changelog.py 从 CHANGELOG.md 生成，请勿手改。 -->
 
-最新版本 **0.5.9**（2026-09-19） · 开发中 **1** 项改动尚未发布 · [完整更新日志](CHANGELOG.md)
+最新版本 **0.5.9**（2026-09-19） · 开发中 **4** 项改动尚未发布 · [完整更新日志](CHANGELOG.md)
 
 <details open>
+<summary><b>2026-09-21</b> · 未发布 · 修复 3</summary>
+
+**修复**
+
+- 关于页的 GitHub 链接、反馈入口、检查更新和更新内容里的问题编号，都改到仓库的新地址 QuotaBar/QuotaBar，不再绕旧地址跳转；配置里仍写着旧地址的更新源照常工作，也照常走 quota.bar 的下载镜像。
+- 刘海岛在空闲时一直占用 CPU（约 8% 的单核，屏幕上什么都没变也照样占）：收起状态下沿轮廓转的那道光原本一秒重画 30 次，现在默认只在读取数据、鼠标悬停、弹出横幅和接近上限时转，空闲时停下。想一直转可以在设置 → 显示方式 → 刘海岛里打开「光晕一直转」，开关的说明里写明了代价。轮廓外的柔光照常显示，不受影响。（[#5](https://github.com/QuotaBar/QuotaBar/issues/5)）
+- 额度快用完时的边框闪烁和花费数字的跳动也改成由系统动画绘制，不再每帧重算；花费数字停下后不再继续空转。
+
+</details>
+
+<details>
 <summary><b>2026-09-19</b> · 未发布 · 样式 1</summary>
 
 **样式**
@@ -69,35 +80,6 @@ Gatekeeper 可以直接打开。
 
 </details>
 
-<details>
-<summary><b>2026-09-17</b> · 0.5.9 · 新增 6 · 样式 2 · 修复 7</summary>
-
-**新增**
-
-- Kimi Code 可以直接读取本机 Kimi Code 应用或 CLI（`kimi`）的登录，不用再粘贴 kimi-auth cookie，国内版（kimi.com）和国际版（kimi.ai）会自动识别。卡片显示 5 小时和每周额度（套餐有月额度时一并显示）以及各自的重置时间。Kimi Code 登录、退出、切换版本或自己续期登录后，QuotaBar 会在 30 秒内重新读取额度。
-- Kimi Code 保存的登录令牌每 15 分钟就会过期。QuotaBar 运行时，每次刷新如果发现令牌已经过期或剩不到一分钟，会先替它续期再读取额度，所以额度一直能显示，不用先去用一次 Kimi Code。QuotaBar 和 Kimi Code 轮流续期，续期结果按 Kimi Code 的格式写回，两边不会同时续期、把对方的登录挤掉，Mac 刚从睡眠中唤醒时也是如此。续期期间如果在 Kimi Code 里退出或重新登录，以你的操作为准。`QuotaBar --json` 这类一次性命令只读取登录、不续期；退出 QuotaBar 时会等进行中的续期保存完。
-- 续期没能完成时，卡片会说明情况：Kimi Code 正在续期时，下次刷新再读取；网络或服务器出错时，保留上一次的读数，下次刷新重试；续期结果没能保存时，下次刷新先把它存好，再发其他请求；续期被拒绝时，不改动 Kimi Code 的登录文件，只提示重新登录。Kimi Code 的登录连续 30 天没有续期（Kimi Code 和 QuotaBar 都没有替它续期）、已经无法再续期，或者已经退出登录时，也会提示重新登录。本机留着的另一个版本的登录，或旧版 Python CLI 留下的失效登录，都不会拿来顶替。
-- 有几种登录 QuotaBar 只读取、不续期。旧版 CLI 的登录过期后，卡片提示登录 Kimi Code 应用或新版 `kimi` CLI。Kimi Code 还没在这台 Mac 上生成设备 ID（Kimi Code 首次启动时生成），或者这份登录不是 Kimi Code 当前使用的那份时，令牌过期后卡片提示打开或用一次 Kimi Code。这几种情况，设置的「当前使用」下都会注明只读和原因。
-- Kimi Code 也可以在设置里粘贴 Kimi Code API Key（在所用版本的 Kimi Code 控制台获取）。原来的 kimi-auth cookie 仍然可用，现在国际版（kimi.ai）的 cookie 也能用；设置里的「浏览器登录…」对国际版账号也有效，登录落在 kimi.ai 时同样能取到 cookie。粘贴的内容会自动区分是 Key 还是 cookie，并优先于本机登录使用，清除后改回读取本机登录。复制来的 `Authorization: Bearer …` 请求头、带引号的 cookie、浏览器开发者工具里的 cookie 行都能识别。既不是 Key 也不是 cookie 的内容，不会发送到任何地方。QuotaBar 先向国内版查询，国内版不认这个 Key 或 cookie 时才查国际版，之后直到退出 QuotaBar 都只查回应过的那个版本；cookie 只会发往 kimi.com 和 kimi.ai。Key 或 cookie 被拒绝时，卡片提示清除它或换一个。
-- Kimi Code 卡片的套餐标签旁显示所用版本（国内版 / 国际版）。设置 → 服务商 → Kimi Code 新增「当前使用」一行，写明用的是本机登录、API Key 还是 kimi-auth cookie，以及哪个版本；「如何登录」列出这三种方式。设置里和下拉面板卡片上的「控制台」链接都按版本打开 kimi.com 或 kimi.ai，重新启动应用后也是如此。`QuotaBar --json` 和本地 API 新增 `edition`（`china` / `global`）和 `source`（`signIn` / `legacySignIn` / `apiKey` / `cookie`）两个字段，分别标明版本和所用的凭据，不随界面语言变化。切换版本或凭据后，趋势线重新开始，也不会被当成额度重置。
-
-**样式**
-
-- 刷新失败、仍在显示旧读数的服务商，会在服务状态旁显示橙色的「● 未能更新」。刘海岛、下拉面板的卡片和边缘停靠条的卡片上都会显示。鼠标悬停可以看到原因和数据是多久前的，点击打开设置里这个服务商。它在刘海岛上的数字和进度条会变暗，在下拉面板和停靠条卡片上的进度条也会变暗。旧读数里已经过了重置时间的窗口，「已到重置时间」改用橙色显示，不再像是当前数据；重置后用了多少不会凭空估算。
-- 下拉面板和边缘停靠条的卡片里，旧读数上方会写明「显示的是 X 前的数据」，下面直接写出刷新失败的原因。以前下拉面板要把鼠标悬停上去才能看到原因，停靠条卡片连数据是多久前的都没有写。
-
-**修复**
-
-- 刘海岛展开面板底栏的「N 个未能更新」点了没有反应，也看不出是哪些服务商、为什么没更新。原因是这行字只是一个计数，没有地方列出详情。现在鼠标在这行字上停一下或点一下，上方会列出每个未能更新的服务商，包括图标、名称和上次刷新的出错原因；仍显示旧读数的，还会注明数据是多久前的。点其中一个，直接打开设置 → 服务商里它的那一行。点一下打开的列表会一直开着，列表开着时再点这行字就会收起。
-- 在刘海岛上点「立即刷新」，如果读取很快返回，转圈一闪而过，看起来像没点到。原因是转圈只在读取进行时显示，刷新完又直接回到原来的文字，看不出这次刷新的结果。现在转圈至少持续 0.8 秒（下拉面板的「全部刷新」也一样），结束后刘海岛底栏约 2 秒显示「已全部更新」或「已刷新 · N 个未能更新」。
-- 刷新进行中时，上次刷新失败、又还没有读数的服务商会被当成「加载中」。下拉面板和边缘停靠条上它的卡片显示「加载中…」，出错原因不见了；刘海岛和下拉面板底栏的圆点也从橙色变成绿色，直到读取返回。原因是每次刷新开始时，没有读数的服务商一律被改回加载状态，上次的错误也就丢了。现在新的读取返回之前，它保留出错原因，仍算作未能更新。
-- Claude Code 在这台 Mac 上退出登录后，Claude 卡片提示「尚未配置。运行一次 `claude` 并登录以生成 OAuth 会话。」，像是从来没有登录过。原因是退出登录后钥匙串里的条目还在、只是登录令牌被清空，而 QuotaBar 把这和完全没登录过当成一回事。现在卡片会说明 Claude Code 已在这台 Mac 上退出登录，请在终端运行 `claude`，再输入 /login 登录。设置 → 服务商里 Claude 的状态显示「需登录」，展开后的提示也说明是已退出登录。`QuotaBar --credentials` 也会写明 Claude Code 已退出登录。
-- 设置 → 服务商里，Cursor、Grok、OpenCode Go、GitHub Copilot 在没有粘贴凭据、实际用的是本机登录时，状态也显示「钥匙串」。原因是状态只看服务商能不能粘贴凭据，不看它实际用的是哪一种。现在用本机登录时显示「自动」（这次新支持本机登录的 Kimi Code 也一样），用粘贴的凭据时才显示「钥匙串」。
-- 在设置里粘贴凭据时，如果这个服务商正在读取，粘贴后可能要等到下次刷新才生效，或者用旧凭据的那次读取后返回、又把出错信息放回来。现在会立即用新凭据读取，旧凭据那次的结果直接丢弃。
-- 服务商返回大得换算不了的数字时，QuotaBar 会闪退。比如 Kimi Code 返回和 64 位整数最大值一样大的额度上限，或者没有尽头的重置时间。原因是把这类数字转成整数或日期时超出了范围。现在遇到这类数字，只是不显示用量计数或重置时间。
-
-</details>
-
 <!-- changelog:end -->
 
 ## 项目动态
@@ -107,10 +89,10 @@ Gatekeeper 可以直接打开。
 </p>
 
 <p align="center">
-  <a href="https://star-history.com/#gentpan/QuotaBar&Date">
+  <a href="https://star-history.com/#QuotaBar/QuotaBar&Date">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=gentpan/QuotaBar&type=Date&theme=dark">
-      <img alt="星标增长曲线" src="https://api.star-history.com/svg?repos=gentpan/QuotaBar&type=Date" width="760">
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=QuotaBar/QuotaBar&type=Date&theme=dark">
+      <img alt="星标增长曲线" src="https://api.star-history.com/svg?repos=QuotaBar/QuotaBar&type=Date" width="760">
     </picture>
   </a>
 </p>

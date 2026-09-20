@@ -75,8 +75,11 @@ final class UpdateFeedTests: XCTestCase {
     // MARK: Config round-trip
 
     func testOwnerSlashRepoMeansGitHub() throws {
+        // The repository's old path: a config written before the move still
+        // parses, and still names the repository it named then.
         let feed = try XCTUnwrap(UpdateFeed(configValue: "gentpan/QuotaBar"))
         XCTAssertEqual(feed, .github(repo: "gentpan/QuotaBar"))
+        XCTAssertTrue(feed.isMirrored, "the mirror has those releases too")
         XCTAssertEqual(feed.configValue, "gentpan/QuotaBar")
         XCTAssertEqual(
             feed.requestURL.absoluteString,
@@ -166,7 +169,7 @@ final class UpdateConfigTests: XCTestCase {
 
     func testDefaultsToTheProjectRepository() {
         let store = ConfigStore(fileURL: fileURL, credentials: MemoryCredentialStorage())
-        XCTAssertEqual(store.updateFeed, .github(repo: "gentpan/QuotaBar"))
+        XCTAssertEqual(store.updateFeed, .github(repo: "QuotaBar/QuotaBar"))
         XCTAssertTrue(store.checksForUpdates)
     }
 

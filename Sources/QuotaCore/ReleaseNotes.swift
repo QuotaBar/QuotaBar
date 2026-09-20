@@ -95,7 +95,7 @@ public struct ReleaseNotes: Equatable, Sendable {
         // Swift's regexes have no lookbehind: the character before is matched
         // and left out of the link.
         item.matches(of: #/(?:^|[^\w&/])(#(\d+))\b/#).compactMap { match in
-            URL(string: "https://github.com/gentpan/QuotaBar/issues/\(match.2)")
+            URL(string: "https://github.com/QuotaBar/QuotaBar/issues/\(match.2)")
                 .map { (match.1.startIndex..<match.1.endIndex, $0) }
         }
     }

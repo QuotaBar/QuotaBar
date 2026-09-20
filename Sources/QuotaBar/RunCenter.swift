@@ -798,7 +798,7 @@ extension RunCenter {
                 rankedChangeAvailableAt: now.addingTimeInterval(4 * 86_400),
                 lastUploadAt: now.addingTimeInterval(-180),
                 projects: [
-                    RunProject(name: "QuotaBar", url: "https://quota.bar", description: L10n.t("Every AI coding limit, at a glance.", "每个 AI 编码额度，抬眼就看见。"), github: "https://github.com/gentpan/QuotaBar", builtWith: ["codex", "claude"]),
+                    RunProject(name: "QuotaBar", url: "https://quota.bar", description: L10n.t("Every AI coding limit, at a glance.", "每个 AI 编码额度，抬眼就看见。"), github: "https://github.com/QuotaBar/QuotaBar", builtWith: ["codex", "claude"]),
                     RunProject(name: "notch-kit", url: "https://notch.dev", description: L10n.t("A notch island for any app.", "给任何应用加一个刘海岛。"), builtWith: ["claude"]),
                 ],
                 identities: [
