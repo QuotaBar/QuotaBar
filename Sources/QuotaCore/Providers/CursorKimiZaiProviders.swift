@@ -185,12 +185,14 @@ public struct CursorProvider: QuotaProvider {
         if let start, let end, end > start {
             seconds = Int(end.timeIntervalSince(start).rounded())
         }
-        return UsageWindow(
+        var window = UsageWindow(
             title: "Grok Bot",
             usedPercent: percent,
             resetsAt: end,
             windowSeconds: seconds,
             scope: "Grok Bot")
+        window.extra = true
+        return window
     }
 }
 

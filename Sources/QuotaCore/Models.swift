@@ -586,6 +586,12 @@ public struct UsageWindow: Sendable, Identifiable {
     /// The provider says requests are being served from this window right now
     /// — Codex's reserve once the plan's own limit is reached.
     public var inUse: Bool
+    /// An allowance beside the plan rather than a limit of it: Cursor's Grok
+    /// Bot, Codex's reserve and its per-model extras. Shown like any other,
+    /// but "how much of my plan is used" is not asking about it, so it is not
+    /// what a figure follows on its own — Grok Bot at 69% stood for a Cursor
+    /// plan at 0.2% — unless it is the one being drawn on.
+    public var extra = false
 
     public init(
         title: String,
@@ -737,10 +743,11 @@ public struct MeterReading: Sendable, Equatable {
 
     public var hasBothHorizons: Bool { short != nil && long != nil }
 
-    /// Highest reading per horizon across a set of snapshots.
+    /// Highest reading per horizon across a set of snapshots, among the
+    /// windows a figure may follow on its own (`UsageSnapshot.ownWindows`).
     public static func across(_ snapshots: [UsageSnapshot]) -> MeterReading {
         var reading = MeterReading()
-        for window in snapshots.flatMap(\.windows) {
+        for window in snapshots.flatMap(\.ownWindows) {
             guard let percent = window.usedPercent else { continue }
             switch window.horizon {
             case .short: reading.short = max(reading.short ?? 0, percent)
@@ -871,16 +878,24 @@ public struct UsageSnapshot: Sendable {
         }
     }
 
-    /// Highest used percent across windows — drives the menu-bar meter and grid underline.
+    /// The windows "automatic" chooses among: the plan's own limits with a
+    /// figure, and an extra only while it is the one in use. A provider that
+    /// reports nothing but extras is read from those.
+    public var ownWindows: [UsageWindow] {
+        let figures = windows.filter { $0.usedPercent != nil }
+        let own = figures.filter { !$0.extra || $0.inUse }
+        return own.isEmpty ? figures : own
+    }
+
+    /// Highest used percent across the plan's own windows — drives the
+    /// menu-bar meter and grid underline.
     public var headlinePercent: Double? {
-        windows.compactMap(\.usedPercent).max()
+        headlineWindow?.usedPercent
     }
 
     /// The window `headlinePercent` came from — what its reset time belongs to.
     public var headlineWindow: UsageWindow? {
-        windows
-            .filter { $0.usedPercent != nil }
-            .max { ($0.usedPercent ?? 0) < ($1.usedPercent ?? 0) }
+        ownWindows.max { ($0.usedPercent ?? 0) < ($1.usedPercent ?? 0) }
     }
 
     /// The window a single figure stands for: the one the owner picked for

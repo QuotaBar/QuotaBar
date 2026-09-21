@@ -257,6 +257,7 @@ public struct CodexProvider: QuotaProvider {
         for extra in body.additionalRateLimits ?? [] {
             let name = extra.limitName ?? extra.meteredFeature
             var converted = convert(extra.rateLimit, prefix: name, active: false)
+            for index in converted.indices { converted[index].extra = true }
             if let reserve = Reserve(extra, planLimitReached: planLimitReached) {
                 for index in converted.indices {
                     converted[index].label = reserve.label

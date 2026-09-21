@@ -247,6 +247,7 @@ final class StatusItemCoordinator: NSObject {
         let shown = NSMenuItem(title: L10n.t("Show in Menu Bar", "显示在菜单栏"), action: nil, keyEquivalent: "")
         shown.submenu = providerMenu(store: store)
         menu.addItem(shown)
+        if let limits = limitMenu(store: store) { menu.addItem(limits) }
         menu.addItem(.separator())
 
         add(menu, L10n.t("Refresh Now", "立即刷新"), "r") { [store] in store.refreshAll() }
@@ -285,6 +286,34 @@ final class StatusItemCoordinator: NSObject {
             }
         }
         return menu
+    }
+
+    /// Which of the chosen provider's limits the icon stands for — the menu
+    /// bar's own choice, beside the choice of provider it goes with. Only
+    /// when one provider is chosen and it has limits to choose between: on
+    /// Automatic the icon reads the fullest limit of all, and nothing here
+    /// would move it.
+    private func limitMenu(store: UsageStore) -> NSMenuItem? {
+        guard let id = store.selected,
+              let windows = store.states[id]?.snapshot?.windows.filter({ $0.usedPercent != nil }), windows.count > 1
+        else { return nil }
+        let item = NSMenuItem(title: L10n.t("\(id.displayName) Limit Shown", "\(id.displayName) 显示的额度"), action: nil, keyEquivalent: "")
+        let menu = NSMenu()
+        let picked = store.pickedHeadlineWindow(for: id, on: .menuBar)
+        let following = windows.contains { $0.id == picked } ? picked : nil
+        let automatic = add(menu, L10n.t("Automatic (fullest of the plan's)", "自动（套餐里用得最满的）"),
+                            detail: store.states[id]?.snapshot?.headlineWindow?.menuName)
+        { [store] in store.setHeadlineWindow(nil, for: id, on: .menuBar) }
+        automatic.state = following == nil ? .on : .off
+        menu.addItem(.separator())
+        for window in windows {
+            let used = window.usedPercent ?? 0
+            let row = add(menu, window.menuName, detail: QuotaFormat.percent(store.meterMode.shownPercent(fromUsed: used)))
+            { [store] in store.setHeadlineWindow(window.id, for: id, on: .menuBar) }
+            row.state = following == window.id ? .on : .off
+        }
+        item.submenu = menu
+        return item
     }
 
     /// "81% left" or "19% used", as the icon counts; a prepaid account's

@@ -174,3 +174,42 @@ final class WindowMenuNameTests: XCTestCase {
         XCTAssertEqual(plan.menuName, "Week")
     }
 }
+
+final class OwnWindowsTests: XCTestCase {
+    private func window(_ title: String, _ used: Double?, seconds: Int? = nil, extra: Bool = false, inUse: Bool = false) -> UsageWindow {
+        var window = UsageWindow(title: title, usedPercent: used, windowSeconds: seconds, scope: extra ? title : nil, inUse: inUse)
+        window.extra = extra
+        return window
+    }
+
+    /// The owner's Cursor on 2026-09-22: a month just reset at 0.2%, and the
+    /// menu bar standing at 69.3% for Grok Bot.
+    func testAnExtraIsNotWhatAutomaticFollows() {
+        let cursor = UsageSnapshot(planName: "Pro+", account: nil, windows: [
+            window("Monthly", 0.2), window("Named models", 0), window("Grok Bot", 69.3, seconds: 604_800, extra: true),
+        ])
+        XCTAssertEqual(cursor.headlineWindow?.title, "Monthly")
+        XCTAssertEqual(cursor.headlinePercent, 0.2)
+        XCTAssertEqual(MeterReading.across([cursor]).headline, 0.2)
+        // Picked, it is followed like any other.
+        XCTAssertEqual(cursor.headlinePercent(preferring: "Grok Bot"), 69.3)
+    }
+
+    func testAnExtraInUseCounts() {
+        let codex = UsageSnapshot(planName: "Plus", account: nil, windows: [
+            window("Week", 40, seconds: 604_800), window("Reserve", 85, seconds: 604_800, extra: true, inUse: true),
+        ])
+        XCTAssertEqual(codex.headlineWindow?.title, "Reserve")
+    }
+
+    func testNothingButExtrasIsReadFromThem() {
+        let only = UsageSnapshot(planName: nil, account: nil, windows: [window("Grok Bot", 12, extra: true), window("Balance", nil)])
+        XCTAssertEqual(only.headlinePercent, 12)
+    }
+
+    func testTheFlagSurvivesTheCache() throws {
+        let back = try JSONDecoder().decode(UsageWindow.self, from: JSONEncoder().encode(window("Grok Bot", 1, extra: true)))
+        XCTAssertTrue(back.extra)
+        XCTAssertFalse(try JSONDecoder().decode(UsageWindow.self, from: JSONEncoder().encode(window("Week", 1))).extra)
+    }
+}

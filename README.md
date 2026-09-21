@@ -50,9 +50,19 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.12** (2026-09-22) · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.12** (2026-09-22) · **2** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-09-22</b> · Unreleased · 2 fixed</summary>
+
+**Fixed**
+
+- With Cursor chosen for the menu-bar icon, it showed Grok Bot's usage rather than the month's plan (a plan just reset at 0.2%, an icon at 69.3%). With no limit chosen for Cursor the menu bar was on Automatic, and Automatic took the fullest of every limit reported, an allowance beside the plan such as Grok Bot included. Automatic now takes the fullest of the plan's own limits: Cursor's Grok Bot, Codex's reserve and its per-model extras are left out unless one is being drawn on (Codex's reserve once the plan is spent) or you pick it yourself. The menu bar, the island, the dock, the card's ring, desktop cards and the usage alert all follow the rule.
+- Since 0.5.12 the menu bar's limit is its own choice, but the only way to it was Settings; the icon's own right-click menu had none. Right-click the icon: under "Show in Menu Bar" there is now "Cursor Limit Shown" (named for whichever provider is chosen), with the plan's limits and Automatic.
+
+</details>
+
+<details>
 <summary><b>2026-09-22</b> · 0.5.12 · 1 added · 1 fixed</summary>
 
 **Added**
@@ -75,17 +85,6 @@ Latest release **0.5.12** (2026-09-22) · [full changelog](CHANGELOG.en.md)
 - Turning the island off and on again in Settings could leave its glow and flash frozen for good; doing so while a reset banner was up brought the island back a row too tall before it shrank. Both fixed.
 - With the system's Reduce Motion on, the island's window still eased while its content was already in place. The window now moves at once as well.
 - A closed panel keeps nothing: it was only hidden, its views stayed alive, and any per-frame animation inside went on costing a Mac something nobody could see. The content is released when the panel closes and built again when it opens.
-
-</details>
-
-<details>
-<summary><b>2026-09-21</b> · 0.5.10 · 3 fixed</summary>
-
-**Fixed**
-
-- The GitHub link in About, the feedback entry, the update check and the issue numbers in release notes all point at the repository's current path, QuotaBar/QuotaBar, rather than redirecting from the old one. An update feed still set to the old path keeps working, mirror and all.
-- The island kept a Mac busy while nothing was happening — about 8% of a core with the screen unchanged. The light that runs round the collapsed outline was redrawn 30 times a second; it now runs while a read is in flight, on hover, for a banner and near a limit, and stops when nothing is happening. Turn on "Light always running" under Settings → Presentation → Island to have it run as before; the switch says what that costs. The halo outside the outline is unchanged. ([#5](https://github.com/QuotaBar/QuotaBar/issues/5))
-- Opening the panel once left QuotaBar holding about a fifth of a core for the rest of the session, with the panel closed and nothing on screen: the counting spend figure decided whether to pause from the clock inside its body, which is read once when the animation is made, so it redrew 60 times a second until the app quit. On a Mac without the island this was the whole of it. The low-quota outline flash is drawn by the system's own animation too, rather than recomputed every frame.
 
 </details>
 

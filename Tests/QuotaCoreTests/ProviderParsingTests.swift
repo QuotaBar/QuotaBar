@@ -95,6 +95,9 @@ final class CodexParsingTests: XCTestCase {
         // The id and scope stay the provider's, so saved picks keep matching.
         XCTAssertEqual(reserve.scope, "gpt-reserve")
         XCTAssertTrue(reserve.id.hasPrefix("gpt-reserve"))
+        // Beside the plan, as every additional limit is; the plan's own are not.
+        XCTAssertTrue(reserve.extra)
+        XCTAssertFalse(snapshot.windows.filter { $0.scope == nil }.contains { $0.extra })
         // The plan's own window is untouched.
         let plan = try XCTUnwrap(snapshot.windows.first { $0.scope == nil })
         XCTAssertNil(plan.label)

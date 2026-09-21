@@ -3,6 +3,15 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
+## Unreleased
+
+### 2026-09-22
+
+#### Fixed
+
+- With Cursor chosen for the menu-bar icon, it showed Grok Bot's usage rather than the month's plan (a plan just reset at 0.2%, an icon at 69.3%). With no limit chosen for Cursor the menu bar was on Automatic, and Automatic took the fullest of every limit reported, an allowance beside the plan such as Grok Bot included. Automatic now takes the fullest of the plan's own limits: Cursor's Grok Bot, Codex's reserve and its per-model extras are left out unless one is being drawn on (Codex's reserve once the plan is spent) or you pick it yourself. The menu bar, the island, the dock, the card's ring, desktop cards and the usage alert all follow the rule.
+- Since 0.5.12 the menu bar's limit is its own choice, but the only way to it was Settings; the icon's own right-click menu had none. Right-click the icon: under "Show in Menu Bar" there is now "Cursor Limit Shown" (named for whichever provider is chosen), with the plan's limits and Automatic.
+
 ## 0.5.12 · 2026-09-22
 
 ### 2026-09-22

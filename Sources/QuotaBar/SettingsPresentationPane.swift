@@ -113,8 +113,8 @@ struct PresentationPane: View {
         SettingsCard(
             L10n.t("Which limit each place shows", "各处显示的额度"),
             help: L10n.t(
-                "The menu bar, the island and the dock each show one figure for a provider, and each can stand for a different limit — the 5-hour limit in the menu bar and the week on the dock, say. Automatic is whichever limit is fullest. The card's own ring is chosen on the card: double-click a limit, or right-click the card.",
-                "菜单栏、刘海岛和停靠条各用一个数字代表一个服务商，三处可以分别代表不同的额度，比如菜单栏看 5 小时、停靠条看每周。「自动」取用得最满的那个。卡片自己的圆环在卡片上选：双击某个额度，或右键卡片。"))
+                "The menu bar, the island and the dock each show one figure for a provider, and each can stand for a different limit — the 5-hour limit in the menu bar and the week on the dock, say. Automatic is the fullest of the plan's own limits; an allowance beside the plan — Cursor's Grok Bot, Codex's reserve — only counts when you pick it. The card's own ring is chosen on the card: double-click a limit, or right-click the card.",
+                "菜单栏、刘海岛和停靠条各用一个数字代表一个服务商，三处可以分别代表不同的额度，比如菜单栏看 5 小时、停靠条看每周。「自动」取套餐自身额度里用得最满的那个；套餐之外的附加额度（Cursor 的 Grok Bot、Codex 的备用额度）只有你亲自选了才算。卡片自己的圆环在卡片上选：双击某个额度，或右键卡片。"))
         {
             if store.enabled.isEmpty {
                 SettingFootnote(L10n.t("No providers are on.", "还没有开启服务商。"))

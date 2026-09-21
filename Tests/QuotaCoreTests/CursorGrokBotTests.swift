@@ -23,6 +23,10 @@ final class CursorGrokBotTests: XCTestCase {
         // Last, after the plan rows: it is the least important number.
         XCTAssertEqual(snapshot.windows.last?.title, "Grok Bot")
         XCTAssertEqual(snapshot.account, "dev@example.com")
+        // An allowance beside the plan: never what the plan's figure follows.
+        XCTAssertTrue(bot.extra)
+        XCTAssertNotEqual(snapshot.headlineWindow?.title, "Grok Bot")
+        XCTAssertFalse(snapshot.windows.filter { $0.title != "Grok Bot" }.contains { $0.extra })
     }
 
     func testNoIncludedAllowanceMeansNoRow() throws {
