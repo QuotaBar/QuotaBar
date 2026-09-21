@@ -301,10 +301,7 @@ final class Coordinators {
             LocalAPIServer.shared.apply(enabled: store.experience.localAPI, store: store)
         }
         guard !privacyMasked else { return }
-        let severity = store.islandProviders.compactMap { store.headlinePercent(for: $0) }
-            .map { store.alertSettings.level(for: $0) }
-            .max() ?? .none
-        island.noteSeverity(severity, enabled: store.experience.islandAutoPeek)
+        island.noteSeverity(store.islandSeverity, enabled: store.experience.islandAutoPeek)
         if surfaces?.island != store.showsIsland || surfaces?.dock != store.showsDock {
             surfaces = (store.showsIsland, store.showsDock)
             island.sync(store: store)

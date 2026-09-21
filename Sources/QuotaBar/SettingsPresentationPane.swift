@@ -26,8 +26,8 @@ struct PresentationPane: View {
                 SettingRow(
                     L10n.t("Per side", "每侧显示"),
                     caption: L10n.t(
-                        "How many providers sit either side of the notch, in the order they are enabled. Hover to open the full panel.",
-                        "刘海两侧各显示几个服务商，按启用顺序排列。悬停即从顶部展开完整面板。"))
+                        "How many providers sit either side of the notch, in the order they are enabled. The glow, the flash and the auto-open only speak for these. Hover to open the full panel.",
+                        "刘海两侧各显示几个服务商，按启用顺序排列。光晕、闪烁和自动弹出只针对这几个。悬停即从顶部展开完整面板。"))
                 {
                     GlassSegmented(
                         options: [1, 2, 3].map { (value: $0, label: L10n.t("\($0)", "\($0) 个")) },
@@ -50,7 +50,7 @@ struct PresentationPane: View {
                 .disabled(!store.experience.islandGlow)
                 .opacity(!store.experience.islandGlow ? 0.45 : 1)
                 SettingToggle(
-                    L10n.t("Open when a limit nears", "越线时自动弹出"), caption: L10n.t("Opens for four seconds when a window crosses its warning.", "额度第一次超过告警线时展开 4 秒。"),
+                    L10n.t("Open when a limit nears", "越线时自动弹出"), caption: L10n.t("Opens for four seconds when a provider shown on the island crosses its warning.", "岛上显示的服务商第一次超过告警线时展开 4 秒。"),
                     isOn: Binding(
                         get: { store.experience.islandAutoPeek },
                         set: { value in store.updateExperience { $0.islandAutoPeek = value } }))

@@ -13,6 +13,19 @@ final class IslandCoordinator {
     private var collapseTask: Task<Void, Never>?
     private weak var store: UsageStore?
     private(set) var expanded = false
+    /// Closed as far as `expanded` goes, and still shrinking on screen.
+    private var closing = false
+    /// Open, or not yet done closing: a pointer that comes back keeps it
+    /// open either way, without waiting out the hover delay again.
+    var isOpen: Bool { expanded || closing }
+    /// Where the panel is going, and the glow margin it will have there.
+    /// The mouse is judged against these, never against `panel.frame`: mid
+    /// animation that is neither the shape being left nor the one arrived
+    /// at, and a pointer heading down into a panel still growing was told
+    /// it had left.
+    private var targetFrame: NSRect = .zero
+    private var targetMargin: CGFloat = glowMargin
+    private var refreshMouseThrough: (() -> Void)?
 
     /// Room around the silhouette for the glow, after codex-island. The
     /// window is this much wider and taller than the shape; outside the
@@ -41,6 +54,14 @@ final class IslandCoordinator {
         /// The reset banner on show, if any.
         @Published var banner: ResetBanner?
         @Published var occluded = false
+        /// Whether the pointer has come to the island, by the coordinator's
+        /// own test. The view's hover follows this, not its tracking area:
+        /// that one only hears of a pointer once the panel takes the mouse,
+        /// which is a move after it arrived — and a pointer thrown at the
+        /// top of the screen stops there and never makes it. A shape that
+        /// grew under a resting pointer has not been come to: a peek or a
+        /// banner opening over it must still fold away on its own.
+        @Published var pointerInside = false
         @Published var page: IslandPanel.Page = .quota
 
         /// One page on or back, stopping at either end: a swipe, a
@@ -68,7 +89,11 @@ final class IslandCoordinator {
     /// that says which, glows green, and folds away after a few seconds.
     /// Nothing happens while the panel is open — its rows say it instead.
     func playReset(_ events: [ResetEvent], store: UsageStore) {
-        let shown = events.filter { store.islandProviders.contains($0.provider) }
+        // Only the providers the island draws. One it has no room for would
+        // grow a row and turn the glow its colour for a name the strip never
+        // shows, and the open panel has no row for it either.
+        let onIsland = store.islandShown
+        let shown = events.filter { onIsland.contains($0.provider) }
         guard panel != nil, !expanded, !shown.isEmpty else { return }
         bridge.banner = ResetBanner(events: shown)
         bannerShown = true
@@ -105,9 +130,21 @@ final class IslandCoordinator {
         mouseMonitors = []
         if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
         occlusionObserver = nil
+        refreshMouseThrough = nil
         panel?.orderOut(nil)
         panel = nil
         expanded = false
+        closing = false
+        // The bridge outlives the panel. A banner left up would size the
+        // next panel for it, and `occluded` left set would hold the next
+        // panel's light still for good: it is shown visible and hears of no
+        // change.
+        bannerTask?.cancel()
+        bannerTask = nil
+        bannerShown = false
+        bridge.banner = nil
+        bridge.occluded = false
+        bridge.pointerInside = false
     }
 
     /// Opens the island for a few seconds when a tracked window newly
@@ -157,25 +194,57 @@ final class IslandCoordinator {
         }
     }
 
-    /// The silhouette in window coordinates: the window minus the glow margin.
+    /// The silhouette in screen coordinates: the window minus the glow margin.
     func silhouetteContains(screenPoint point: NSPoint) -> Bool {
         guard let panel else { return false }
-        let frame = panel.frame
-        let margin = Self.margin(expanded: expanded)
-        let shape = NSRect(x: frame.minX + margin, y: frame.minY + margin, width: frame.width - margin * 2, height: frame.height - margin)
+        // Closing is the one time the frame in flight is the one to ask. The
+        // target is already the strip, and the panel is still on screen
+        // round it: judged against the strip, a pointer that came back to
+        // the panel was told it had not, and a click on the black went to
+        // the window beneath. The close has no overshoot, so the frame in
+        // flight always holds the strip.
+        let frame = closing ? panel.frame : targetFrame
+        var shape = NSRect(
+            x: frame.minX + targetMargin,
+            y: frame.minY + targetMargin,
+            width: frame.width - targetMargin * 2,
+            height: frame.height - targetMargin)
+        // The shape's top edge is the screen's, and a pointer thrown at the
+        // top of the screen reports exactly that y — which `contains` counts
+        // as outside, so the island went dead for the most natural way to
+        // reach it. Nothing is above the edge to take the point instead.
+        shape.size.height += 1
         return shape.contains(point)
     }
+
+    /// Asked now, not remembered from the last pointer move.
+    var pointerInside: Bool { silhouetteContains(screenPoint: NSEvent.mouseLocation) }
 
     /// Click-through outside the shape: the margin that holds the glow must
     /// not swallow clicks meant for the menu bar or the window beneath.
     private func installMouseTracking() {
-        let update: () -> Void = { [weak self] in
+        let update: (Bool) -> Void = { [weak self] moved in
             guard let self, let panel = self.panel else { return }
-            let inside = self.silhouetteContains(screenPoint: NSEvent.mouseLocation)
+            let inside = self.pointerInside
             if panel.ignoresMouseEvents == inside { panel.ignoresMouseEvents = !inside }
+            // Only a pointer that moved has come to the island. Asked again
+            // because the shape changed, it can turn out to have been left
+            // behind, never to have arrived.
+            let here = inside && (moved || self.bridge.pointerInside)
+            if self.bridge.pointerInside != here { self.bridge.pointerInside = here }
         }
-        mouseMonitors = MouseThrough.monitors(update: update)
+        mouseMonitors = MouseThrough.monitors { update(true) }
+        // The shape changes under a pointer that is not moving — a peek, a
+        // banner, a setting — and nothing else would ask again. The dock
+        // keeps the same handle for the same reason.
+        refreshMouseThrough = { update(false) }
     }
+
+    /// The view's tracking area saw something. It is no witness to a pointer
+    /// arriving — it fires late, and for a shape that grew under one — but
+    /// it does hear a pointer leave onto one of the app's own windows, where
+    /// no pointer move reaches the monitors.
+    func pointerMayHaveLeft() { refreshMouseThrough?() }
 
     /// Re-places the panel after a setting changed the strip's width.
     func relayout() {
@@ -184,11 +253,15 @@ final class IslandCoordinator {
     }
 
     /// Collapsing is delayed so a quick pointer sweep across the strip does
-    /// not make the panel flicker open and shut.
+    /// not make the panel flicker open and shut. The dock's wait, so the two
+    /// feel like one hand.
     func requestExpanded(_ value: Bool, apply: @escaping (Bool) -> Void) {
         collapseTask?.cancel()
         collapseTask = nil
+        // A view of a panel already hidden, its timers still running.
+        guard panel != nil else { return }
         if value {
+            closing = false
             if bannerShown {
                 bannerTask?.cancel()
                 bannerShown = false
@@ -200,11 +273,22 @@ final class IslandCoordinator {
             return
         }
         collapseTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(250))
+            try? await Task.sleep(for: .milliseconds(320))
             guard !Task.isCancelled else { return }
             self?.expanded = false
+            // Under Reduce Animations it is closed at once.
+            self?.closing = !Motion.reduced
             apply(false)
             self?.layout(expanded: false, animated: true)
+            guard self?.closing == true else { return }
+            // The close's own length: until it is over the panel is still on
+            // screen, and coming back to it is coming back to an open island.
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            self?.closing = false
+            // The test goes back to the strip here, under a pointer that may
+            // not move again.
+            self?.refreshMouseThrough?()
         }
     }
 
@@ -221,7 +305,13 @@ final class IslandCoordinator {
             y: screen.frame.maxY - size.height,
             width: size.width,
             height: size.height)
-        guard animated else {
+        targetFrame = frame
+        targetMargin = margin
+        defer { refreshMouseThrough?() }
+        // Under Reduce Animations the content is placed at once; a window
+        // still easing after it was the two coming apart for the length of
+        // the animation.
+        guard animated, !Motion.reduced else {
             panel.setFrame(frame, display: true)
             return
         }
@@ -323,12 +413,21 @@ struct IslandView: View {
     @State private var peekTask: Task<Void, Never>?
     /// Opens the island once the pointer has rested on it.
     @State private var dwellTask: Task<Void, Never>?
+    /// Gives up on a rest the pointer walked away from.
+    @State private var leaveTask: Task<Void, Never>?
+    /// The half second ran out during a slip off the edge; coming back
+    /// within the grace opens the island without starting it over.
+    @State private var rested = false
 
     /// How long the pointer rests on the closed island before it opens. It
     /// used to open on contact, so a pointer passing on its way to the menu
     /// bar grew and shrank the panel; a click opens it at once. Half a
     /// second, the owner's pick after trying a full one.
     static let hoverDelay: Duration = .milliseconds(500)
+    /// How long the pointer may slip off the closed strip and still be
+    /// resting on it. The strip is a menu bar tall, and a hand settling on
+    /// it grazes its edge; each graze used to start the half second over.
+    static let leaveGrace: Duration = .milliseconds(120)
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -351,10 +450,21 @@ struct IslandView: View {
             }
             silhouette.fill(Color.black)
             if expanded {
-                IslandPanel(store: store, notch: notchMetrics, bridge: bridge)
-                    .opacity(contentVisible ? 1 : 0)
-                    .offset(y: contentVisible ? 0 : -8)
-                    .allowsHitTesting(contentVisible)
+                // The panel is its full size from the first frame, whatever
+                // it is offered, so a clip on the panel itself cuts nothing.
+                // The clear colour takes what the black shape takes, and the
+                // panel rides on it: clipped to the shape as it grows and
+                // shrinks, and no longer stretching the stack past a window
+                // still small.
+                Color.clear
+                    .overlay(alignment: .top) {
+                        IslandPanel(store: store, notch: notchMetrics, bridge: bridge)
+                            .opacity(contentVisible ? 1 : 0)
+                            .offset(y: contentVisible ? 0 : -8)
+                            .allowsHitTesting(contentVisible)
+                    }
+                    .clipShape(silhouette)
+                    .transition(.opacity)
             } else if let notch = notchMetrics {
                 VStack(spacing: 0) {
                     NotchStrip(store: store, metrics: notch, slots: store.islandSlots)
@@ -362,6 +472,7 @@ struct IslandView: View {
                         ResetBannerRow(banner: banner).id(banner.id)
                     }
                 }
+                .transition(.opacity)
             } else {
                 VStack(spacing: 0) {
                     compactPill
@@ -369,40 +480,34 @@ struct IslandView: View {
                         ResetBannerRow(banner: banner).id(banner.id)
                     }
                 }
+                .transition(.opacity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .contentShape(silhouette)
-        .onHover { inside in
-            hovering = inside
-            peekTask?.cancel()
-            dwellTask?.cancel()
-            guard inside else {
-                setExpanded(false)
-                return
-            }
-            // Back on an open island — or one still closing — keeps it open.
-            if expanded {
-                setExpanded(true)
-                return
-            }
-            dwellTask = Task { @MainActor in
-                try? await Task.sleep(for: Self.hoverDelay)
-                guard !Task.isCancelled, hovering else { return }
-                setExpanded(true)
-            }
-        }
+        // The rectangle the coordinator lets the mouse through to. The
+        // rounded silhouette left two corners that took the click and did
+        // nothing with it.
+        .contentShape(Rectangle())
+        // Where the pointer is comes from the coordinator: the tracking
+        // area misses a pointer that arrives and stops, and reports one gone
+        // that is over a panel still growing.
+        .onHover { _ in coordinator.pointerMayHaveLeft() }
+        .onChange(of: bridge.pointerInside) { _, _ in pointerMoved() }
+        // Shown under a pointer already resting on it.
+        .onAppear { pointerMoved() }
         // A click opens the closed island without the wait. Simultaneous, so
         // the open panel's own buttons and chips still take their clicks.
         .simultaneousGesture(TapGesture().onEnded {
             guard !expanded else { return }
-            dwellTask?.cancel()
+            cancelDwell()
             setExpanded(true)
         })
+        // The margin rides the window's own curve. Padding has nothing to
+        // interpolate, so an animation scoped to it moved nothing: the
+        // silhouette jumped to its new margin while the window had barely
+        // set off.
         .animation(Motion.animation(IslandCoordinator.frameCurve(expanded: expanded))) { content in
-            content
-                .padding(.horizontal, IslandCoordinator.margin(expanded: expanded))
-                .padding(.bottom, IslandCoordinator.margin(expanded: expanded))
+            content.modifier(IslandMargin(margin: IslandCoordinator.margin(expanded: expanded)))
         }
         .onChange(of: bridge.peek) { _, _ in
             // A window just crossed its warning: open for four seconds, then
@@ -419,9 +524,65 @@ struct IslandView: View {
         .honoursReducedMotion()
     }
 
+    private func pointerMoved() {
+        let inside = bridge.pointerInside
+        guard inside != hovering else { return }
+        hovering = inside
+        peekTask?.cancel()
+        leaveTask?.cancel()
+        leaveTask = nil
+        guard inside else {
+            if coordinator.isOpen {
+                cancelDwell()
+                setExpanded(false)
+            } else {
+                leaveTask = Task { @MainActor in
+                    try? await Task.sleep(for: Self.leaveGrace)
+                    guard !Task.isCancelled, !hovering else { return }
+                    cancelDwell()
+                }
+            }
+            return
+        }
+        // Back on an open island — or one still closing — keeps it open.
+        if coordinator.isOpen {
+            cancelDwell()
+            setExpanded(true)
+            return
+        }
+        // Back from a slip: the rest it interrupted is either still
+        // counting or ran out while the pointer was off the edge.
+        if dwellTask != nil {
+            if rested {
+                cancelDwell()
+                setExpanded(true)
+            }
+            return
+        }
+        dwellTask = Task { @MainActor in
+            try? await Task.sleep(for: Self.hoverDelay)
+            guard !Task.isCancelled else { return }
+            guard hovering else {
+                rested = true
+                return
+            }
+            cancelDwell()
+            setExpanded(true)
+        }
+    }
+
+    private func cancelDwell() {
+        dwellTask?.cancel()
+        dwellTask = nil
+        rested = false
+    }
+
     private func setExpanded(_ value: Bool) {
         coordinator.requestExpanded(value) { value in
-            expanded = value
+            // The strip and the panel change places in a fade, under the
+            // shape's own move; swapped in one frame, the figures landed at
+            // the top of a black block that then shrank round them.
+            withAnimation(Motion.animation(.easeOut(duration: 0.16))) { expanded = value }
             if value {
                 withAnimation(Motion.animation(.easeOut(duration: 0.22).delay(0.1))) { contentVisible = true }
             } else {
@@ -433,19 +594,11 @@ struct IslandView: View {
     /// What makes the light run when it is not set to run always: a read in
     /// flight, the pointer on the island, a banner, or a quota near its end.
     private var glowEvent: Bool {
-        hovering || bridge.banner != nil || store.enabled.contains { store.isLoading($0) } || store.isComputingCost || severity != .none || lowQuota != .none
+        hovering || bridge.banner != nil || store.islandShown.contains { store.isLoading($0) } || store.isComputingCost || severity != .none || lowQuota != .none
     }
 
-    /// A quota on the island down to its last 15%.
-    private var lowQuota: AlertLevel {
-        LowQuota.level(used: store.islandProviders.map { store.headlinePercent(for: $0) })
-    }
-
-    private var severity: AlertLevel {
-        store.islandProviders.compactMap { store.headlinePercent(for: $0) }
-            .map { store.alertSettings.level(for: $0) }
-            .max() ?? .none
-    }
+    private var lowQuota: AlertLevel { store.islandLowQuota }
+    private var severity: AlertLevel { store.islandSeverity }
 
     /// Cobalt at rest; amber or red when a tracked window is past its line.
     private var glowColor: Color {
@@ -486,7 +639,7 @@ struct IslandView: View {
             }
             .frame(width: 20, height: 20)
 
-            ForEach(store.islandProviders.prefix(3)) { id in
+            ForEach(store.islandShown) { id in
                 if let used = store.headlinePercent(for: id) {
                     // Same glanceable role as the menu-bar glyph, so it follows
                     // the same remaining/used preference.
@@ -507,10 +660,30 @@ struct IslandView: View {
                 }
             }
             Spacer(minLength: 0)
-            LiveDot(level: store.alertLevel, warn: !store.failingProviders.isEmpty)
+            LiveDot(level: severity, warn: store.islandShown.contains { store.failingProviders.contains($0) })
         }
         .padding(.horizontal, Design.space3)
         .frame(height: 40)
+    }
+}
+
+/// The glow's room round the silhouette, as a value SwiftUI can animate:
+/// each frame of the curve lays the shape out again at the margin between.
+private struct IslandMargin: ViewModifier, Animatable {
+    var margin: CGFloat
+
+    var animatableData: CGFloat {
+        get { margin }
+        set { margin = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        // The opening curve overshoots, and a margin below nothing would
+        // push the shape past the window's edge.
+        let margin = max(0, margin)
+        content
+            .padding(.horizontal, margin)
+            .padding(.bottom, margin)
     }
 }
 
@@ -601,8 +774,8 @@ struct NotchStrip: View {
     let metrics: IslandCoordinator.NotchMetrics
     var slots: Int = 1
 
-    private var left: [ProviderID] { Array(store.islandProviders.prefix(slots)) }
-    private var right: [ProviderID] { Array(store.islandProviders.dropFirst(slots).prefix(slots)) }
+    private var left: [ProviderID] { IslandRoom.columns(store.islandProviders, slots: slots).left }
+    private var right: [ProviderID] { IslandRoom.columns(store.islandProviders, slots: slots).right }
 
     var body: some View {
         HStack(spacing: 0) {

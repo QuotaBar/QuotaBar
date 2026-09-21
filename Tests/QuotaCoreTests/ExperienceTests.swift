@@ -269,3 +269,38 @@ final class DeskCardTests: XCTestCase {
         XCTAssertTrue(DeskCardStyle.daily.readsLogs)
     }
 }
+
+final class IslandRoomTests: XCTestCase {
+    private let ids: [ProviderID] = [.codex, .claude, .kimi, .cursor, .deepseek, .gemini, .zai]
+
+    func testTwoColumnsOfSlots() {
+        XCTAssertEqual(IslandRoom.columns(ids, slots: 1).left, [.codex])
+        XCTAssertEqual(IslandRoom.columns(ids, slots: 1).right, [.claude])
+        XCTAssertEqual(IslandRoom.columns(ids, slots: 3).left, [.codex, .claude, .kimi])
+        XCTAssertEqual(IslandRoom.columns(ids, slots: 3).right, [.cursor, .deepseek, .gemini])
+        XCTAssertEqual(IslandRoom.columns([.codex], slots: 2).left, [.codex])
+        XCTAssertEqual(IslandRoom.columns([.codex], slots: 2).right, [])
+        XCTAssertEqual(IslandRoom.columns(ids, slots: 0).left, [.codex], "a slot count below one is one")
+    }
+
+    func testShownIsWhatTheColumnsHold() {
+        for slots in 1...3 {
+            let columns = IslandRoom.columns(ids, slots: slots)
+            XCTAssertEqual(IslandRoom.shown(ids, slots: slots, pill: false), columns.left + columns.right)
+        }
+        XCTAssertEqual(IslandRoom.shown(ids, slots: 1, pill: true), [.codex, .claude])
+        XCTAssertEqual(IslandRoom.shown(ids, slots: 3, pill: true), [.codex, .claude, .kimi], "the pill fits three")
+        XCTAssertEqual(IslandRoom.shown([], slots: 2, pill: false), [])
+    }
+
+    /// The owner's island on 2026-09-21: one slot a side showing Codex at
+    /// 40% and Claude at 13%, flashing red for Cursor's 99.8% behind them.
+    func testAQuotaTheIslandDoesNotShowDoesNotFlashIt() {
+        let used: [ProviderID: Double] = [.codex: 40, .claude: 13, .kimi: 39, .cursor: 99.8]
+        let all: [ProviderID] = [.codex, .claude, .kimi, .cursor]
+        XCTAssertEqual(LowQuota.level(used: all.map { used[$0] }), .critical)
+        let shown = IslandRoom.shown(all, slots: 1, pill: false)
+        XCTAssertEqual(LowQuota.level(used: shown.map { used[$0] }), .none)
+        XCTAssertEqual(shown.compactMap { used[$0] }.map { AlertSettings().level(for: $0) }.max() ?? .none, .none)
+    }
+}

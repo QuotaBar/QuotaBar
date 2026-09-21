@@ -104,11 +104,8 @@ struct IslandPanel: View {
         _failuresPinned = State(initialValue: showsFailures)
     }
 
-    /// Left takes the first `slots` enabled providers, right the next.
-    private var left: [ProviderID] { Array(store.islandProviders.prefix(store.islandSlots)) }
-    private var right: [ProviderID] {
-        Array(store.islandProviders.dropFirst(store.islandSlots).prefix(store.islandSlots))
-    }
+    private var left: [ProviderID] { store.islandColumns.left }
+    private var right: [ProviderID] { store.islandColumns.right }
 
     var body: some View {
         VStack(spacing: 0) {

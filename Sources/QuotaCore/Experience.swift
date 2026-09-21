@@ -157,7 +157,8 @@ public struct PaceAlertPrefs: Codable, Equatable, Sendable {
 }
 
 /// The places a provider's figures are shown. Hiding a provider from one keeps
-/// it enabled — read, alerted on and counted — just not drawn there.
+/// it enabled — read, counted, and notified about — just not drawn there, and
+/// a surface's own light only speaks for what it draws.
 public enum DisplaySurface: String, Codable, CaseIterable, Sendable, Identifiable {
     case panel
     case dock
@@ -376,6 +377,37 @@ extension ExperiencePrefs {
     public func visible(_ ids: [ProviderID], on surface: DisplaySurface) -> [ProviderID] {
         let hidden = Set(hiddenProviders[surface.rawValue] ?? [])
         return ids.filter { !hidden.contains($0.rawValue) }
+    }
+}
+
+// MARK: - Room on the island
+
+/// What the island has room to draw. The notch has a side each, so the strip
+/// and the open panel show two columns of `slots`; the pill on a screen with
+/// no notch is one strip of fixed width, and three figures fit in it. The
+/// providers past that stay enabled and read, and the island never mentions
+/// them: its glow, its flash and its peek speak for what it shows, or a quota
+/// running out behind it turns the island red with nothing on it to say why.
+///
+/// "Shows" is the closed island: the glow, the flash and the peek all happen
+/// while it is closed, so that is where the reason has to be in sight. With
+/// no notch and two or three slots the open panel has room for more than the
+/// pill's three, and draws them; a fourth running out colours its own figure
+/// there and leaves the pill alone.
+public enum IslandRoom {
+    public static let pillCount = 3
+
+    /// Left takes the first `slots` providers, right the next.
+    public static func columns(_ ids: [ProviderID], slots: Int) -> (left: [ProviderID], right: [ProviderID]) {
+        let slots = max(slots, 1)
+        return (Array(ids.prefix(slots)), Array(ids.dropFirst(slots).prefix(slots)))
+    }
+
+    /// The providers on the closed island, in the order it draws them.
+    public static func shown(_ ids: [ProviderID], slots: Int, pill: Bool) -> [ProviderID] {
+        let both = columns(ids, slots: slots)
+        let all = both.left + both.right
+        return pill ? Array(all.prefix(pillCount)) : all
     }
 }
 

@@ -50,9 +50,21 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.10** (2026-09-21) · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.10** (2026-09-21) · **4** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-09-21</b> · Unreleased · 4 fixed</summary>
+
+**Fixed**
+
+- The island raised the alarm for providers it was not showing. With one provider a side it draws two figures, Codex and Claude, but the red flash round its outline, the glow's colour and "Open when a limit nears" looked at every provider allowed on the island. With Cursor at 99.8% the island flashed red over two figures with plenty left, which read as something wrong with those two accounts. The island now speaks only for the providers it shows: the flash, the glow, the auto-open and the reset banner all follow the ones drawn on it, and a provider it has no room for can run out without the island reacting (the panel, the dock and system notifications are unchanged). On a screen with no notch the pill now follows "Per side" too: two figures at one a side, where it used to be a fixed three.
+- Hovering the island sometimes opened it, sometimes did nothing, and sometimes opened it only for it to close again. Six causes, fixed together:- Throwing the pointer at the top of the screen, the natural way to reach the notch, reports a height exactly on the island's top edge, and the test counted that edge as outside. The whole island stopped taking the mouse, and an open panel closed the moment the pointer pressed upward.- Whether the island takes the mouse was only judged again when the pointer moved, and against the window's size mid-animation. For the 0.34 seconds the panel grows downward, a pointer moving down into it was judged to have left. It is now judged against the shape the island is going to, and again whenever that shape changes.- Hover was only noticed on the pointer's next move after it arrived; a pointer that stopped was never noticed. Hover now comes from the same test.- The closed island is as tall as the menu bar, and a hand grazing its edge restarted the half-second wait. Slipping off for under 0.12 seconds no longer counts as leaving.- Once the panel began to close (a 0.3-second animation), bringing the pointer back to the still-visible panel did not stop it, and the half-second wait started over. Coming back now keeps it open. The wait before closing is 0.32 seconds, up from 0.25, the same as the edge dock's.- The strip and the panel swapped in a single frame, and the margin round the outline jumped in one frame too (the transition written for it never ran). They now cross-fade, the margin follows the window's own curve, and the panel's content is clipped to the outline.
+- Turning the island off and on again in Settings could leave its glow and flash frozen for good; doing so while a reset banner was up brought the island back a row too tall before it shrank. Both fixed.
+- With the system's Reduce Motion on, the island's window still eased while its content was already in place. The window now moves at once as well.
+
+</details>
+
+<details>
 <summary><b>2026-09-21</b> · 0.5.10 · 3 fixed</summary>
 
 **Fixed**
@@ -69,15 +81,6 @@ Latest release **0.5.10** (2026-09-21) · [full changelog](CHANGELOG.en.md)
 **Style**
 
 - On the Codex card, "gpt-reserve" is now named "Reserve · Luna". It is OpenAI's reserve for Codex: once the plan's own limit is used up, Codex moves to Luna, a faster model for simpler tasks, and draws on this separate weekly allowance until the plan resets. The card used to show only the raw id, which said nothing. The model name comes from the reply, so a different reserve model is named correctly, and hovering the name explains it. While the reserve is in use it carries a green "In use" tag and stays on the card instead of folding away; otherwise the card follows your choice under "Limits on the Card". Existing hide and ring choices are unaffected.
-
-</details>
-
-<details>
-<summary><b>2026-09-19</b> · 0.5.9 · 1 fixed</summary>
-
-**Fixed**
-
-- The Kimi Code card showed a spent quota as untouched: "0% used", or "100% left" in the default remaining view. The 5-hour window was really at 100 / 100 and the week at 21 / 100. This only happened when reading the sign-in on this Mac or an API key, the two ways added on 2026-09-17; a pasted kimi-auth cookie was not affected. Kimi's usage reply carries two kinds of number: a share used and a "used / limit" count. This time the share said 0, and QuotaBar looked only at the share whenever there was one. Each window now reads both and shows whichever says more is used. When the count is the one shown, `QuotaBar --json` and the local API also give it as "used / limit".
 
 </details>
 

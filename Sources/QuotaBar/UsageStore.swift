@@ -804,6 +804,31 @@ final class UsageStore: ObservableObject {
     /// What each surface shows: its pinned provider alone when it has one,
     /// otherwise every enabled provider not hidden there.
     var islandProviders: [ProviderID] { surfaceProviders(.island, pin: islandPin) }
+
+    /// The island's two columns, left and right of the notch.
+    var islandColumns: (left: [ProviderID], right: [ProviderID]) {
+        IslandRoom.columns(islandProviders, slots: islandSlots)
+    }
+
+    /// The providers the closed island shows — the only ones it may speak
+    /// for. `islandProviders` is everything allowed on it, which with one
+    /// slot a side is mostly providers it has no room to draw.
+    var islandShown: [ProviderID] {
+        IslandRoom.shown(islandProviders, slots: islandSlots, pill: IslandCoordinator.notchMetrics() == nil)
+    }
+
+    /// The worst line a provider on the island is past. The glow's colour
+    /// and the peek both read this one, so they are about the same figures.
+    var islandSeverity: AlertLevel {
+        islandShown.compactMap { headlinePercent(for: $0) }
+            .map { alertSettings.level(for: $0) }
+            .max() ?? .none
+    }
+
+    /// A quota on the island down to its last 15%.
+    var islandLowQuota: AlertLevel {
+        LowQuota.level(used: islandShown.map { headlinePercent(for: $0) })
+    }
     var dockProviders: [ProviderID] { surfaceProviders(.dock, pin: dockPin) }
     var panelProviders: [ProviderID] { experience.visible(enabled, on: .panel) }
 
