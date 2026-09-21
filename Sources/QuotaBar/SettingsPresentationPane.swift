@@ -113,8 +113,8 @@ struct PresentationPane: View {
         SettingsCard(
             L10n.t("Which limit each place shows", "各处显示的额度"),
             help: L10n.t(
-                "The menu bar, the island and the dock each show one figure for a provider, and each can stand for a different limit — the 5-hour limit in the menu bar and the week on the dock, say. Automatic is the fullest of the plan's own limits; an allowance beside the plan — Cursor's Grok Bot, Codex's reserve — only counts when you pick it. The card's own ring is chosen on the card: double-click a limit, or right-click the card.",
-                "菜单栏、刘海岛和停靠条各用一个数字代表一个服务商，三处可以分别代表不同的额度，比如菜单栏看 5 小时、停靠条看每周。「自动」取套餐自身额度里用得最满的那个；套餐之外的附加额度（Cursor 的 Grok Bot、Codex 的备用额度）只有你亲自选了才算。卡片自己的圆环在卡片上选：双击某个额度，或右键卡片。"))
+                "The menu bar, the island and the dock each show one figure for a provider, and each can stand for a different limit — the 5-hour limit in the menu bar and the week on the dock, say. The menu bar goes with the card in its panel: double-click a limit on the card and the icon and the card's ring both follow it. Automatic is the fullest of the plan's own limits; an allowance beside the plan — Cursor's Grok Bot, Codex's reserve — only counts when you pick it.",
+                "菜单栏、刘海岛和停靠条各用一个数字代表一个服务商，可以分别代表不同的额度，比如菜单栏看 5 小时、停靠条看每周。菜单栏跟它下拉面板里的卡片是一起的：在卡片上双击某个额度，菜单栏图标和卡片圆环就都按它显示。「自动」取套餐自身额度里用得最满的那个；套餐之外的附加额度（Cursor 的 Grok Bot、Codex 的备用额度）只有你亲自选了才算。"))
         {
             if store.enabled.isEmpty {
                 SettingFootnote(L10n.t("No providers are on.", "还没有开启服务商。"))
@@ -122,7 +122,7 @@ struct PresentationPane: View {
                 VStack(spacing: Design.space1) {
                     HStack(spacing: Design.space2) {
                         Spacer(minLength: 0)
-                        ForEach(FigurePlace.apart) { place in
+                        ForEach(FigurePlace.allCases) { place in
                             Text(place.displayName)
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(.secondary)
@@ -137,8 +137,8 @@ struct PresentationPane: View {
                     // to move there; say where it does.
                     if store.selected == nil, store.menuBarIconMode != .text {
                         SettingFootnote(L10n.t(
-                            "The menu bar is on Automatic, which reads the fullest limit of every provider, so the menu-bar choice shows once the icon follows one provider (right-click the icon › Show in Menu Bar) or is set to Marks and figures.",
-                            "菜单栏现在是「自动」，取所有服务商里用得最满的额度，所以「菜单栏」这一列要在图标只看某一个服务商（右键图标 ›「显示在菜单栏」）或图标设为「logo 加数字」时才看得出来。"))
+                            "The menu bar is on Automatic, which reads the fullest limit of every provider, so the first column shows on the icon once it follows one provider (right-click the icon › Show in Menu Bar) or is set to Marks and figures. The card's ring follows it either way.",
+                            "菜单栏现在是「自动」，取所有服务商里用得最满的额度，所以第一列要在图标只看某一个服务商（右键图标 ›「显示在菜单栏」）或图标设为「logo 加数字」时才在图标上看得出来；卡片圆环不受影响，始终按它显示。"))
                     }
                 }
             }
@@ -310,7 +310,7 @@ private struct PlaceWindowRow: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(FigurePlace.apart) { place in
+                ForEach(FigurePlace.allCases) { place in
                     GlassPopUp(
                         options: [(value: String?.none, label: L10n.t("Automatic", "自动"))]
                             + windows.map { (value: Optional($0.id), label: $0.menuName) },

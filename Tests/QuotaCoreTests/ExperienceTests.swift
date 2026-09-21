@@ -308,13 +308,13 @@ final class IslandRoomTests: XCTestCase {
 final class FigurePlaceTests: XCTestCase {
     func testEachPlaceKeepsItsOwnWindow() {
         var prefs = ExperiencePrefs()
-        prefs.setPlaceWindow("5h", for: .codex, on: .menuBar)
+        prefs.setPlaceWindow("5h", for: .codex, on: .island)
         prefs.setPlaceWindow("Week", for: .codex, on: .dock)
-        XCTAssertEqual(prefs.placeWindow(for: .codex, on: .menuBar), "5h")
+        XCTAssertEqual(prefs.placeWindow(for: .codex, on: .island), "5h")
         XCTAssertEqual(prefs.placeWindow(for: .codex, on: .dock), "Week")
-        XCTAssertNil(prefs.placeWindow(for: .codex, on: .island), "automatic until chosen")
-        prefs.setPlaceWindow(nil, for: .codex, on: .menuBar)
-        XCTAssertNil(prefs.placeWindows[FigurePlace.menuBar.rawValue], "an emptied place leaves nothing behind")
+        XCTAssertNil(prefs.placeWindow(for: .claude, on: .island), "automatic until chosen")
+        prefs.setPlaceWindow(nil, for: .codex, on: .island)
+        XCTAssertNil(prefs.placeWindows[FigurePlace.island.rawValue], "an emptied place leaves nothing behind")
     }
 
     /// A config written while every place followed the card: each place
@@ -335,6 +335,16 @@ final class FigurePlaceTests: XCTestCase {
         XCTAssertNil(again.experience.placeWindow(for: .codex, on: .dock))
         XCTAssertEqual(again.experience.placeWindow(for: .codex, on: .island), "Week")
         XCTAssertEqual(again.headlineWindows[.codex], "5h")
+    }
+
+    /// 0.5.12 gave the menu bar a choice of its own, which a double-click on
+    /// the card no longer reached. It goes with the card again.
+    func testTheMenuBarsOwnChoiceIsDropped() throws {
+        let from0512 = #"{"enabled":["cursor"],"headlineWindows":{"cursor":"Monthly"},"experience":{"placeWindowsSeeded":true,"placeWindows":{"menuBar":{"cursor":"Grok Bot"},"dock":{"cursor":"Monthly"}}}}"#
+        let config = try JSONDecoder().decode(QuotaConfig.self, from: Data(from0512.utf8))
+        XCTAssertNil(config.experience.placeWindows["menuBar"])
+        XCTAssertEqual(config.experience.placeWindow(for: .cursor, on: .dock), "Monthly")
+        XCTAssertEqual(config.headlineWindows[.cursor], "Monthly")
     }
 
     func testANewInstallSeedsNothing() throws {

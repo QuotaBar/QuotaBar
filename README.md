@@ -50,15 +50,16 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.12** (2026-09-22) · **2** changes in development · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.12** (2026-09-22) · **3** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
-<summary><b>2026-09-22</b> · Unreleased · 2 fixed</summary>
+<summary><b>2026-09-22</b> · Unreleased · 3 fixed</summary>
 
 **Fixed**
 
 - With Cursor chosen for the menu-bar icon, it showed Grok Bot's usage rather than the month's plan (a plan just reset at 0.2%, an icon at 69.3%). With no limit chosen for Cursor the menu bar was on Automatic, and Automatic took the fullest of every limit reported, an allowance beside the plan such as Grok Bot included. Automatic now takes the fullest of the plan's own limits: Cursor's Grok Bot, Codex's reserve and its per-model extras are left out unless one is being drawn on (Codex's reserve once the plan is spent) or you pick it yourself. The menu bar, the island, the dock, the card's ring, desktop cards and the usage alert all follow the rule.
-- Since 0.5.12 the menu bar's limit is its own choice, but the only way to it was Settings; the icon's own right-click menu had none. Right-click the icon: under "Show in Menu Bar" there is now "Cursor Limit Shown" (named for whichever provider is chosen), with the plan's limits and Automatic.
+- After 0.5.12 gave the menu bar a choice of limit of its own, double-clicking a limit on a card no longer moved the icon, and the separate choice was only in Settings, where it was hard to find: with Claude shown in the menu bar, double-clicking "5-hour" on its card did nothing to the icon. The menu bar goes with the card in its panel again: right-click the icon → "Show in Menu Bar" picks the provider (Claude or Codex), and double-clicking a limit on that card (5-hour, weekly, monthly) makes both the icon and the card's ring follow it; double-click again for Automatic. The island and the dock still choose for themselves. A choice 0.5.12 stored for the menu bar alone is no longer used; the card's stands.
+- Right-click the icon: under "Show in Menu Bar" there is now "Claude Limit Shown" (named for whichever provider is chosen) — the same choice as the double-click on the card, with the plan's limits and Automatic.
 
 </details>
 

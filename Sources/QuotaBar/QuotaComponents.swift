@@ -150,8 +150,8 @@ struct QuotaRowView: View {
                         .font(.system(size: 7, weight: .semibold))
                         .foregroundStyle(picked ? Color(hex: id.accentHex) : .white.opacity(0.35))
                         .help(picked
-                            ? L10n.t("The \(place == .card ? "ring" : "dock") follows this window", "\(place == .card ? "圆环" : "停靠条")按这个窗口显示")
-                            : L10n.t("The fullest window, which the \(place == .card ? "ring" : "dock") follows", "用得最满的窗口，\(place == .card ? "圆环" : "停靠条")按它显示"))
+                            ? L10n.t("The \(place == .card ? "menu bar and the ring follow" : "dock follows") this limit", "\(place == .card ? "菜单栏和圆环" : "停靠条")按这个额度显示")
+                            : L10n.t("The plan's fullest limit, which the \(place == .card ? "menu bar and the ring follow" : "dock follows")", "套餐里用得最满的额度，\(place == .card ? "菜单栏和圆环" : "停靠条")按它显示"))
                 }
                 Spacer(minLength: Design.space2)
                 if store.justReset(id, window: window.id) {

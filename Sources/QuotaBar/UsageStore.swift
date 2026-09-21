@@ -292,8 +292,8 @@ final class UsageStore: ObservableObject {
         var reading = MeterReading.across(sources.compactMap { states[$0]?.snapshot })
         // One provider on show: its single figure is the window the owner
         // picked for it, here as everywhere else.
-        if let selected, pickedHeadlineWindow(for: selected, on: .menuBar) != nil {
-            reading.preferred = headlinePercent(for: selected, on: .menuBar)
+        if let selected, pickedHeadlineWindow(for: selected) != nil {
+            reading.preferred = headlinePercent(for: selected)
         }
         return reading
     }
@@ -303,7 +303,8 @@ final class UsageStore: ObservableObject {
     /// The window a provider's single figure follows in one place — the
     /// owner's pick for that place, else the fullest window. Each place picks
     /// for itself (`FigurePlace`): the menu bar can stand for the 5-hour
-    /// limit while the dock's ring follows the week.
+    /// limit while the dock's ring follows the week. The menu bar goes with
+    /// the card: double-clicking a limit there is how its figure is chosen.
     func headlinePercent(for id: ProviderID, on place: FigurePlace = .card) -> Double? {
         states[id]?.snapshot?.headlinePercent(preferring: pickedHeadlineWindow(for: id, on: place))
     }

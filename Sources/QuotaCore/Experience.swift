@@ -179,25 +179,30 @@ public enum DisplaySurface: String, Codable, CaseIterable, Sendable, Identifiabl
 
 /// The places that stand one figure for a provider, each with its own say in
 /// which limit that figure is. They used to share one choice, the card's, so
-/// the menu bar, the island and the dock could only ever repeat each other —
-/// and someone with a 5-hour and a weekly limit wants one here and the other
-/// there, or there is no point in having so many places.
+/// the island and the dock could only ever repeat the menu bar — and someone
+/// with a 5-hour and a weekly limit wants one here and the other there, or
+/// there is no point in having so many places.
+///
+/// The menu bar is not apart from the card. The panel hangs off its icon, so
+/// the card in it is the menu bar's own: which provider the icon shows is
+/// chosen from the icon's menu, and which of its limits by double-clicking
+/// that limit on the card. Given a choice of its own for a release, the menu
+/// bar stopped answering the double-click, and nobody could find the other.
 public enum FigurePlace: String, Codable, CaseIterable, Sendable, Identifiable {
-    /// The card's ring in the panel, and the desktop cards drawn like it.
+    /// The menu bar, the card's ring in the panel under it, and the desktop
+    /// cards drawn like it.
     case card
-    case menuBar
     case island
     case dock
 
     public var id: String { rawValue }
 
     /// The places with a choice kept apart from the card's.
-    public static let apart: [FigurePlace] = [.menuBar, .island, .dock]
+    public static let apart: [FigurePlace] = [.island, .dock]
 
     public var displayName: String {
         switch self {
-        case .card: L10n.t("Card ring", "卡片圆环")
-        case .menuBar: L10n.t("Menu bar", "菜单栏")
+        case .card: L10n.t("Menu bar and card", "菜单栏和卡片")
         case .island: L10n.t("Notch island", "刘海岛")
         case .dock: L10n.t("Dock", "停靠条")
         }

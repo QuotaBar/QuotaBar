@@ -224,6 +224,8 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
             }
             experience.placeWindowsSeeded = true
         }
+        // 0.5.12 kept a choice for the menu bar too; it follows the card again.
+        experience.placeWindows["menuBar"] = nil
         legacyCredentials = QuotaConfig.decodeLegacyCredentials(from: container)
         hasLegacyCredentialKey = container.contains(.legacyCredentials)
     }

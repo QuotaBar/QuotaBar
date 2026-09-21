@@ -220,7 +220,7 @@ final class StatusItemCoordinator: NSObject {
     private static func stripItems(_ store: UsageStore) -> [(id: ProviderID, percent: Double?)] {
         guard store.menuBarIconMode == .text else { return [] }
         let ids = store.selected.map { [$0] } ?? Array(store.enabled.prefix(3))
-        return ids.map { id in (id: id, percent: store.headlinePercent(for: id, on: .menuBar).map { store.meterMode.shownPercent(fromUsed: $0) }) }
+        return ids.map { id in (id: id, percent: store.headlinePercent(for: id).map { store.meterMode.shownPercent(fromUsed: $0) }) }
     }
 
     @objc private func clicked() {
@@ -288,8 +288,9 @@ final class StatusItemCoordinator: NSObject {
         return menu
     }
 
-    /// Which of the chosen provider's limits the icon stands for — the menu
-    /// bar's own choice, beside the choice of provider it goes with. Only
+    /// Which of the chosen provider's limits the icon stands for, beside the
+    /// choice of provider it goes with — the same choice as double-clicking
+    /// that limit on the provider's card, offered where the icon is. Only
     /// when one provider is chosen and it has limits to choose between: on
     /// Automatic the icon reads the fullest limit of all, and nothing here
     /// would move it.
@@ -299,17 +300,17 @@ final class StatusItemCoordinator: NSObject {
         else { return nil }
         let item = NSMenuItem(title: L10n.t("\(id.displayName) Limit Shown", "\(id.displayName) 显示的额度"), action: nil, keyEquivalent: "")
         let menu = NSMenu()
-        let picked = store.pickedHeadlineWindow(for: id, on: .menuBar)
+        let picked = store.pickedHeadlineWindow(for: id)
         let following = windows.contains { $0.id == picked } ? picked : nil
         let automatic = add(menu, L10n.t("Automatic (fullest of the plan's)", "自动（套餐里用得最满的）"),
                             detail: store.states[id]?.snapshot?.headlineWindow?.menuName)
-        { [store] in store.setHeadlineWindow(nil, for: id, on: .menuBar) }
+        { [store] in store.setHeadlineWindow(nil, for: id) }
         automatic.state = following == nil ? .on : .off
         menu.addItem(.separator())
         for window in windows {
             let used = window.usedPercent ?? 0
             let row = add(menu, window.menuName, detail: QuotaFormat.percent(store.meterMode.shownPercent(fromUsed: used)))
-            { [store] in store.setHeadlineWindow(window.id, for: id, on: .menuBar) }
+            { [store] in store.setHeadlineWindow(window.id, for: id) }
             row.state = following == window.id ? .on : .off
         }
         item.submenu = menu
@@ -319,7 +320,7 @@ final class StatusItemCoordinator: NSObject {
     /// "81% left" or "19% used", as the icon counts; a prepaid account's
     /// balance; a dash before a reading.
     private func reading(for id: ProviderID, store: UsageStore) -> String {
-        guard let used = store.headlinePercent(for: id, on: .menuBar) else {
+        guard let used = store.headlinePercent(for: id) else {
             return store.balanceFigure(for: id).map { L10n.t("\($0) balance", "余额 \($0)") } ?? "—"
         }
         let figure = QuotaFormat.percent(store.meterMode.shownPercent(fromUsed: used))
