@@ -33,6 +33,28 @@ final class CardWindowsTests: XCTestCase {
         XCTAssertEqual(ids(idle.upFrontWindows(for: .codex, shown: ["Week"])), ["Week"])
     }
 
+    /// The owner's Codex on 2026-09-21: "Week" chosen from the card's menu
+    /// on Pro, where it was the only plan limit; then the account went to
+    /// Plus, and the 5-hour limit it gained stayed folded — off the card, and
+    /// out of the copied image.
+    func testALimitTheChoiceNeverSawIsNotFoldedByIt() {
+        var reserve = window("Week", 604_800, scope: "gpt-reserve")
+        reserve.label = "备用 · Luna"
+        let plus = UsageSnapshot(planName: "Plus", account: nil, windows: [window("5h", 18_000), window("Week", 604_800), reserve])
+        // Saved before the card kept what it had seen.
+        XCTAssertEqual(ids(plus.upFrontWindows(for: .codex, shown: ["Week"])), ["5h", "Week"])
+        // Chosen among the week and the reserve: the 5-hour is new to it.
+        XCTAssertEqual(ids(plus.upFrontWindows(for: .codex, shown: ["Week"], known: ["Week", "Week · gpt-reserve"])), ["5h", "Week"])
+        // Chosen with the 5-hour in sight: folded on purpose, and stays so.
+        XCTAssertEqual(ids(plus.upFrontWindows(for: .codex, shown: ["Week"], known: ["5h", "Week", "Week · gpt-reserve"])), ["Week"])
+        // A scoped window folded before `known` was kept stays folded.
+        let claude = UsageSnapshot(planName: "Max", account: nil, windows: [window("5h", 18_000), window("Week", 604_800), window("Week", 604_800, scope: "Fable")])
+        XCTAssertEqual(ids(claude.upFrontWindows(for: .claude, shown: ["5h", "Week"])), ["5h", "Week"])
+        // And other providers' lists are left as they were chosen.
+        let cursor = UsageSnapshot(planName: nil, account: nil, windows: [window("Month", 2_592_000), window("Models", 2_592_000)])
+        XCTAssertEqual(ids(cursor.upFrontWindows(for: .cursor, shown: ["Month"])), ["Month"])
+    }
+
     func testCodexPlusShowsTheFiveHourAndTheWeek() {
         let snapshot = UsageSnapshot(planName: "Plus", account: nil, windows: [
             window("5h", 18_000),
@@ -90,6 +112,7 @@ final class CardWindowsTests: XCTestCase {
         prefs.hiddenWindows["codex"] = ["周窗口 · GPT-5.3-Codex-Spark"]
         let back = try JSONDecoder().decode(ExperiencePrefs.self, from: JSONEncoder().encode(prefs))
         XCTAssertEqual(back.cardWindows["codex"], ["周窗口"])
+        XCTAssertTrue(back.cardWindowsKnown.isEmpty)
         XCTAssertEqual(back.hiddenWindows["codex"], ["周窗口 · GPT-5.3-Codex-Spark"])
         let odd = try JSONDecoder().decode(ExperiencePrefs.self, from: Data(#"{"cardWindows":7}"#.utf8))
         XCTAssertTrue(odd.cardWindows.isEmpty)

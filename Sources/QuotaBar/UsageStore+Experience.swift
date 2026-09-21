@@ -221,7 +221,8 @@ extension UsageStore {
     /// choice applied.
     func upFrontWindows(for id: ProviderID) -> [UsageWindow] {
         states[id]?.snapshot?.upFrontWindows(
-            for: id, picked: pickedHeadlineWindow(for: id), shown: experience.cardWindows[id.rawValue]) ?? []
+            for: id, picked: pickedHeadlineWindow(for: id),
+            shown: experience.cardWindows[id.rawValue], known: experience.cardWindowsKnown[id.rawValue]) ?? []
     }
 
     /// Shows a window on the card or folds it away. The first change starts
@@ -231,11 +232,18 @@ extension UsageStore {
         list.removeAll { $0 == windowID }
         if upFront { list.append(windowID) }
         guard !list.isEmpty else { return }
-        updateExperience { $0.cardWindows[id.rawValue] = list }
+        let known = states[id]?.snapshot?.windows.map(\.id) ?? list
+        updateExperience {
+            $0.cardWindows[id.rawValue] = list
+            $0.cardWindowsKnown[id.rawValue] = known
+        }
     }
 
     func resetCardWindows(for id: ProviderID) {
-        updateExperience { $0.cardWindows[id.rawValue] = nil }
+        updateExperience {
+            $0.cardWindows[id.rawValue] = nil
+            $0.cardWindowsKnown[id.rawValue] = nil
+        }
     }
 
     /// Every window the provider reported, hidden ones included — what the

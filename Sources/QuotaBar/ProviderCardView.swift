@@ -140,6 +140,14 @@ struct ProviderCardView: View {
                 ForEach(primary(snapshot)) { window in
                     QuotaRowView(store: store, id: id, window: window, compact: compact, allowsPick: !forExport)
                 }
+                // The copy shows the limits the card is showing: opened to
+                // its folded windows, it copies those too, and leaves the
+                // trend, the spend and the links on the card.
+                if forExport, store.isCardExpanded(id) {
+                    ForEach(rest(snapshot)) { window in
+                        QuotaRowView(store: store, id: id, window: window, compact: compact, allowsPick: false)
+                    }
+                }
                 if hasMore(snapshot) && !forExport {
                     caret
                 }
@@ -154,7 +162,8 @@ struct ProviderCardView: View {
     /// What the card shows before it is expanded; see `upFrontWindows`.
     private func primary(_ snapshot: UsageSnapshot) -> [UsageWindow] {
         drawn(snapshot).upFrontWindows(
-            for: id, picked: store.pickedHeadlineWindow(for: id), shown: store.experience.cardWindows[id.rawValue])
+            for: id, picked: store.pickedHeadlineWindow(for: id),
+            shown: store.experience.cardWindows[id.rawValue], known: store.experience.cardWindowsKnown[id.rawValue])
     }
 
     private func rest(_ snapshot: UsageSnapshot) -> [UsageWindow] {

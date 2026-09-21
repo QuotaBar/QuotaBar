@@ -23,10 +23,28 @@ public extension UsageSnapshot {
     /// front, since the card marks it; so is a window in use. `shown` is the owner's own choice from
     /// the card's menu, used while any of it still matches a window — window
     /// ids are the provider's titles, and a language switch renames them.
-    func upFrontWindows(for provider: ProviderID, picked: String? = nil, shown: [String]? = nil) -> [UsageWindow] {
-        let chosen: [UsageWindow]
+    ///
+    /// The choice only speaks for the windows it was made among, `known`. A
+    /// limit that appeared since — the 5-hour window of a Codex account that
+    /// went from Pro to Plus — was never folded by anyone, and takes the
+    /// place the card would have given it. A choice saved before `known` was
+    /// kept cannot say what it saw, so only a plan limit missing from a list
+    /// of Codex's or Claude's plan limits comes back.
+    func upFrontWindows(for provider: ProviderID, picked: String? = nil, shown: [String]? = nil, known: [String]? = nil) -> [UsageWindow] {
+        var chosen: [UsageWindow]
         if let shown, case let matching = windows.filter({ shown.contains($0.id) }), !matching.isEmpty {
             chosen = matching
+            // Without `known`, the one case read as unseen is a list of plan
+            // limits on Codex or Claude missing another plan limit: a list
+            // that folded the plan's week for a model's chose to, and
+            // elsewhere the card's own choice is two windows picked by use.
+            let listsPlanLimits = (provider == .codex || provider == .claude) && matching.contains { $0.scope == nil }
+            let unseen = defaultUpFront(for: provider, picked: picked).filter { window in
+                guard !shown.contains(window.id) else { return false }
+                if let known { return !known.contains(window.id) }
+                return listsPlanLimits && window.scope == nil
+            }
+            chosen += unseen
         } else {
             chosen = defaultUpFront(for: provider, picked: picked)
         }

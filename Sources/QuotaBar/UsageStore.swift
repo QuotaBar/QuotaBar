@@ -574,6 +574,9 @@ final class UsageStore: ObservableObject {
         if let shown = experience.cardWindows[id.rawValue] {
             updateExperience { $0.cardWindows[id.rawValue] = shown.map { renamed[$0] ?? $0 } }
         }
+        if let known = experience.cardWindowsKnown[id.rawValue] {
+            updateExperience { $0.cardWindowsKnown[id.rawValue] = known.map { renamed[$0] ?? $0 } }
+        }
         if let hidden = experience.hiddenWindows[id.rawValue] {
             updateExperience { $0.hiddenWindows[id.rawValue] = hidden.map { renamed[$0] ?? $0 } }
         }

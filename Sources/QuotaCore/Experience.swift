@@ -258,6 +258,10 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
     /// is expanded, where the owner chose them from the card's menu. Absent
     /// means the card's own choice (`UsageSnapshot.upFrontWindows`).
     public var cardWindows: [String: [String]] = [:]
+    /// Provider raw value → every window the provider reported when that
+    /// choice was made. A window not among them is one the choice never saw,
+    /// and is not folded by it.
+    public var cardWindowsKnown: [String: [String]] = [:]
     /// Provider raw value → the ids of the windows the owner hid from the
     /// card's menu: not on the card, not under its arrow, not followed by the
     /// ring anywhere. Still read, cached and served by the local API.
@@ -297,7 +301,7 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
         case reduceMotion, islandGlow, islandSweepAlways, islandAutoPeek, islandChart, widgetSortsByUrgency
         case deskCards, deskCardsMigrated
         case hideWhenSharing, hotkey, paceAlerts, localAPI, proxy, betaUpdates
-        case resetEffects, resetNotify, resetCreditNotify, resetCreditNotified, hiddenProviders, cardWindows, hiddenWindows
+        case resetEffects, resetNotify, resetCreditNotify, resetCreditNotified, hiddenProviders, cardWindows, cardWindowsKnown, hiddenWindows
         case spendBudget, budgetNotified, balanceFloor, balanceFloorNotified, balanceChart, weeklyDigest, weeklyDigestSent
         case shareSignature, shareShowsSignature, shareMasksAccount
     }
@@ -344,6 +348,7 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
         resetCreditNotified = value(.resetCreditNotified, d.resetCreditNotified)
         hiddenProviders = value(.hiddenProviders, d.hiddenProviders)
         cardWindows = value(.cardWindows, d.cardWindows)
+        cardWindowsKnown = value(.cardWindowsKnown, d.cardWindowsKnown)
         hiddenWindows = value(.hiddenWindows, d.hiddenWindows)
         spendBudget = value(.spendBudget, d.spendBudget)
         budgetNotified = value(.budgetNotified, d.budgetNotified)
