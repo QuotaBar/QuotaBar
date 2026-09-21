@@ -40,6 +40,8 @@ final class MenuPanelController {
         anchor = button
         let panel = self.panel ?? makePanel(store: store)
         self.panel = panel
+        // Closed, the panel keeps no content: see `close()`.
+        if panel.contentView == nil { fill(panel, store: store) }
         place(panel, animated: false)
         panel.alphaValue = 0
         panel.makeKeyAndOrderFront(nil)
@@ -60,7 +62,16 @@ final class MenuPanelController {
             context.duration = Motion.reduced ? 0 : 0.1
             panel.animator().alphaValue = 0
         }, completionHandler: {
-            Task { @MainActor in panel.orderOut(nil) }
+            Task { @MainActor in
+                panel.orderOut(nil)
+                // And with it every view inside, which is what stops a
+                // closed panel from costing anything. A hidden panel's
+                // views stay alive and keep animating: the counting spend
+                // figure ran at 60fps behind a panel nobody could see, for
+                // about a fifth of a core (issue #5). One view was fixed;
+                // this is the rule that makes the next one harmless.
+                panel.contentView = nil
+            }
         })
     }
 
@@ -96,10 +107,15 @@ final class MenuPanelController {
         panel.hidesOnDeactivate = false
         panel.becomesKeyOnlyIfNeeded = false
         panel.animationBehavior = .none
+        fill(panel, store: store)
+        return panel
+    }
+
+    /// The panel's content, built fresh each time it opens.
+    private func fill(_ panel: KeyPanel, store: UsageStore) {
         let host = FirstMouseHostingView(rootView: MenuPanelView(store: store))
         host.sizingOptions = []
         panel.contentView = host
-        return panel
     }
 
     private func place(_ panel: NSPanel, animated: Bool) {

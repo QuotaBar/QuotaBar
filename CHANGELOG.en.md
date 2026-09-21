@@ -19,6 +19,7 @@ Server moves, the website, and build or release scripts don't change the app its
   - The strip and the panel swapped in a single frame, and the margin round the outline jumped in one frame too (the transition written for it never ran). They now cross-fade, the margin follows the window's own curve, and the panel's content is clipped to the outline.
 - Turning the island off and on again in Settings could leave its glow and flash frozen for good; doing so while a reset banner was up brought the island back a row too tall before it shrank. Both fixed.
 - With the system's Reduce Motion on, the island's window still eased while its content was already in place. The window now moves at once as well.
+- A closed panel keeps nothing: it was only hidden, its views stayed alive, and any per-frame animation inside went on costing a Mac something nobody could see. The content is released when the panel closes and built again when it opens.
 
 ## 0.5.10 · 2026-09-21
 
@@ -28,7 +29,7 @@ Server moves, the website, and build or release scripts don't change the app its
 
 - The GitHub link in About, the feedback entry, the update check and the issue numbers in release notes all point at the repository's current path, QuotaBar/QuotaBar, rather than redirecting from the old one. An update feed still set to the old path keeps working, mirror and all.
 - The island kept a Mac busy while nothing was happening — about 8% of a core with the screen unchanged. The light that runs round the collapsed outline was redrawn 30 times a second; it now runs while a read is in flight, on hover, for a banner and near a limit, and stops when nothing is happening. Turn on "Light always running" under Settings → Presentation → Island to have it run as before; the switch says what that costs. The halo outside the outline is unchanged. (#5)
-- The low-quota outline flash and the counting spend figure are drawn by the system's own animation rather than recomputed every frame, and the figure stops its timeline once it has settled.
+- Opening the panel once left QuotaBar holding about a fifth of a core for the rest of the session, with the panel closed and nothing on screen: the counting spend figure decided whether to pause from the clock inside its body, which is read once when the animation is made, so it redrew 60 times a second until the app quit. On a Mac without the island this was the whole of it. The low-quota outline flash is drawn by the system's own animation too, rather than recomputed every frame.
 
 ### 2026-09-19
 
