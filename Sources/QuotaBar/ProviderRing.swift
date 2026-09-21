@@ -331,7 +331,7 @@ struct ProviderCallout: View {
     }
 
     private func row(_ window: UsageWindow) -> some View {
-        QuotaRowView(store: store, id: id, window: window)
+        QuotaRowView(store: store, id: id, window: window, place: .dock)
     }
 
     /// "Pro_plus" → "PRO PLUS", "pro" → "PRO". Providers spell their tiers

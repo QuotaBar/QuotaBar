@@ -51,9 +51,10 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
     /// nil follows the menu bar (and the notch, for the island); a display
     /// that is not connected right now falls back to the same.
     public var displayScreen: String?
-    /// Per provider, the id of the window its single figure follows — the
-    /// ring, the island, the widget, the menu-bar reading. Absent = the
-    /// fullest window. Picked by clicking a row in the provider's card.
+    /// Per provider, the id of the window its card's ring follows, and the
+    /// desktop cards drawn like it. Absent = the fullest window. Picked by
+    /// double-clicking a row in the provider's card. The menu bar, the island
+    /// and the dock keep their own in `ExperiencePrefs.placeWindows`.
     public var headlineWindows: [ProviderID: String]
     /// Everything added in 0.5 — pace, panel, glow, sharing, privacy.
     public var experience: ExperiencePrefs
@@ -212,6 +213,17 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
             .flatMap { $0.isEmpty ? nil : $0 }
         headlineWindows = QuotaConfig.decodeProviderStrings(from: container, forKey: .headlineWindows)
         experience = (try? container.decodeIfPresent(ExperiencePrefs.self, forKey: .experience)) ?? ExperiencePrefs()
+        // Written before the menu bar, the island and the dock chose for
+        // themselves: they were following the card, so they start from its
+        // choice rather than all changing figure on the day of the update.
+        if !experience.placeWindowsSeeded || !container.contains(.experience) {
+            for place in FigurePlace.apart {
+                for (id, window) in headlineWindows where experience.placeWindow(for: id, on: place) == nil {
+                    experience.setPlaceWindow(window, for: id, on: place)
+                }
+            }
+            experience.placeWindowsSeeded = true
+        }
         legacyCredentials = QuotaConfig.decodeLegacyCredentials(from: container)
         hasLegacyCredentialKey = container.contains(.legacyCredentials)
     }

@@ -3,6 +3,18 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
+## Unreleased
+
+### 2026-09-22
+
+#### Added
+
+- The menu bar, the island and the dock can each show a different limit. All three used to follow the card's "Ring Follows" choice, so a provider showed the same figure everywhere; with a 5-hour and a weekly limit you could not watch the 5-hour in the menu bar and the week on the dock, and the places only repeated each other. Each now chooses for itself: Settings → Presentation → "Which limit each place shows" has a row per provider and a pop-up per place, where Automatic is whichever limit is fullest; right-click a card → "Limit Shown In" does the same; and double-clicking a limit in the dock's callout sets the dock's own. The card's ring is still chosen by double-clicking on the card, and desktop cards follow the card. The island's flash, glow and auto-open judge by the limit the island itself shows. On update the three places keep the choice you had, and are independent from then on.
+
+#### Fixed
+
+- "Copy as Image" on the Codex card copied the weekly window only; the 5-hour window could not be copied. The image draws the limits the card shows before it is expanded, and that choice (right-click the card → "Limits on the Card") had been saved while the account was on Pro, which has a week and no 5-hour limit. When the account moved to Plus it gained a 5-hour limit the saved choice had never listed, so it stayed folded: off the card, and out of the image. A choice now records which limits existed when it was made; a limit that appears later was never folded by you and takes the place the card gives it by default, so with a 5-hour limit on Codex or Claude both the card and the copied image show the 5-hour and the week. Limits you folded yourself stay folded. And copying a card while it is expanded now includes the folded limits' rows too (the trend, the spend and the links stay on the card).
+
 ## 0.5.11 · 2026-09-21
 
 ### 2026-09-21
@@ -17,7 +29,6 @@ Server moves, the website, and build or release scripts don't change the app its
   - The closed island is as tall as the menu bar, and a hand grazing its edge restarted the half-second wait. Slipping off for under 0.12 seconds no longer counts as leaving.
   - Once the panel began to close (a 0.3-second animation), bringing the pointer back to the still-visible panel did not stop it, and the half-second wait started over. Coming back now keeps it open. The wait before closing is 0.32 seconds, up from 0.25, the same as the edge dock's.
   - The strip and the panel swapped in a single frame, and the margin round the outline jumped in one frame too (the transition written for it never ran). They now cross-fade, the margin follows the window's own curve, and the panel's content is clipped to the outline.
-- "Copy as Image" on the Codex card copied the weekly window only; the 5-hour window could not be copied. The image draws the limits the card shows before it is expanded, and that choice (right-click the card → "Limits on the Card") had been saved while the account was on Pro, which has a week and no 5-hour limit. When the account moved to Plus it gained a 5-hour limit the saved choice had never listed, so it stayed folded: off the card, and out of the image. A choice now records which limits existed when it was made; a limit that appears later was never folded by you and takes the place the card gives it by default, so with a 5-hour limit on Codex or Claude both the card and the copied image show the 5-hour and the week. Limits you folded yourself stay folded. And copying a card while it is expanded now includes the folded limits' rows too (the trend, the spend and the links stay on the card).
 - Turning the island off and on again in Settings could leave its glow and flash frozen for good; doing so while a reset banner was up brought the island back a row too tall before it shrank. Both fixed.
 - With the system's Reduce Motion on, the island's window still eased while its content was already in place. The window now moves at once as well.
 - A closed panel keeps nothing: it was only hidden, its views stayed alive, and any per-frame animation inside went on costing a Mac something nobody could see. The content is released when the panel closes and built again when it opens.

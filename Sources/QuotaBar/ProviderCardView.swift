@@ -506,19 +506,24 @@ struct ProviderQuickMenus: View {
         }
     }
 
-    /// The window the ring, the island and the menu bar follow for this
-    /// provider — the same choice as double-clicking a window.
+    /// The limit each place's single figure stands for: the card's ring —
+    /// the same choice as double-clicking a window — and the menu bar, the
+    /// island and the dock, each on its own.
     private func ringMenu(_ snapshot: UsageSnapshot) -> some View {
-        let picked = store.pickedHeadlineWindow(for: id)
-        return Menu(L10n.t("Ring Follows", "圆环跟随的额度")) {
-            Toggle(L10n.t("Automatic (fullest)", "自动（用得最满的）"), isOn: Binding(
-                get: { picked == nil },
-                set: { if $0 { store.setHeadlineWindow(nil, for: id) } }))
-            Divider()
-            ForEach(snapshot.windows.filter { $0.usedPercent != nil }) { window in
-                Toggle(window.title, isOn: Binding(
-                    get: { picked == window.id },
-                    set: { if $0 { store.setHeadlineWindow(window.id, for: id) } }))
+        Menu(L10n.t("Limit Shown In", "各处显示的额度")) {
+            ForEach(FigurePlace.allCases) { place in
+                let picked = store.pickedHeadlineWindow(for: id, on: place)
+                Menu(place.displayName) {
+                    Toggle(L10n.t("Automatic (fullest)", "自动（用得最满的）"), isOn: Binding(
+                        get: { picked == nil },
+                        set: { if $0 { store.setHeadlineWindow(nil, for: id, on: place) } }))
+                    Divider()
+                    ForEach(snapshot.windows.filter { $0.usedPercent != nil }) { window in
+                        Toggle(window.menuName, isOn: Binding(
+                            get: { picked == window.id },
+                            set: { if $0 { store.setHeadlineWindow(window.id, for: id, on: place) } }))
+                    }
+                }
             }
         }
     }

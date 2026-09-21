@@ -161,3 +161,16 @@ final class WindowRenameTests: XCTestCase {
         XCTAssertEqual(WindowRename.pairs(from: zh, to: en), ["月度套餐": "Monthly plan", "指定模型": "Named models"])
     }
 }
+
+final class WindowMenuNameTests: XCTestCase {
+    /// One model's 5-hour and weekly limits share a scope, and so a display
+    /// name; in a menu nothing else tells them apart.
+    func testScopedWindowsCarryTheirLength() {
+        let five = UsageWindow(title: "Spark · 5h", usedPercent: 1, windowSeconds: 18_000, scope: "Spark")
+        let week = UsageWindow(title: "Spark · Week", usedPercent: 1, windowSeconds: 604_800, scope: "Spark")
+        XCTAssertEqual(five.displayName, week.displayName)
+        XCTAssertNotEqual(five.menuName, week.menuName)
+        let plan = UsageWindow(title: "Week", usedPercent: 1, windowSeconds: 604_800)
+        XCTAssertEqual(plan.menuName, "Week")
+    }
+}

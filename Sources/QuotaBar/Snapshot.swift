@@ -842,7 +842,7 @@ enum Snapshot {
                 ForEach(store.enabled) { id in
                     ProviderRing(
                         id: id,
-                        percent: store.headlinePercent(for: id),
+                        percent: store.headlinePercent(for: id, on: .dock),
                         mode: store.meterMode,
                         // As the dock draws them: no figure, the pick marked
                         // by the dot under its ring.

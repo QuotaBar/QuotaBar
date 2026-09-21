@@ -292,33 +292,42 @@ final class UsageStore: ObservableObject {
         var reading = MeterReading.across(sources.compactMap { states[$0]?.snapshot })
         // One provider on show: its single figure is the window the owner
         // picked for it, here as everywhere else.
-        if let selected, config.headlineWindow(for: selected) != nil {
-            reading.preferred = headlinePercent(for: selected)
+        if let selected, pickedHeadlineWindow(for: selected, on: .menuBar) != nil {
+            reading.preferred = headlinePercent(for: selected, on: .menuBar)
         }
         return reading
     }
 
     // MARK: Headline window
 
-    /// The window a provider's single figure follows — on the ring, the
-    /// island, the widget, the menu — the owner's pick from its card, else
-    /// the fullest window.
-    func headlinePercent(for id: ProviderID) -> Double? {
-        states[id]?.snapshot?.headlinePercent(preferring: config.headlineWindow(for: id))
+    /// The window a provider's single figure follows in one place — the
+    /// owner's pick for that place, else the fullest window. Each place picks
+    /// for itself (`FigurePlace`): the menu bar can stand for the 5-hour
+    /// limit while the dock's ring follows the week.
+    func headlinePercent(for id: ProviderID, on place: FigurePlace = .card) -> Double? {
+        states[id]?.snapshot?.headlinePercent(preferring: pickedHeadlineWindow(for: id, on: place))
     }
 
-    func headlineWindow(for id: ProviderID) -> UsageWindow? {
-        states[id]?.snapshot?.headlineWindow(preferring: config.headlineWindow(for: id))
+    func headlineWindow(for id: ProviderID, on place: FigurePlace = .card) -> UsageWindow? {
+        states[id]?.snapshot?.headlineWindow(preferring: pickedHeadlineWindow(for: id, on: place))
     }
 
     /// The pick itself, whether or not the provider currently reports it.
-    func pickedHeadlineWindow(for id: ProviderID) -> String? {
-        config.headlineWindow(for: id)
+    func pickedHeadlineWindow(for id: ProviderID, on place: FigurePlace = .card) -> String? {
+        place == .card ? config.headlineWindow(for: id) : experience.placeWindow(for: id, on: place)
     }
 
-    func setHeadlineWindow(_ windowID: String?, for id: ProviderID) {
-        config.setHeadlineWindow(windowID, for: id)
-        objectWillChange.send()
+    func setHeadlineWindow(_ windowID: String?, for id: ProviderID, on place: FigurePlace = .card) {
+        guard place != .card else {
+            config.setHeadlineWindow(windowID, for: id)
+            objectWillChange.send()
+            return
+        }
+        updateExperience { $0.setPlaceWindow(windowID, for: id, on: place) }
+        // Only the island is re-placed: its bar is as wide as its figures.
+        // The dock's frame does not depend on which window its rings follow,
+        // and re-placing it closes the callout — where this pick is made.
+        if place == .island { islandRevision &+= 1 }
     }
 
     /// Highest reading overall, for anything that shows a single figure.
@@ -568,8 +577,10 @@ final class UsageStore: ObservableObject {
     private func carryWindowChoices(for id: ProviderID, from old: [UsageWindow], to new: [UsageWindow]) {
         let renamed = WindowRename.pairs(from: old, to: new)
         guard !renamed.isEmpty else { return }
-        if let picked = config.headlineWindow(for: id), let now = renamed[picked] {
-            setHeadlineWindow(now, for: id)
+        for place in FigurePlace.allCases {
+            if let picked = pickedHeadlineWindow(for: id, on: place), let now = renamed[picked] {
+                setHeadlineWindow(now, for: id, on: place)
+            }
         }
         if let shown = experience.cardWindows[id.rawValue] {
             updateExperience { $0.cardWindows[id.rawValue] = shown.map { renamed[$0] ?? $0 } }
@@ -823,14 +834,14 @@ final class UsageStore: ObservableObject {
     /// The worst line a provider on the island is past. The glow's colour
     /// and the peek both read this one, so they are about the same figures.
     var islandSeverity: AlertLevel {
-        islandShown.compactMap { headlinePercent(for: $0) }
+        islandShown.compactMap { headlinePercent(for: $0, on: .island) }
             .map { alertSettings.level(for: $0) }
             .max() ?? .none
     }
 
     /// A quota on the island down to its last 15%.
     var islandLowQuota: AlertLevel {
-        LowQuota.level(used: islandShown.map { headlinePercent(for: $0) })
+        LowQuota.level(used: islandShown.map { headlinePercent(for: $0, on: .island) })
     }
     var dockProviders: [ProviderID] { surfaceProviders(.dock, pin: dockPin) }
     var panelProviders: [ProviderID] { experience.visible(enabled, on: .panel) }

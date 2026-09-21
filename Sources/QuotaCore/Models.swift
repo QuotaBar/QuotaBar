@@ -623,6 +623,14 @@ public struct UsageWindow: Sendable, Identifiable {
         windowSeconds.flatMap(WindowTitle.short)
     }
 
+    /// The name where no badge can sit beside it — a menu item, a pop-up. A
+    /// scoped window's name is its scope alone, shared by the 5-hour and the
+    /// weekly limit of one model, so the window's length goes with it.
+    public var menuName: String {
+        guard scope != nil, let shortLabel else { return displayName }
+        return "\(displayName) · \(shortLabel)"
+    }
+
     /// How consumption compares with the pace that would exactly exhaust the
     /// window as it resets.
     ///

@@ -111,6 +111,40 @@ struct PresentationPane: View {
         }
 
         SettingsCard(
+            L10n.t("Which limit each place shows", "各处显示的额度"),
+            help: L10n.t(
+                "The menu bar, the island and the dock each show one figure for a provider, and each can stand for a different limit — the 5-hour limit in the menu bar and the week on the dock, say. Automatic is whichever limit is fullest. The card's own ring is chosen on the card: double-click a limit, or right-click the card.",
+                "菜单栏、刘海岛和停靠条各用一个数字代表一个服务商，三处可以分别代表不同的额度，比如菜单栏看 5 小时、停靠条看每周。「自动」取用得最满的那个。卡片自己的圆环在卡片上选：双击某个额度，或右键卡片。"))
+        {
+            if store.enabled.isEmpty {
+                SettingFootnote(L10n.t("No providers are on.", "还没有开启服务商。"))
+            } else {
+                VStack(spacing: Design.space1) {
+                    HStack(spacing: Design.space2) {
+                        Spacer(minLength: 0)
+                        ForEach(FigurePlace.apart) { place in
+                            Text(place.displayName)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .frame(width: PlaceWindowRow.columnWidth, alignment: .leading)
+                        }
+                    }
+                    ForEach(store.enabled) { id in
+                        PlaceWindowRow(store: store, id: id)
+                    }
+                    // The overview reading is the fullest limit of all, by
+                    // name and for the alerts' sake, so a pick has nothing
+                    // to move there; say where it does.
+                    if store.selected == nil, store.menuBarIconMode != .text {
+                        SettingFootnote(L10n.t(
+                            "The menu bar is on Automatic, which reads the fullest limit of every provider, so the menu-bar choice shows once the icon follows one provider (right-click the icon › Show in Menu Bar) or is set to Marks and figures.",
+                            "菜单栏现在是「自动」，取所有服务商里用得最满的额度，所以「菜单栏」这一列要在图标只看某一个服务商（右键图标 ›「显示在菜单栏」）或图标设为「logo 加数字」时才看得出来。"))
+                    }
+                }
+            }
+        }
+
+        SettingsCard(
             L10n.t("What each place shows", "各处显示的服务商"),
             help: L10n.t(
                 "Hiding a provider only takes it off that place: it is still read, still alerts, and still counts in spend. Turning it off in Providers stops reading it.",
@@ -237,6 +271,60 @@ private struct DeskCardSettingsRow: View {
             }
         }
     }
+}
+
+/// One enabled provider and the limit its figure stands for in each place
+/// that shows a single figure. A provider with one limit has nothing to
+/// choose between, and says so rather than offering three menus of one.
+private struct PlaceWindowRow: View {
+    @ObservedObject var store: UsageStore
+    let id: ProviderID
+
+    private var windows: [UsageWindow] {
+        store.states[id]?.snapshot?.windows.filter { $0.usedPercent != nil } ?? []
+    }
+
+    /// What stands in for the menus when there is nothing to choose between.
+    /// No reading is not no limits: a provider still loading, or one whose
+    /// read failed, says that, and keeps whatever was picked for it.
+    private var note: String {
+        guard store.states[id]?.snapshot != nil else {
+            return store.isLoading(id) ? L10n.t("Loading…", "加载中…") : L10n.t("No reading yet", "还没有读数")
+        }
+        guard let only = windows.first else {
+            return L10n.t("No limits with a figure", "没有带百分比的额度")
+        }
+        return L10n.t("One limit: \(only.menuName)", "只有一个额度：\(only.menuName)")
+    }
+
+    var body: some View {
+        HStack(spacing: Design.space2) {
+            ProviderGlyph(id: id, size: 16)
+                .frame(width: 20)
+            Text(id.displayName)
+                .font(.system(size: 13))
+                .lineLimit(1)
+            Spacer(minLength: Design.space2)
+            if windows.count < 2 {
+                Text(note)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(FigurePlace.apart) { place in
+                    GlassPopUp(
+                        options: [(value: String?.none, label: L10n.t("Automatic", "自动"))]
+                            + windows.map { (value: Optional($0.id), label: $0.menuName) },
+                        selection: windows.contains { $0.id == store.pickedHeadlineWindow(for: id, on: place) }
+                            ? store.pickedHeadlineWindow(for: id, on: place) : nil,
+                        onSelect: { store.setHeadlineWindow($0, for: id, on: place) })
+                    .frame(width: PlaceWindowRow.columnWidth)
+                }
+            }
+        }
+        .frame(minHeight: 28)
+    }
+
+    static let columnWidth: CGFloat = 128
 }
 
 /// One enabled provider and the places it is shown: a chip per surface, lit

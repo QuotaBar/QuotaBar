@@ -177,6 +177,33 @@ public enum DisplaySurface: String, Codable, CaseIterable, Sendable, Identifiabl
     }
 }
 
+/// The places that stand one figure for a provider, each with its own say in
+/// which limit that figure is. They used to share one choice, the card's, so
+/// the menu bar, the island and the dock could only ever repeat each other —
+/// and someone with a 5-hour and a weekly limit wants one here and the other
+/// there, or there is no point in having so many places.
+public enum FigurePlace: String, Codable, CaseIterable, Sendable, Identifiable {
+    /// The card's ring in the panel, and the desktop cards drawn like it.
+    case card
+    case menuBar
+    case island
+    case dock
+
+    public var id: String { rawValue }
+
+    /// The places with a choice kept apart from the card's.
+    public static let apart: [FigurePlace] = [.menuBar, .island, .dock]
+
+    public var displayName: String {
+        switch self {
+        case .card: L10n.t("Card ring", "卡片圆环")
+        case .menuBar: L10n.t("Menu bar", "菜单栏")
+        case .island: L10n.t("Notch island", "刘海岛")
+        case .dock: L10n.t("Dock", "停靠条")
+        }
+    }
+}
+
 /// A global shortcut: a Carbon virtual key code and Carbon modifier mask.
 public struct Hotkey: Codable, Equatable, Sendable {
     public var keyCode: UInt32
@@ -262,6 +289,14 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
     /// choice was made. A window not among them is one the choice never saw,
     /// and is not folded by it.
     public var cardWindowsKnown: [String: [String]] = [:]
+    /// Place raw value → provider raw value → the window that place's figure
+    /// follows, for the places in `FigurePlace.apart`. Absent means the
+    /// fullest window. The card's own choice stays in `headlineWindows`.
+    public var placeWindows: [String: [String: String]] = [:]
+    /// False only in a file written before the places had a say, where each
+    /// followed the card's choice: the config copies that choice to them
+    /// once, so nothing changes on the day of the update.
+    public var placeWindowsSeeded = true
     /// Provider raw value → the ids of the windows the owner hid from the
     /// card's menu: not on the card, not under its arrow, not followed by the
     /// ring anywhere. Still read, cached and served by the local API.
@@ -302,6 +337,7 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
         case deskCards, deskCardsMigrated
         case hideWhenSharing, hotkey, paceAlerts, localAPI, proxy, betaUpdates
         case resetEffects, resetNotify, resetCreditNotify, resetCreditNotified, hiddenProviders, cardWindows, cardWindowsKnown, hiddenWindows
+        case placeWindows, placeWindowsSeeded
         case spendBudget, budgetNotified, balanceFloor, balanceFloorNotified, balanceChart, weeklyDigest, weeklyDigestSent
         case shareSignature, shareShowsSignature, shareMasksAccount
     }
@@ -349,6 +385,8 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
         hiddenProviders = value(.hiddenProviders, d.hiddenProviders)
         cardWindows = value(.cardWindows, d.cardWindows)
         cardWindowsKnown = value(.cardWindowsKnown, d.cardWindowsKnown)
+        placeWindows = value(.placeWindows, d.placeWindows)
+        placeWindowsSeeded = value(.placeWindowsSeeded, false)
         hiddenWindows = value(.hiddenWindows, d.hiddenWindows)
         spendBudget = value(.spendBudget, d.spendBudget)
         budgetNotified = value(.budgetNotified, d.budgetNotified)
@@ -376,6 +414,16 @@ extension ExperiencePrefs {
         list.removeAll { $0 == id.rawValue }
         if hidden { list.append(id.rawValue) }
         hiddenProviders[surface.rawValue] = list.isEmpty ? nil : list
+    }
+
+    public func placeWindow(for id: ProviderID, on place: FigurePlace) -> String? {
+        placeWindows[place.rawValue]?[id.rawValue]
+    }
+
+    public mutating func setPlaceWindow(_ windowID: String?, for id: ProviderID, on place: FigurePlace) {
+        var picks = placeWindows[place.rawValue] ?? [:]
+        picks[id.rawValue] = windowID
+        placeWindows[place.rawValue] = picks.isEmpty ? nil : picks
     }
 
     /// `ids` in order, without the ones hidden from `surface`.

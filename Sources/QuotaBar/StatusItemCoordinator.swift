@@ -220,7 +220,7 @@ final class StatusItemCoordinator: NSObject {
     private static func stripItems(_ store: UsageStore) -> [(id: ProviderID, percent: Double?)] {
         guard store.menuBarIconMode == .text else { return [] }
         let ids = store.selected.map { [$0] } ?? Array(store.enabled.prefix(3))
-        return ids.map { id in (id: id, percent: store.headlinePercent(for: id).map { store.meterMode.shownPercent(fromUsed: $0) }) }
+        return ids.map { id in (id: id, percent: store.headlinePercent(for: id, on: .menuBar).map { store.meterMode.shownPercent(fromUsed: $0) }) }
     }
 
     @objc private func clicked() {
@@ -290,7 +290,7 @@ final class StatusItemCoordinator: NSObject {
     /// "81% left" or "19% used", as the icon counts; a prepaid account's
     /// balance; a dash before a reading.
     private func reading(for id: ProviderID, store: UsageStore) -> String {
-        guard let used = store.headlinePercent(for: id) else {
+        guard let used = store.headlinePercent(for: id, on: .menuBar) else {
             return store.balanceFigure(for: id).map { L10n.t("\($0) balance", "余额 \($0)") } ?? "—"
         }
         let figure = QuotaFormat.percent(store.meterMode.shownPercent(fromUsed: used))

@@ -671,9 +671,9 @@ struct EdgeDockView: View {
     /// had plenty left.
     private var handleUsed: Double? {
         if let picked = store.selected, store.dockProviders.contains(picked) {
-            return store.headlinePercent(for: picked)
+            return store.headlinePercent(for: picked, on: .dock)
         }
-        return store.dockProviders.compactMap { store.headlinePercent(for: $0) }.max()
+        return store.dockProviders.compactMap { store.headlinePercent(for: $0, on: .dock) }.max()
     }
 
     private var handleFraction: CGFloat {
@@ -834,7 +834,7 @@ struct EdgeDockView: View {
             ForEach(store.dockProviders) { id in
                 ProviderRing(
                     id: id,
-                    percent: ringOverride[id] ?? store.headlinePercent(for: id),
+                    percent: ringOverride[id] ?? store.headlinePercent(for: id, on: .dock),
                     mode: store.meterMode,
                     showsLabel: false,
                     selected: store.selected == id,

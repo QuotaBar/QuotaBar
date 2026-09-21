@@ -640,7 +640,7 @@ struct IslandView: View {
             .frame(width: 20, height: 20)
 
             ForEach(store.islandShown) { id in
-                if let used = store.headlinePercent(for: id) {
+                if let used = store.headlinePercent(for: id, on: .island) {
                     // Same glanceable role as the menu-bar glyph, so it follows
                     // the same remaining/used preference.
                     let shown = store.meterMode.shownPercent(fromUsed: used)
@@ -817,7 +817,7 @@ struct NotchMiniSlot: View {
     var body: some View {
         HStack(spacing: 4) {
             ProviderGlyph(id: id, size: 13, tint: Color(hex: id.accentHex))
-            if let used = store.headlinePercent(for: id) {
+            if let used = store.headlinePercent(for: id, on: .island) {
                 let shown = store.meterMode.shownPercent(fromUsed: used)
                 Text("\(Int(shown.rounded()))%")
                     .font(.system(size: 11, weight: .semibold))
@@ -917,11 +917,11 @@ struct NotchSlot: View {
     /// Follows the same remaining/used preference as the menu-bar glyph — both
     /// are the same glanceable role and disagreeing would be a bug report.
     private var shownPercent: Double? {
-        id.flatMap { store.headlinePercent(for: $0) }.map { store.meterMode.shownPercent(fromUsed: $0) }
+        id.flatMap { store.headlinePercent(for: $0, on: .island) }.map { store.meterMode.shownPercent(fromUsed: $0) }
     }
 
     private var resetsAt: Date? {
-        id.flatMap { store.headlineWindow(for: $0) }?.resetsAt
+        id.flatMap { store.headlineWindow(for: $0, on: .island) }?.resetsAt
     }
 }
 

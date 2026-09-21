@@ -116,6 +116,8 @@ struct QuotaRowView: View {
     var compact = false
     /// Double-click picks this window for the provider's single figure.
     var allowsPick = true
+    /// Whose figure: the card's ring in the panel, the dock's in its callout.
+    var place: FigurePlace = .card
 
     @State private var hovered = false
 
@@ -125,8 +127,8 @@ struct QuotaRowView: View {
     private var experience: ExperiencePrefs { store.experience }
 
     var body: some View {
-        let followed = store.headlineWindow(for: id)?.id == window.id
-        let picked = store.pickedHeadlineWindow(for: id) == window.id
+        let followed = store.headlineWindow(for: id, on: place)?.id == window.id
+        let picked = store.pickedHeadlineWindow(for: id, on: place) == window.id
         VStack(alignment: .leading, spacing: compact ? 3 : 5) {
             HStack(spacing: 5) {
                 Text(window.displayName)
@@ -148,8 +150,8 @@ struct QuotaRowView: View {
                         .font(.system(size: 7, weight: .semibold))
                         .foregroundStyle(picked ? Color(hex: id.accentHex) : .white.opacity(0.35))
                         .help(picked
-                            ? L10n.t("The ring follows this window", "圆环按这个窗口显示")
-                            : L10n.t("The fullest window, which the ring follows", "用得最满的窗口，圆环按它显示"))
+                            ? L10n.t("The \(place == .card ? "ring" : "dock") follows this window", "\(place == .card ? "圆环" : "停靠条")按这个窗口显示")
+                            : L10n.t("The fullest window, which the \(place == .card ? "ring" : "dock") follows", "用得最满的窗口，\(place == .card ? "圆环" : "停靠条")按它显示"))
                 }
                 Spacer(minLength: Design.space2)
                 if store.justReset(id, window: window.id) {
@@ -178,7 +180,7 @@ struct QuotaRowView: View {
         .onTapGesture(count: 2) {
             guard allowsPick, used != nil else { return }
             withAnimation(Motion.animation(.easeOut(duration: 0.15))) {
-                store.setHeadlineWindow(picked ? nil : window.id, for: id)
+                store.setHeadlineWindow(picked ? nil : window.id, for: id, on: place)
             }
         }
     }

@@ -304,3 +304,43 @@ final class IslandRoomTests: XCTestCase {
         XCTAssertEqual(shown.compactMap { used[$0] }.map { AlertSettings().level(for: $0) }.max() ?? .none, .none)
     }
 }
+
+final class FigurePlaceTests: XCTestCase {
+    func testEachPlaceKeepsItsOwnWindow() {
+        var prefs = ExperiencePrefs()
+        prefs.setPlaceWindow("5h", for: .codex, on: .menuBar)
+        prefs.setPlaceWindow("Week", for: .codex, on: .dock)
+        XCTAssertEqual(prefs.placeWindow(for: .codex, on: .menuBar), "5h")
+        XCTAssertEqual(prefs.placeWindow(for: .codex, on: .dock), "Week")
+        XCTAssertNil(prefs.placeWindow(for: .codex, on: .island), "automatic until chosen")
+        prefs.setPlaceWindow(nil, for: .codex, on: .menuBar)
+        XCTAssertNil(prefs.placeWindows[FigurePlace.menuBar.rawValue], "an emptied place leaves nothing behind")
+    }
+
+    /// A config written while every place followed the card: each place
+    /// starts from the card's choice, once, and is its own from then on.
+    func testAnOlderConfigSeedsThePlacesFromTheCard() throws {
+        let old = #"{"enabled":["codex"],"headlineWindows":{"codex":"Week"},"experience":{"currency":"USD"}}"#
+        var config = try JSONDecoder().decode(QuotaConfig.self, from: Data(old.utf8))
+        for place in FigurePlace.apart {
+            XCTAssertEqual(config.experience.placeWindow(for: .codex, on: place), "Week")
+        }
+        XCTAssertTrue(config.experience.placeWindowsSeeded)
+
+        // The dock set to automatic, the card's ring moved: a second launch
+        // leaves both alone.
+        config.experience.setPlaceWindow(nil, for: .codex, on: .dock)
+        config.headlineWindows[.codex] = "5h"
+        let again = try JSONDecoder().decode(QuotaConfig.self, from: JSONEncoder().encode(config))
+        XCTAssertNil(again.experience.placeWindow(for: .codex, on: .dock))
+        XCTAssertEqual(again.experience.placeWindow(for: .codex, on: .island), "Week")
+        XCTAssertEqual(again.headlineWindows[.codex], "5h")
+    }
+
+    func testANewInstallSeedsNothing() throws {
+        var config = QuotaConfig()
+        config.headlineWindows[.claude] = "5h"
+        let back = try JSONDecoder().decode(QuotaConfig.self, from: JSONEncoder().encode(config))
+        XCTAssertTrue(back.experience.placeWindows.isEmpty)
+    }
+}
