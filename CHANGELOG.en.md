@@ -3,6 +3,15 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
+## Unreleased
+
+### 2026-09-23
+
+#### Fixed
+
+- The dock's Codex card had a blank band under its last row: with the account moved from Plus to Pro the card was down to two rows, the week and the reserve, yet stayed as tall as it had been with three, a row's worth of black under the last one. The card's back is the usage chart from the local logs; both faces are laid out at once and the card takes the taller, so turning it never resizes it under the pointer — and the chart's bars were a fixed 56pt, taller than two rows, so the back held the card open. The back now asks only for the bars' shortest (20pt) and grows them into whatever room the front leaves; with three rows or more the bars are as tall as before.
+- `--island-preview` renders two more images: the dock card for Codex with its reserve in use, and the same card turned to its usage face.
+
 ## 0.5.13 · 2026-09-22
 
 ### 2026-09-22

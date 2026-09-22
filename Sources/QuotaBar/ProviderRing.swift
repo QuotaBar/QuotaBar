@@ -118,13 +118,22 @@ struct ProviderCallout: View {
     /// Front: the quota windows. Back: what this provider actually consumed,
     /// from the local session logs where there are any. Flipped by the
     /// header button, with the card turning over on its vertical axis.
-    @State private var flipped = false
+    @State private var flipped: Bool
     /// The refresh button becomes a spinner until the store's next tick —
     /// the sign the owner asked for that the press did something — or for
     /// four seconds, whichever comes first.
     @State private var refreshing = false
     /// How many days the back face covers: 7, 14 or 30, picked at its foot.
     @State private var range = 14
+
+    /// `flipped`: shown from its usage face, for the previews — hover has
+    /// no way to press the header's button.
+    init(store: UsageStore, id: ProviderID, detail: Bool = false, flipped: Bool = false) {
+        self.store = store
+        self.id = id
+        self.detail = detail
+        _flipped = State(initialValue: flipped)
+    }
 
     private var phase: ProviderPhase? { store.states[id] }
     private var status: ServiceStatus? { store.serviceStatus[id] }
@@ -134,6 +143,9 @@ struct ProviderCallout: View {
             header
             // Both faces are laid out, so the card is as tall as the taller
             // one and the turn never resizes the panel under the pointer.
+            // The back asks for no more than its bars' shortest, and takes
+            // what the front leaves: asking for its full chart, it held a
+            // two-window card open a row past its last window.
             ZStack(alignment: .topLeading) {
                 content
                     .opacity(flipped ? 0 : 1)
@@ -396,7 +408,8 @@ struct ProviderCallout: View {
                         usageFigure(L10n.t("\(range) days", "\(range) 天"), QuotaFormat.compact(span.tokens), QuotaFormat.usd(span.usd))
                         usageFigure(L10n.t("Per day", "日均"), QuotaFormat.compact(span.tokens / max(1, recent.count)), QuotaFormat.usd(span.usd / Double(max(1, recent.count))))
                     }
-                    Spacer(minLength: Design.space2)
+                    // On the card's floor, with the bars grown as tall as
+                    // the room above allows.
                     DailyBars(days: recent, source: source, accent: Color(hex: source.accentHex)) {
                         HStack(spacing: 2) {
                             ForEach([7, 14, 30], id: \.self) { days in
@@ -412,6 +425,7 @@ struct ProviderCallout: View {
                             }
                         }
                     }
+                    .frame(maxHeight: .infinity, alignment: .bottom)
                 }
                 .frame(maxHeight: .infinity, alignment: .top)
             }
@@ -500,8 +514,13 @@ struct CalloutButton: View {
 }
 
 /// A fortnight of days as bars, sat on the card's floor, with the day
-/// under the pointer read out where the caption is.
+/// under the pointer read out where the caption is. The bars stand as tall
+/// as they are given, between a line's worth and their full height.
 struct DailyBars<Trailing: View>: View {
+    /// What the chart asks for, and the least it can be read at.
+    static var shortest: CGFloat { 20 }
+    static var tallest: CGFloat { 56 }
+
     let days: [UsageDay]
     let source: CostSource
     let accent: Color
@@ -515,19 +534,22 @@ struct DailyBars<Trailing: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Design.space2) {
-            HStack(alignment: .bottom, spacing: 3) {
-                ForEach(days.indices, id: \.self) { index in
-                    let tokens = Double(days[index].bySource[source] ?? 0)
-                    RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(accent.opacity(tokens > 0 ? (hovered == nil || hovered == index ? 0.92 : 0.45) : 0.15))
-                        .frame(height: max(3, 56 * CGFloat(tokens / peak)))
-                        .frame(maxWidth: .infinity, alignment: .bottom)
-                        .contentShape(Rectangle().size(width: 40, height: 60))
-                        .onHover { hovered = $0 ? index : (hovered == index ? nil : hovered) }
-                        .animation(.easeOut(duration: 0.12), value: hovered)
+            GeometryReader { chart in
+                HStack(alignment: .bottom, spacing: 3) {
+                    ForEach(days.indices, id: \.self) { index in
+                        let tokens = Double(days[index].bySource[source] ?? 0)
+                        RoundedRectangle(cornerRadius: 2, style: .continuous)
+                            .fill(accent.opacity(tokens > 0 ? (hovered == nil || hovered == index ? 0.92 : 0.45) : 0.15))
+                            .frame(height: max(3, chart.size.height * CGFloat(tokens / peak)))
+                            .frame(maxWidth: .infinity, alignment: .bottom)
+                            .contentShape(Rectangle().size(width: 40, height: 60))
+                            .onHover { hovered = $0 ? index : (hovered == index ? nil : hovered) }
+                            .animation(.easeOut(duration: 0.12), value: hovered)
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
-            .frame(height: 56, alignment: .bottom)
+            .frame(minHeight: Self.shortest, idealHeight: Self.shortest, maxHeight: Self.tallest)
             HStack(spacing: Design.space2) {
                 Text(caption)
                     .font(.system(size: 10, design: .monospaced))

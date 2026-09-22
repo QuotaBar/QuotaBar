@@ -339,7 +339,10 @@ enum Snapshot {
 
     /// Codex with the plan's week spent and the Luna reserve in use, parsed
     /// through the real decoder from the shape recorded on 2026-09-19.
-    private static func codexReserveStore() -> UsageStore {
+    /// `logged`: with a month of Codex CLI traffic in the local logs, so the
+    /// callout's usage face has bars to draw — what decides the card's
+    /// height when the plan reports few windows.
+    private static func codexReserveStore(logged: Bool = false) -> UsageStore {
         let json = """
         {"email":"you@example.com","plan_type":"pro",
          "rate_limit":{"allowed":false,"limit_reached":true,
@@ -350,7 +353,27 @@ enum Snapshot {
            "normal_model_slug":"gpt-5.6-luna"}]}
         """
         let snapshot = (try? CodexProvider.parse(Data(json.utf8))) ?? UsageSnapshot(windows: [])
-        let store = UsageStore.preview(enabled: [.codex], states: [.codex: .loaded(snapshot)])
+        var ledger = UsageLedger.empty
+        if logged {
+            let calendar = Calendar.current
+            let today = calendar.startOfDay(for: Date())
+            let first = calendar.date(from: DateComponents(year: calendar.component(.year, from: today), month: 1, day: 1)) ?? today
+            var days: [UsageDay] = []
+            var day = first
+            while day <= today {
+                var entry = UsageDay(day: day)
+                let back = calendar.dateComponents([.day], from: day, to: today).day ?? 0
+                if back < 30 {
+                    entry.bySource[.codexCLI] = 400_000 + (back * 391_919) % 1_600_000
+                    entry.usd = Double(entry.tokens) * 0.000_002
+                }
+                days.append(entry)
+                day = calendar.date(byAdding: .day, value: 1, to: day) ?? today.addingTimeInterval(1)
+            }
+            ledger = UsageLedger(year: calendar.component(.year, from: today), days: days, today: today)
+        }
+        let store = UsageStore.preview(enabled: [.codex], states: [.codex: .loaded(snapshot)], ledger: ledger)
+        if logged { store.archive.fullScanDone = true }
         store.serviceStatus[.codex] = ServiceStatus(
             level: .operational, description: "",
             pageURL: URL(string: "https://status.openai.com")!, checkedAt: Date())
@@ -407,6 +430,19 @@ enum Snapshot {
                 .padding(20)
                 .environment(\.colorScheme, .dark)
             render(callout, to: url, name: "dock-callout-not-updating-\(suffix)", backing: Color(hex: "3A4A5A"))
+            // Two windows on the front and a month of bars on the back: the
+            // card must be no taller than the two rows need.
+            render(
+                ProviderCallout(store: codexReserveStore(logged: true), id: .codex)
+                    .padding(20)
+                    .environment(\.colorScheme, .dark),
+                to: url, name: "dock-callout-codex-reserve-\(suffix)", backing: Color(hex: "3A4A5A"))
+            // The same card turned over: the bars at their shortest.
+            render(
+                ProviderCallout(store: codexReserveStore(logged: true), id: .codex, flipped: true)
+                    .padding(20)
+                    .environment(\.colorScheme, .dark),
+                to: url, name: "dock-callout-codex-reserve-usage-\(suffix)", backing: Color(hex: "3A4A5A"))
             write(
                 ProviderSettingsRow(store: failingStore(), id: .claude, isExpanded: false, onToggle: {})
                     .environment(\.glassDisabled, true)
