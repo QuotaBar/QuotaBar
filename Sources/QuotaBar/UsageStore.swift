@@ -291,15 +291,11 @@ final class UsageStore: ObservableObject {
             enabled: experience.iCloudSync,
             readings: { [unowned self] in self.cloudReadings() },
             refreshAll: { [unowned self] in self.refreshForPhone() })
-        // Only once the iPhone section is shown: without it no phone can be
-        // allowed, and nothing would ever be sent.
-        if SettingsSection.showsPhone {
-            relaySync.start(
-                client: { [unowned self] in self.run.relayClient() },
-                readings: { [unowned self] in self.cloudReadings() },
-                refreshAll: { [unowned self] in self.refreshForPhone() },
-                notify: { [unowned self] title, body in self.notifyAboutPhone(title: title, body: body) })
-        }
+        relaySync.start(
+            client: { [unowned self] in self.run.relayClient() },
+            readings: { [unowned self] in self.cloudReadings() },
+            refreshAll: { [unowned self] in self.refreshForPhone() },
+            notify: { [unowned self] title, body in self.notifyAboutPhone(title: title, body: body) })
         refreshAll()
     }
 

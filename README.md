@@ -50,9 +50,20 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.16** (2026-09-23) · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.16** (2026-09-23) · **3** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-09-23</b> · Unreleased · 3 added</summary>
+
+**Added**
+
+- A new iPhone section in Settings sends your readings to your own iCloud, for QuotaBar for iPhone and its home- and lock-screen widgets (free on the App Store; the section links to it). It is off until you turn on "Send readings to iPhone". Only the results go — plans, figures, reset times, balances, the last error, and what a card shows under its arrow: spend for today, yesterday and 30 days with its models (in the currency you chose on the Mac), a month of usage, and the console link; sign-ins, tokens and API keys never leave the Mac. The readings are end-to-end encrypted in your private iCloud database, where nobody else, us included, can read them. A refresh that changed something is sent straight away, and otherwise every 20 minutes so the phone knows the Mac is awake. With several Macs each keeps its own copy and the phone shows the newest reading per provider. Turning it off removes this Mac's readings from iCloud. While it is on, "Refresh now" on the phone has the Mac read every provider within half a minute and send the result straight back; refreshes the phone asks for are at least a minute apart, and a request older than ten minutes is ignored. The section shows the sync status and any error in plain sight, with a Sync now button.
+- Settings → iPhone gains "Through Quota Run": readings on an iPhone signed in to another iCloud account than this Mac. Sign in to the same Quota Run account in QuotaBar on the phone and it shows up here (with a notification); allow it once the six-digit code matches the one on the phone. The readings are end-to-end encrypted on this Mac for the phones you allow — quota.run only passes them on and cannot read them — and nothing is sent until you allow one. Revoking a phone switches to a new key at once, so it cannot open anything sent afterwards, and the phones still allowed get the new key. "Ask the Mac to refresh" on the phone arrives this way too; one press arriving by iCloud and by quota.run refreshes once.
+- Settings → iPhone now reads "through your iCloud or your Quota Run account".
+
+</details>
+
+<details>
 <summary><b>2026-09-23</b> · 0.5.16 · 4 changed · 1 fixed</summary>
 
 **Changed**
@@ -86,16 +97,6 @@ Latest release **0.5.16** (2026-09-23) · [full changelog](CHANGELOG.en.md)
 **Style**
 
 - The marks inside the dock's rings are larger: they took half the disc and read small. They now span 64% of it, measured on what is drawn rather than on the image's box — some marks, Qoder's and Antigravity's, leave a quarter of their own image empty and so always came out a size smaller than the rest; now they all stand the same size. The artwork itself is unchanged.
-
-</details>
-
-<details>
-<summary><b>2026-09-23</b> · 0.5.14 · 2 fixed</summary>
-
-**Fixed**
-
-- The dock's Codex card had a blank band under its last row: with the account moved from Plus to Pro the card was down to two rows, the week and the reserve, yet stayed as tall as it had been with three, a row's worth of black under the last one. The card's back is the usage chart from the local logs; both faces are laid out at once and the card takes the taller, so turning it never resizes it under the pointer — and the chart's bars were a fixed 56pt, taller than two rows, so the back held the card open. The back now asks only for the bars' shortest (20pt) and grows them into whatever room the front leaves; with three rows or more the bars are as tall as before.
-- `--island-preview` renders two more images: the dock card for Codex with its reserve in use, and the same card turned to its usage face.
 
 </details>
 

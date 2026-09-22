@@ -3,6 +3,16 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
+## Unreleased
+
+### 2026-09-23
+
+#### Added
+
+- A new iPhone section in Settings sends your readings to your own iCloud, for QuotaBar for iPhone and its home- and lock-screen widgets (free on the App Store; the section links to it). It is off until you turn on "Send readings to iPhone". Only the results go — plans, figures, reset times, balances, the last error, and what a card shows under its arrow: spend for today, yesterday and 30 days with its models (in the currency you chose on the Mac), a month of usage, and the console link; sign-ins, tokens and API keys never leave the Mac. The readings are end-to-end encrypted in your private iCloud database, where nobody else, us included, can read them. A refresh that changed something is sent straight away, and otherwise every 20 minutes so the phone knows the Mac is awake. With several Macs each keeps its own copy and the phone shows the newest reading per provider. Turning it off removes this Mac's readings from iCloud. While it is on, "Refresh now" on the phone has the Mac read every provider within half a minute and send the result straight back; refreshes the phone asks for are at least a minute apart, and a request older than ten minutes is ignored. The section shows the sync status and any error in plain sight, with a Sync now button.
+- Settings → iPhone gains "Through Quota Run": readings on an iPhone signed in to another iCloud account than this Mac. Sign in to the same Quota Run account in QuotaBar on the phone and it shows up here (with a notification); allow it once the six-digit code matches the one on the phone. The readings are end-to-end encrypted on this Mac for the phones you allow — quota.run only passes them on and cannot read them — and nothing is sent until you allow one. Revoking a phone switches to a new key at once, so it cannot open anything sent afterwards, and the phones still allowed get the new key. "Ask the Mac to refresh" on the phone arrives this way too; one press arriving by iCloud and by quota.run refreshes once.
+- Settings → iPhone now reads "through your iCloud or your Quota Run account".
+
 ## 0.5.16 · 2026-09-23
 
 ### 2026-09-23

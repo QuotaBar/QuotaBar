@@ -11,8 +11,31 @@ struct PhonePane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Design.space4) {
+            appCard
             iCloudCard
             RelayCard(relay: relay, run: run)
+        }
+    }
+
+    /// Where the phone's side comes from.
+    private var appCard: some View {
+        SettingsCard {
+            SettingRow(L10n.t("QuotaBar for iPhone", "iPhone 版")) {
+                HStack(alignment: .top, spacing: Design.space3) {
+                    Text(L10n.t(
+                        "Cards and home- and lock-screen widgets with what this Mac reads. Free on the App Store.",
+                        "用卡片和桌面、锁屏小组件显示这台 Mac 读到的额度。在 App Store 免费下载。"))
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, Design.rowLabelInset)
+                    Spacer(minLength: 0)
+                    Button(L10n.t("App Store", "App Store")) {
+                        NSWorkspace.shared.open(URL(string: "https://apps.apple.com/app/id6815000058")!)
+                    }
+                    .glassAction()
+                }
+            }
         }
     }
 

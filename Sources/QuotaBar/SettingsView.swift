@@ -27,19 +27,6 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    /// Whether Settings lists the iPhone section. Off until the iPhone app is
-    /// on the App Store: before that the section would point at an app nobody
-    /// can install. `defaults write bar.quota.QuotaBar showsPhoneSettings -bool YES`
-    /// shows it for testing; the sync itself is not switched off by this.
-    static var showsPhone: Bool {
-        UserDefaults.standard.bool(forKey: "showsPhoneSettings")
-    }
-
-    /// The sections the sidebar lists.
-    static var shown: [SettingsSection] {
-        allCases.filter { $0 != .phone || showsPhone }
-    }
-
     var title: String {
         switch self {
         case .providers: L10n.t("Providers", "服务商")
@@ -263,14 +250,14 @@ struct SettingsView: View {
     /// belong to any one of them.
     private var nav: some View {
         VStack(spacing: 0) {
-            ForEach(SettingsSection.shown) { item in
+            ForEach(SettingsSection.allCases) { item in
                 sidebarItem(item)
             }
         }
         .background(alignment: .topLeading) {
             SidebarRail(
-                count: SettingsSection.shown.count,
-                index: SettingsSection.shown.firstIndex(of: section) ?? 0)
+                count: SettingsSection.allCases.count,
+                index: SettingsSection.allCases.firstIndex(of: section) ?? 0)
         }
     }
 

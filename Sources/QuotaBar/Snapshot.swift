@@ -688,7 +688,7 @@ enum Snapshot {
         for language in [L10n.Language.en, .zhHans] {
             L10n.override = language
             let suffix = language == .en ? "en" : "zh"
-            for section in SettingsSection.shown {
+            for section in SettingsSection.allCases {
                 for dark in [false, true] {
                     write(
                         SettingsView(store: store, scrollable: false, section: section),
