@@ -553,13 +553,31 @@ struct ProviderGlyph: View {
     /// system appearance, which in light mode is black — and the black marks
     /// (Codex, Cursor, OpenCode, z.ai, Kimi) then vanish into a black panel.
     var tint: Color?
+    /// `size` is for the drawn mark, not the image's box: a mark that leaves
+    /// room round itself in its file is drawn larger to make up for it, so it
+    /// stands as big as its neighbours. The artwork itself is not touched.
+    var fitsDrawing = false
 
     private var monochromeColour: Color {
         if let tint { return tint }
         return ink ? Design.ink : Color.primary
     }
 
+    /// The box to draw an image in so its visible part comes out at `size`.
+    private func box(_ logo: Logo) -> CGFloat {
+        fitsDrawing ? size / max(logo.fill, 0.5) : size
+    }
+
     var body: some View {
+        Group {
+            content
+        }
+        // The larger box is centred on the one the caller laid out.
+        .frame(width: size, height: size)
+    }
+
+    @ViewBuilder
+    private var content: some View {
         if tint != nil, let mark = Self.logo(for: id, dark: true) {
             // A mark cut for black surfaces — Kimi's white K without the
             // black tile it ships on, which on a black strip left a mark half
@@ -568,20 +586,20 @@ struct ProviderGlyph: View {
             Image(nsImage: mark.image)
                 .resizable()
                 .scaledToFit()
-                .frame(width: size, height: size)
+                .frame(width: box(mark), height: box(mark))
         } else if let logo = Self.logo(for: id) {
             if logo.isMonochrome {
                 Image(nsImage: logo.image)
                     .resizable()
                     .renderingMode(.template)
                     .scaledToFit()
-                    .frame(width: size, height: size)
+                    .frame(width: box(logo), height: box(logo))
                     .foregroundStyle(monochromeColour)
             } else {
                 Image(nsImage: logo.image)
                     .resizable()
                     .scaledToFit()
-                    .frame(width: size, height: size)
+                    .frame(width: box(logo), height: box(logo))
                     .saturation(ink ? 0 : 1)
                     .brightness(ink ? -1 : 0)
             }
@@ -595,6 +613,8 @@ struct ProviderGlyph: View {
     struct Logo {
         let image: NSImage
         let isMonochrome: Bool
+        /// How much of the image's longer side the visible mark spans, 0…1.
+        let fill: CGFloat
     }
 
     /// `dark`: the `<id>-dark.png` variant, present only for marks whose
@@ -605,9 +625,27 @@ struct ProviderGlyph: View {
         guard let url = Self.logoURL(for: id, dark: dark), let image = NSImage(contentsOf: url) else {
             return nil
         }
-        let logo = Logo(image: image, isMonochrome: Self.isMonochrome(image))
+        let logo = Logo(image: image, isMonochrome: Self.isMonochrome(image), fill: Self.fill(image))
         Self.cache[key] = logo
         return logo
+    }
+
+    /// The share of the image's longer side that its opaque pixels span.
+    private static func fill(_ image: NSImage) -> CGFloat {
+        guard let tiff = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff),
+              bitmap.pixelsWide > 0, bitmap.pixelsHigh > 0
+        else { return 1 }
+        var minX = bitmap.pixelsWide, minY = bitmap.pixelsHigh, maxX = -1, maxY = -1
+        for y in 0..<bitmap.pixelsHigh {
+            for x in 0..<bitmap.pixelsWide {
+                guard let alpha = bitmap.colorAt(x: x, y: y)?.alphaComponent, alpha > 0.1 else { continue }
+                minX = min(minX, x); maxX = max(maxX, x)
+                minY = min(minY, y); maxY = max(maxY, y)
+            }
+        }
+        guard maxX >= minX, maxY >= minY else { return 1 }
+        let span = CGFloat(max(maxX - minX + 1, maxY - minY + 1))
+        return min(1, span / CGFloat(max(bitmap.pixelsWide, bitmap.pixelsHigh)))
     }
 
     /// True when every visible pixel is (near-)unsaturated — i.e. the mark

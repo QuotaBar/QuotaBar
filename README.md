@@ -50,14 +50,26 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.14** (2026-09-23) · **1** changes in development · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.14** (2026-09-23) · **7** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
-<summary><b>2026-09-23</b> · Unreleased · 1 added</summary>
+<summary><b>2026-09-23</b> · Unreleased · 3 added · 3 fixed · 1 style</summary>
 
 **Added**
 
 - Update checks and downloads go to quota.bar first and to GitHub only when it cannot be reached. It used to be the other way round: GitHub was asked first and the copy on quota.bar only when GitHub gave no answer, yet some networks cannot reach GitHub at all and every check waited for it to time out first; and how many people use the app was unknown, since GitHub counts only its own downloads, most of them the zip the app fetches when it updates itself. A check now asks quota.bar and turns to GitHub when it gets nothing; with "Beta updates" on it still reads GitHub's list and takes the newer of the two, since quota.bar has no pre-releases. A download takes the zip on quota.bar before the asset on GitHub, and is verified for the developer's signature and Apple's notarization before it installs, as before. The request's User-Agent now carries the app version and the chip (`QuotaBar/0.5.14 (macOS 26.1; arm64)`), which is how quota.bar counts active installs and the spread of versions and chips. Settings → Updates says so in the note beside "Check": Checking for updates connects to quota.bar (GitHub if it cannot be reached). The check carries the app version and, like any web request, your IP address; quota.bar keeps only a salted hash of it to count active installs and deletes the raw logs after seven days. No usage data is sent. The About page's "Your data" list is reworded to match.
+- Qoder signs in inside the app: Settings → Providers → Qoder → Sign in in a browser…, then sign in to qoder.com in the window, with no Cookie to copy. Qoder's session cookie has no fixed name, so the window first asks Qoder's own quota endpoint and saves the session only once it answers.
+- Kimi reads the Kimi Desktop chat app's sign-in: with no Kimi Code sign-in on the Mac, the kimi-auth the desktop app saved is used, China or Global edition, and an expired one is passed over. A Kimi Code sign-in still comes first, since it reports the coding plan's limits.
+
+**Fixed**
+
+- Qoder read 100% used for good: on an account whose seat allowance is 0 / 0 and whose credits sit in the organisation's shared pack, the seat carried "100% used" and was taken for the whole. Buckets with no allowance no longer count, and the rest are found whatever the reply calls them and however deep they sit; with nothing to count, the card says the account has no credits to read instead of 100%.
+- Grok could still show its weekly limit and Grok Build as two identical rows: only a difference under 0.05 counted as a repeat, while the card rounds, so 11.2% and 10.7% both read "11%" with the same reset. The rows are now compared as shown.
+- Qoder's mark disappeared on the dock, the island and desktop cards: it is drawn in near-black, was taken for a coloured mark and left untinted, black on black. Pixels too dark to carry a hue no longer count, and Qoder shows white on dark surfaces.
+
+**Style**
+
+- The marks inside the dock's rings are larger: they took half the disc and read small. They now span 64% of it, measured on what is drawn rather than on the image's box — some marks, Qoder's and Antigravity's, leave a quarter of their own image empty and so always came out a size smaller than the rest; now they all stand the same size. The artwork itself is unchanged.
 
 </details>
 

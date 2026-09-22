@@ -21,7 +21,7 @@ Server moves, the website, and build or release scripts don't change the app its
 
 #### Style
 
-- The marks inside the dock's rings are larger, about three fifths of the disc instead of half.
+- The marks inside the dock's rings are larger: they took half the disc and read small. They now span 64% of it, measured on what is drawn rather than on the image's box — some marks, Qoder's and Antigravity's, leave a quarter of their own image empty and so always came out a size smaller than the rest; now they all stand the same size. The artwork itself is unchanged.
 
 ## 0.5.14 · 2026-09-23
 
