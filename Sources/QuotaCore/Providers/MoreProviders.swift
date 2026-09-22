@@ -317,55 +317,6 @@ public struct ZhipuProvider: QuotaProvider {
     }
 }
 
-// MARK: - 月之暗面开放平台余额
-
-/// The Kimi / Moonshot open platform's account balance, by API key — China
-/// host first, then the international one.
-public struct MoonshotBalanceProvider: QuotaProvider {
-    public let id = ProviderID.moonshot
-
-    public func isConfigured(config: ConfigStore) -> Bool { config.credential(for: id) != nil }
-
-    public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
-        guard let key = config.credential(for: id) else { throw ProviderError.notConfigured(hint: id.setupHint) }
-        var lastError: Error = ProviderError.unauthorized
-        for (host, currency) in [("https://api.moonshot.cn", "CNY"), ("https://api.moonshot.ai", "USD")] {
-            do {
-                let response = try await HTTP.get(URL(string: "\(host)/v1/users/me/balance")!, headers: [
-                    "Authorization": "Bearer \(key.trimmingCharacters(in: .whitespacesAndNewlines))", "Accept": "application/json",
-                ]).requireOK()
-                return try Self.parse(response.data, currency: currency)
-            } catch {
-                lastError = error
-            }
-        }
-        throw lastError
-    }
-
-    public static func parse(_ data: Data, currency: String) throws -> UsageSnapshot {
-        guard let body = ProviderJSON.object(data) as? [String: Any],
-              let payload = body["data"] as? [String: Any],
-              let available = QwenProvider.number(payload["available_balance"])
-        else { throw ProviderError.badResponse }
-        let symbol = currency == "CNY" ? "¥" : "$"
-        let voucher = QwenProvider.number(payload["voucher_balance"]) ?? 0
-        let cash = QwenProvider.number(payload["cash_balance"]) ?? available
-        var detail = L10n.t("Balance \(symbol)\(String(format: "%.2f", available))", "余额 \(symbol)\(String(format: "%.2f", available))")
-        if voucher > 0 { detail += L10n.t(" · vouchers \(symbol)\(String(format: "%.2f", voucher))", " · 代金券 \(symbol)\(String(format: "%.2f", voucher))") }
-        if cash < 0 { detail += L10n.t(" · owing \(symbol)\(String(format: "%.2f", -cash))", " · 欠费 \(symbol)\(String(format: "%.2f", -cash))") }
-        let window = UsageWindow(title: L10n.t("Account balance", "账户余额"), detail: detail)
-        // The open platform answers for the account's balance only; it has no
-        // endpoint for what each key spent.
-        return UsageSnapshot(
-            planName: L10n.t("Pay as you go", "按量付费"),
-            windows: [window],
-            balance: BalanceSheet(
-                balances: [AccountBalance(currency: currency, total: available, paid: cash, granted: voucher > 0 ? voucher : nil)],
-                canCallAPI: available > 0,
-                representedWindowIDs: [window.id]))
-    }
-}
-
 // MARK: - GitHub Copilot
 
 /// Copilot's monthly premium requests, chat and completions, from the

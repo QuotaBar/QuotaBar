@@ -13,6 +13,10 @@
 	  Reading ~/.codex, ~/.claude and the login keychain needs no entitlement in
 	  an unsandboxed app — keychain access is gated by the item's own ACL, which
 	  the user approves once per signing identity.
+
+	  A release signed with the Developer ID provisioning profile is signed
+	  with QuotaBar-iCloud.entitlements instead, for the iPhone sync; see
+	  package_app.sh.
 	-->
 </dict>
 </plist>

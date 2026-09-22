@@ -16,7 +16,7 @@
 [![License](https://img.shields.io/badge/license-MIT-black)](LICENSE)
 
 QuotaBar is a macOS menu-bar app that shows how much of each AI coding service's quota
-you have used, when each window resets, and roughly what it has cost — for twenty-three
+you have used, when each window resets, and roughly what it has cost — for twenty-two
 providers, read and worked out on your own Mac. No account, no telemetry.
 
 [Download](https://github.com/QuotaBar/QuotaBar/releases/latest) ·
@@ -50,9 +50,25 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.15** (2026-09-23) · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.15** (2026-09-23) · **5** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-09-23</b> · Unreleased · 4 changed · 1 fixed</summary>
+
+**Changed**
+
+- The Kimi open platform (Moonshot API balance) is gone; Kimi Code is the Kimi that stays. If it was turned on, it drops out of the list after the update and nothing else changes; the API key saved for it is deleted from the keychain at launch, and no other credential is touched.
+- "Qwen Cloud" is now "Qwen" (千问 in Chinese).
+- Provider order: Gemini and Antigravity, both Google's, sit together.
+- Four new logos: Codex's colour icon, OpenRouter's brand lime, Qwen in purple, and the "Xiaomi MIMO" wordmark.
+
+**Fixed**
+
+- Qoder's logo nearly vanished on the black dock, island and desktop cards: its warm near-black counted as "in colour", so it was not drawn white. A colour that dark is now treated as none, and Qoder shows white on black.
+
+</details>
+
+<details>
 <summary><b>2026-09-23</b> · 0.5.15 · 3 added · 3 fixed · 1 style</summary>
 
 **Added**
@@ -80,17 +96,6 @@ Latest release **0.5.15** (2026-09-23) · [full changelog](CHANGELOG.en.md)
 
 - The dock's Codex card had a blank band under its last row: with the account moved from Plus to Pro the card was down to two rows, the week and the reserve, yet stayed as tall as it had been with three, a row's worth of black under the last one. The card's back is the usage chart from the local logs; both faces are laid out at once and the card takes the taller, so turning it never resizes it under the pointer — and the chart's bars were a fixed 56pt, taller than two rows, so the back held the card open. The back now asks only for the bars' shortest (20pt) and grows them into whatever room the front leaves; with three rows or more the bars are as tall as before.
 - `--island-preview` renders two more images: the dock card for Codex with its reserve in use, and the same card turned to its usage face.
-
-</details>
-
-<details>
-<summary><b>2026-09-22</b> · 0.5.13 · 3 fixed</summary>
-
-**Fixed**
-
-- With Cursor chosen for the menu-bar icon, it showed Grok Bot's usage rather than the month's plan (a plan just reset at 0.2%, an icon at 69.3%). With no limit chosen for Cursor the menu bar was on Automatic, and Automatic took the fullest of every limit reported, an allowance beside the plan such as Grok Bot included. Automatic now takes the fullest of the plan's own limits: Cursor's Grok Bot, Codex's reserve and its per-model extras are left out unless one is being drawn on (Codex's reserve once the plan is spent) or you pick it yourself. The menu bar, the island, the dock, the card's ring, desktop cards and the usage alert all follow the rule.
-- After 0.5.12 gave the menu bar a choice of limit of its own, double-clicking a limit on a card no longer moved the icon, and the separate choice was only in Settings, where it was hard to find: with Claude shown in the menu bar, double-clicking "5-hour" on its card did nothing to the icon. The menu bar goes with the card in its panel again: right-click the icon → "Show in Menu Bar" picks the provider (Claude or Codex), and double-clicking a limit on that card (5-hour, weekly, monthly) makes both the icon and the card's ring follow it; double-click again for Automatic. The island and the dock still choose for themselves. A choice 0.5.12 stored for the menu bar alone is no longer used; the card's stands.
-- Right-click the icon: under "Show in Menu Bar" there is now "Claude Limit Shown" (named for whichever provider is chosen) — the same choice as the double-click on the card, with the plan's limits and Automatic.
 
 </details>
 
@@ -127,12 +132,11 @@ Latest release **0.5.15** (2026-09-23) · [full changelog](CHANGELOG.en.md)
 | MiniMax | `api.minimax.io` coding-plan remains | manual token / cookie |
 | Manus | `api.manus.im` credits | manual session token |
 | DeepSeek | `api.deepseek.com/user/balance` | manual API key |
-| Qwen Cloud | `home.qwencloud.com` console → token plan usage | manual Cookie header |
+| Qwen | `home.qwencloud.com` console → token plan usage | manual Cookie header |
 | GitHub Copilot | GitHub CLI sign-in (`gh auth token`) → `api.github.com/copilot_internal/user` | automatic / manual |
 | 阿里云百炼 Coding Plan *(experimental)* | Bailian console gateway → coding plan quota | Cookie header / in-app sign-in |
 | 火山方舟 *(experimental)* | `arkcli usage plan --format json` | automatic (arkcli login) |
 | 智谱 GLM *(experimental)* | `open.bigmodel.cn/api/monitor/usage/quota/limit` | manual API key |
-| Kimi 开放平台 *(experimental)* | `api.moonshot.cn/v1/users/me/balance` | manual API key |
 | OpenRouter *(experimental)* | `openrouter.ai/api/v1/credits` + `/key` | manual API key |
 | 小米 MiMo *(experimental)* | `platform.xiaomimimo.com/api/v1` balance + token plan | Cookie header / in-app sign-in |
 | Qoder *(experimental)* | `qoder.com/api/v2/me/usages/big_model_credits` | manual Cookie header |

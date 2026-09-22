@@ -26,6 +26,7 @@ extension UsageStore {
         }
         if next.tokenCounting != before.tokenCounting { tick &+= 1 }
         if next.hiddenWindows != before.hiddenWindows { reapplyHiddenWindows() }
+        if next.iCloudSync != before.iCloudSync { cloudSync.setEnabled(next.iCloudSync) }
         experienceRevision &+= 1
     }
 

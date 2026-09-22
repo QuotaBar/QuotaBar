@@ -1,6 +1,7 @@
 import CryptoKit
 import XCTest
 @testable import QuotaCore
+@testable import QuotaModel
 
 // MARK: - Run arithmetic
 

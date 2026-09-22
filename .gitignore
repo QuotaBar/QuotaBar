@@ -6,3 +6,5 @@ QuotaBar.app
 dist/
 .claude/
 __pycache__/
+*.provisionprofile
+xcuserdata/

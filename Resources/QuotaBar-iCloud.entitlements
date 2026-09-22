@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Used instead of QuotaBar.entitlements when package_app.sh finds the
+	  Developer ID provisioning profile: iCloud sync to the iPhone app, and
+	  nothing else. $(TEAM_ID) is filled in from the signing identity.
+
+	  The environment is Production because a Developer ID build can use no
+	  other; the CloudKit schema has to be deployed to Production before a
+	  release that writes to it.
+	-->
+	<key>com.apple.application-identifier</key>
+	<string>$(TEAM_ID).bar.quota.QuotaBar</string>
+	<key>com.apple.developer.team-identifier</key>
+	<string>$(TEAM_ID)</string>
+	<key>com.apple.developer.icloud-container-identifiers</key>
+	<array>
+		<string>iCloud.bar.quota.QuotaBar</string>
+	</array>
+	<key>com.apple.developer.icloud-services</key>
+	<array>
+		<string>CloudKit</string>
+	</array>
+	<key>com.apple.developer.icloud-container-environment</key>
+	<string>Production</string>
+</dict>
+</plist>

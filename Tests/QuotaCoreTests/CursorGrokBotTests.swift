@@ -1,5 +1,6 @@
 import XCTest
 @testable import QuotaCore
+@testable import QuotaModel
 
 /// Grok Bot's weekly allowance comes from a second dashboard endpoint, so the
 /// summary parse is pinned with and without it.

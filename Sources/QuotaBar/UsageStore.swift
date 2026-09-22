@@ -176,6 +176,12 @@ final class UsageStore: ObservableObject {
     /// Quota Run: the personal records every reading feeds, and the upload
     /// once the owner has joined.
     let run: RunCenter
+    /// The readings sent on to the iPhone, once the owner turns it on.
+    let cloudSync: CloudSyncCenter
+    let relaySync: RelaySyncCenter
+    /// When a phone last had everything read again, by either route: one
+    /// press on the phone asks both, and should read once.
+    private var lastPhoneRefresh: Date?
     private var autoRefreshTask: Task<Void, Never>?
     private var clockTask: Task<Void, Never>?
     private var netMonitor: NWPathMonitor?
@@ -213,6 +219,8 @@ final class UsageStore: ObservableObject {
 
     private init(inert: Bool) {
         self.run = RunCenter.inert()
+        self.cloudSync = CloudSyncCenter(inert: true)
+        self.relaySync = RelaySyncCenter(inert: true)
         self.enabled = []
         self.refreshMinutes = ConfigStore.shared.refreshMinutes
         self.menuBarStyle = ConfigStore.shared.menuBarStyle
@@ -229,6 +237,8 @@ final class UsageStore: ObservableObject {
 
     init() {
         self.run = RunCenter()
+        self.cloudSync = CloudSyncCenter()
+        self.relaySync = RelaySyncCenter()
         self.enabled = ConfigStore.shared.enabledProviders
         self.refreshMinutes = ConfigStore.shared.refreshMinutes
         self.menuBarStyle = ConfigStore.shared.menuBarStyle
@@ -255,6 +265,13 @@ final class UsageStore: ObservableObject {
             }
         }
         HTTP.configureProxy(experience.proxy)
+        ConfigStore.shared.forgetRetiredCredentials()
+        // The status pages go through the same client as everything else,
+        // so the proxy applies to them too.
+        StatusPages.transport = { url, headers in
+            let response = try await HTTP.get(url, headers: headers)
+            return (response.status, response.data)
+        }
         // Spend and the year from the archive on disk: there before the first
         // scan has read a single log.
         applyArchive(UsageArchiveStore.shared.current)
@@ -268,6 +285,21 @@ final class UsageStore: ObservableObject {
         startStatusPolling()
         startExperience()
         run.start()
+        // The store lives as long as the app; the centre asks it for the
+        // readings each time it writes.
+        cloudSync.start(
+            enabled: experience.iCloudSync,
+            readings: { [unowned self] in self.cloudReadings() },
+            refreshAll: { [unowned self] in self.refreshForPhone() })
+        // Only once the iPhone section is shown: without it no phone can be
+        // allowed, and nothing would ever be sent.
+        if SettingsSection.showsPhone {
+            relaySync.start(
+                client: { [unowned self] in self.run.relayClient() },
+                readings: { [unowned self] in self.cloudReadings() },
+                refreshAll: { [unowned self] in self.refreshForPhone() },
+                notify: { [unowned self] title, body in self.notifyAboutPhone(title: title, body: body) })
+        }
         refreshAll()
     }
 
@@ -403,6 +435,31 @@ final class UsageStore: ObservableObject {
     /// the outcome — all up to date, or how many still are not — then sits
     /// in the island's sync note for a moment: reads that fail at once came
     /// back before the spinner could be seen, and the click read as nothing.
+    /// A phone's "refresh now", by iCloud or through quota.run. The phone
+    /// sends it both ways at once and the Mac sees each within half a
+    /// minute: the second is the same press, not another.
+    func refreshForPhone() {
+        let now = Date()
+        if let lastPhoneRefresh, now.timeIntervalSince(lastPhoneRefresh) < RefreshRequestPolicy.minimumSpacing {
+            // Already reading, or just read: the write after it answers both.
+            if !isForceRefreshing { cloudSync.afterRefresh(); relaySync.afterRefresh() }
+            return
+        }
+        lastPhoneRefresh = now
+        forceRefreshAll()
+    }
+
+    /// A phone waiting to be allowed, said as a notification.
+    func notifyAboutPhone(title: String, body: String) {
+        guard notificationsReady, notificationsAvailable else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.threadIdentifier = "bar.quota.phone"
+        UNUserNotificationCenter.current().add(UNNotificationRequest(
+            identifier: "bar.quota.phone.\(UUID().uuidString)", content: content, trigger: nil))
+    }
+
     func forceRefreshAll() {
         guard !isForceRefreshing else { return }
         isForceRefreshing = true
@@ -618,6 +675,8 @@ final class UsageStore: ObservableObject {
         evaluatePaceAlerts()
         scheduleResetCheck()
         run.afterRefresh()
+        cloudSync.afterRefresh()
+        relaySync.afterRefresh()
     }
 
     /// Re-evaluates which providers have usable credentials.

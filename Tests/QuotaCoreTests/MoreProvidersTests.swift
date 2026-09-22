@@ -56,13 +56,6 @@ final class MoreProvidersTests: XCTestCase {
         XCTAssertThrowsError(try VolcengineArkProvider.parse(json(#"{"viewer":{"auth_method":"none"},"items":[]}"#)))
     }
 
-    func testMoonshotBalance() throws {
-        let snapshot = try MoonshotBalanceProvider.parse(json(#"{"code":0,"data":{"available_balance":49.58,"voucher_balance":46.58,"cash_balance":3},"scode":"0x0","status":true}"#), currency: "CNY")
-        XCTAssertEqual(snapshot.windows.count, 1)
-        XCTAssertTrue(snapshot.windows[0].detail?.contains("49.58") == true)
-        XCTAssertNil(snapshot.windows[0].usedPercent)
-    }
-
     /// The documented reply of GET api.deepseek.com/user/balance (issue #1).
     func testDeepSeekBalanceIsReadSnakeCased() throws {
         let snapshot = try DeepSeekProvider.parse(json(#"{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"110.00","granted_balance":"10.00","topped_up_balance":"100.00"}]}"#))

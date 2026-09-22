@@ -116,6 +116,22 @@ public struct ServiceStatus: Sendable, Equatable {
 }
 
 public enum StatusPages {
+    public typealias Response = (status: Int, data: Data)
+
+    /// How the pages are fetched: plain `URLSession` by default, which is
+    /// what the iPhone app uses. The Mac points it at its own `HTTP.get` so
+    /// the proxy set in its Settings applies to these requests too.
+    public nonisolated(unsafe) static var transport: @Sendable (URL, [String: String]) async throws -> Response = { url, headers in
+        var request = URLRequest(url: url, timeoutInterval: 15)
+        for (key, value) in headers { request.setValue(value, forHTTPHeaderField: key) }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        return ((response as? HTTPURLResponse)?.statusCode ?? 0, data)
+    }
+
+    private static func get(_ url: URL, headers: [String: String]) async throws -> Response {
+        try await transport(url, headers)
+    }
+
     /// Where a provider's status lives, and how it is read.
     enum Feed {
         /// Atlassian Statuspage: `<api>/api/v2/summary.json`. The API host is
@@ -143,7 +159,6 @@ public enum StatusPages {
         case .deepseek: ["API Service"]
         case .copilot: ["Copilot"]
         case .windsurf: ["Cascade", "Windsurf Tab"]
-        case .moonshot: ["Open API", "Open Platform Portal"]
         default: []
         }
     }
@@ -192,7 +207,6 @@ public enum StatusPages {
         case .gemini: .googleCloud(product: "Gemini")
         case .copilot: .statuspage(api: URL(string: "https://www.githubstatus.com")!)
         case .windsurf: .statuspage(api: URL(string: "https://status.windsurf.com")!)
-        case .moonshot: .statuspage(api: URL(string: "https://status.moonshot.cn")!)
         case .zai, .opencodeGo, .grok, .antigravity, .qwen, .alibaba, .volcengine, .zhipu, .openrouter, .mimo, .qoder, .kiro: nil
         }
     }
@@ -210,7 +224,6 @@ public enum StatusPages {
         case .gemini: URL(string: "https://status.cloud.google.com")
         case .copilot: URL(string: "https://www.githubstatus.com")
         case .windsurf: URL(string: "https://status.windsurf.com")
-        case .moonshot: URL(string: "https://status.moonshot.cn")
         case .zai, .opencodeGo, .grok, .antigravity, .qwen, .alibaba, .volcengine, .zhipu, .openrouter, .mimo, .qoder, .kiro: nil
         }
     }
@@ -226,7 +239,7 @@ public enum StatusPages {
         switch feed {
         case let .statuspage(api):
             let url = api.appendingPathComponent("api/v2/summary.json")
-            guard let response = try? await HTTP.get(url, headers: ["Accept": "application/json"]),
+            guard let response = try? await get(url, headers: ["Accept": "application/json"]),
                   response.status == 200
             else { return nil }
             let focus = focusComponentNames(for: id)
@@ -237,7 +250,7 @@ public enum StatusPages {
                matching(focus, in: components(of: summary)).count < focus.count
             {
                 let all = api.appendingPathComponent("api/v2/components.json")
-                if let more = try? await HTTP.get(all, headers: ["Accept": "application/json"]), more.status == 200 {
+                if let more = try? await get(all, headers: ["Accept": "application/json"]), more.status == 200 {
                     extra = more.data
                 }
             }
@@ -246,7 +259,7 @@ public enum StatusPages {
                 allComponents: extra, now: now)
         case let .googleCloud(product):
             let url = URL(string: "https://status.cloud.google.com/incidents.json")!
-            guard let response = try? await HTTP.get(url, headers: ["Accept": "application/json"]),
+            guard let response = try? await get(url, headers: ["Accept": "application/json"]),
                   response.status == 200
             else { return nil }
             return try? parseGoogleCloud(response.data, product: product, page: page, now: now)
@@ -410,7 +423,7 @@ public enum StatusPages {
         guard case let .statuspage(api)? = feed(for: id) else { return nil }
         let browser = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
         let url = api.appendingPathComponent("uptime/\(component)").appending(queryItems: [URLQueryItem(name: "page", value: "1")])
-        if let response = try? await HTTP.get(url, headers: ["Accept": "application/json", "User-Agent": browser]),
+        if let response = try? await get(url, headers: ["Accept": "application/json", "User-Agent": browser]),
            response.status == 200, let days = try? parseUptime(response.data)
         {
             return days
@@ -424,7 +437,7 @@ public enum StatusPages {
             data = cached
         } else {
             let url = proxy.appendingPathComponent("incidents")
-            guard let response = try? await HTTP.get(url, headers: ["Accept": "application/json", "User-Agent": browser]),
+            guard let response = try? await get(url, headers: ["Accept": "application/json", "User-Agent": browser]),
                   response.status == 200 else { return nil }
             data = response.data
             incidentIOMemo.store(data, for: proxy, now: now)

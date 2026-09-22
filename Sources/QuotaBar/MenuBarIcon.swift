@@ -663,15 +663,9 @@ struct ProviderGlyph: View {
                       rgb.alphaComponent > 0.5
                 else { continue }
                 sampled += 1
-                let maxC = max(rgb.redComponent, rgb.greenComponent, rgb.blueComponent)
-                let minC = min(rgb.redComponent, rgb.greenComponent, rgb.blueComponent)
-                // Only a pixel with some light in it can carry a hue. Qoder's
-                // mark is drawn at rgb(15, 13, 12) — black to the eye, but the
-                // channels differ by a fifth of the largest, so the ratio alone
-                // called it coloured; left untinted it was black on the black
-                // dock, island and widget.
-                guard maxC > 0.19 else { continue }
-                if (maxC - minC) / maxC > 0.15 { return false }
+                if !LogoTone.isNeutral(red: rgb.redComponent, green: rgb.greenComponent, blue: rgb.blueComponent) {
+                    return false
+                }
             }
         }
         return sampled > 0

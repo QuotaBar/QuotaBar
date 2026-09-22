@@ -323,7 +323,7 @@ enum Snapshot {
             .antigravity: .failed(ProviderError.notConfigured(hint: L10n.t(
                 "Antigravity isn't running, and the sign-in token it saved has expired. Open Antigravity and the quota shows again; no need to sign in.",
                 "Antigravity 没有运行，保存的登录令牌也已过期。打开 Antigravity 就能重新读到额度，不用重新登录。")).errorDescription ?? ""),
-            .moonshot: .failed(ProviderError.notConfigured(hint: ProviderID.moonshot.setupHint).errorDescription ?? ""),
+            .zhipu: .failed(ProviderError.notConfigured(hint: ProviderID.zhipu.setupHint).errorDescription ?? ""),
         ]
         for id in [ProviderID.deepseek, .openrouter, .qwen].prefix(extra) {
             states[id] = .failed(ProviderError.unauthorized.errorDescription ?? "")
@@ -333,7 +333,7 @@ enum Snapshot {
 
     private static func failingStore(extra: Int = 0, recovered: Bool = false) -> UsageStore {
         var states = failingStates(extra: extra)
-        var enabled: [ProviderID] = [.codex, .claude, .antigravity, .moonshot]
+        var enabled: [ProviderID] = [.codex, .claude, .antigravity, .zhipu]
         enabled += [ProviderID.deepseek, .openrouter, .qwen].prefix(extra)
         if recovered {
             // Everything read: the reading Claude had, current again.
@@ -688,7 +688,7 @@ enum Snapshot {
         for language in [L10n.Language.en, .zhHans] {
             L10n.override = language
             let suffix = language == .en ? "en" : "zh"
-            for section in SettingsSection.allCases {
+            for section in SettingsSection.shown {
                 for dark in [false, true] {
                     write(
                         SettingsView(store: store, scrollable: false, section: section),

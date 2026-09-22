@@ -49,8 +49,11 @@ thin() {
   mv "$work/QuotaBar" "$app/Contents/MacOS/QuotaBar"
   # 通用包装订的公证凭证属于原来的签名，留着只会让验证对不上。
   rm -f "$app/Contents/CodeResources"
+  # The universal build's own entitlements: with iCloud they name the team
+  # and go with the provisioning profile that ditto has already copied.
+  codesign -d --entitlements - --xml "$APP" > "$work/QuotaBar.entitlements" 2>/dev/null
   codesign --force --options runtime --timestamp \
-    --entitlements Resources/QuotaBar.entitlements --sign "$SIGN_ID" "$app"
+    --entitlements "$work/QuotaBar.entitlements" --sign "$SIGN_ID" "$app"
   codesign --verify --strict "$app"
 
   ditto -c -k --keepParent "$app" "$work/QuotaBar.zip"

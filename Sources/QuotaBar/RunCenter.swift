@@ -311,6 +311,21 @@ final class RunCenter: ObservableObject {
         return QuotaRunClient(signer: signer, deviceId: account.deviceId)
     }
 
+    /// The same key, for the phone relay's endpoints (`RelaySyncCenter`).
+    func relayClient() -> RelayClient? {
+        guard !isInert, let account else { return nil }
+        if signer == nil { signer = RunDeviceKey.load()?.signer }
+        guard let signer else { return nil }
+        return RelayClient(
+            base: QuotaRunClient.defaultBase, signer: signer, deviceID: account.deviceId,
+            transport: { request in
+                let response = try await HTTP.send(
+                    request.httpMethod ?? "GET", request.url!,
+                    headers: request.allHTTPHeaderFields ?? [:], body: request.httpBody)
+                return (response.status, response.data)
+            })
+    }
+
     private var missingKey: String {
         L10n.t(
             "This Mac's Quota Run key is not in the keychain. Disconnect this Mac and sign in again.",

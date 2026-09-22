@@ -503,6 +503,16 @@ public final class ConfigStore: @unchecked Sendable {
         lock.unlock()
     }
 
+    /// Keychain accounts of providers since removed: `moonshot`, the Kimi open
+    /// platform's API key. Deleted at launch — nothing reads them any more,
+    /// and a secret nothing uses should not stay behind. Deleting what is not
+    /// there is a no-op, so this runs every launch rather than once.
+    public static let retiredCredentialAccounts = ["moonshot"]
+
+    public func forgetRetiredCredentials() {
+        for account in Self.retiredCredentialAccounts { _ = credentials.delete(account: account) }
+    }
+
     /// Drops the memoized reads so the next lookup goes back to the keychain.
     public func invalidateCredentialCache() {
         lock.lock()

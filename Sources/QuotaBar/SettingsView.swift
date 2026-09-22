@@ -20,11 +20,25 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case presentation
     case alerts
     case general
+    case phone
     case updates
     case feedback
     case about
 
     var id: String { rawValue }
+
+    /// Whether Settings lists the iPhone section. Off until the iPhone app is
+    /// on the App Store: before that the section would point at an app nobody
+    /// can install. `defaults write bar.quota.QuotaBar showsPhoneSettings -bool YES`
+    /// shows it for testing; the sync itself is not switched off by this.
+    static var showsPhone: Bool {
+        UserDefaults.standard.bool(forKey: "showsPhoneSettings")
+    }
+
+    /// The sections the sidebar lists.
+    static var shown: [SettingsSection] {
+        allCases.filter { $0 != .phone || showsPhone }
+    }
 
     var title: String {
         switch self {
@@ -37,6 +51,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .presentation: L10n.t("Presentation", "展示方式")
         case .alerts: L10n.t("Alerts", "提醒")
         case .general: L10n.t("General", "通用")
+        case .phone: "iPhone"
         case .updates: L10n.t("Updates", "更新")
         case .feedback: L10n.t("Feedback", "反馈")
         case .about: L10n.t("About", "关于")
@@ -72,6 +87,9 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .general:
             L10n.t("Language, refresh cadence and stored history.",
                    "语言、刷新频率和已记录的历史。")
+        case .phone:
+            L10n.t("Your readings on your iPhone and its widgets, through your iCloud or your Quota Run account.",
+                   "通过你的 iCloud 或 Quota Run 账号，把额度显示在 iPhone 和桌面小组件上。")
         case .updates:
             L10n.t("The installed version, and how new ones arrive.",
                    "当前版本，以及新版本如何到来。")
@@ -95,6 +113,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .presentation: "macwindow"
         case .alerts: "bell"
         case .general: "gearshape"
+        case .phone: "iphone"
         case .updates: "arrow.down.circle"
         case .feedback: "text.bubble"
         case .about: "info.circle"
@@ -244,14 +263,14 @@ struct SettingsView: View {
     /// belong to any one of them.
     private var nav: some View {
         VStack(spacing: 0) {
-            ForEach(SettingsSection.allCases) { item in
+            ForEach(SettingsSection.shown) { item in
                 sidebarItem(item)
             }
         }
         .background(alignment: .topLeading) {
             SidebarRail(
-                count: SettingsSection.allCases.count,
-                index: SettingsSection.allCases.firstIndex(of: section) ?? 0)
+                count: SettingsSection.shown.count,
+                index: SettingsSection.shown.firstIndex(of: section) ?? 0)
         }
     }
 
@@ -350,6 +369,7 @@ struct SettingsView: View {
         case .presentation: PresentationPane(store: store)
         case .alerts: AlertsPane(store: store)
         case .general: GeneralPane(store: store)
+        case .phone: PhonePane(store: store, sync: store.cloudSync, relay: store.relaySync, run: store.run)
         case .updates: UpdatesPane(store: store)
         case .feedback: FeedbackPane(store: store)
         case .about: AboutPane()

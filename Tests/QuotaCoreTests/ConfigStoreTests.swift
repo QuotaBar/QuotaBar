@@ -375,6 +375,25 @@ final class ConfigResilienceTests: XCTestCase {
         XCTAssertEqual(config.alerts.critical, 90)
     }
 
+    /// The Kimi open platform (`moonshot`) was removed. A config written
+    /// while it was on names it in half a dozen places; each drops it alone.
+    func testTheRemovedMoonshotLeavesEverythingElse() throws {
+        let config = try decode("""
+        {"enabled":["claude","moonshot","codex"],"refreshMinutes":15,"selected":"moonshot",
+         "islandPin":"moonshot","dockPin":"claude",
+         "headlineWindows":{"moonshot":"balance","claude":"5h"},
+         "experience":{"iCloudSync":true,"hiddenProviders":{"dock":["moonshot"]},
+                       "cardWindows":{"moonshot":["balance"]},"placeWindows":{"island":{"moonshot":"balance"}}}}
+        """)
+        XCTAssertEqual(config.enabled, [.claude, .codex])
+        XCTAssertEqual(config.refreshMinutes, 15)
+        XCTAssertNil(config.selected)
+        XCTAssertNil(config.islandPin)
+        XCTAssertEqual(config.dockPin, .claude)
+        XCTAssertEqual(config.headlineWindows, [.claude: "5h"])
+        XCTAssertTrue(config.experience.iCloudSync)
+    }
+
     func testAnUnknownProviderIsDroppedNotTheWholeList() throws {
         // What a downgrade looks like after a newer build added a provider.
         let config = try decode("""

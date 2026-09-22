@@ -262,6 +262,11 @@ public enum DockEdge: String, Codable, CaseIterable, Identifiable, Sendable {
 // MARK: - Provider identity
 
 public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
+    // One company's services sit together: Gemini beside Antigravity. The raw
+    // values are what is stored, so the order here is only the order lists
+    // show. `moonshot` (the Kimi open platform's API balance) was dropped: Kimi
+    // Code is the Kimi that matters here, and a config that still names it
+    // loses just that entry on decode.
     case codex
     case claude
     case cursor
@@ -270,15 +275,14 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
     case opencodeGo = "opencode-go"
     case minimax
     case gemini
+    case antigravity
     case manus
     case deepseek
     case grok
-    case antigravity
     case qwen
     case alibaba
     case volcengine
     case zhipu
-    case moonshot
     case copilot
     case openrouter
     case mimo
@@ -292,7 +296,7 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
     /// live account; Settings says so beside the name.
     public var isExperimental: Bool {
         switch self {
-        case .alibaba, .volcengine, .zhipu, .moonshot, .openrouter, .mimo, .qoder, .windsurf, .kiro: true
+        case .alibaba, .volcengine, .zhipu, .openrouter, .mimo, .qoder, .windsurf, .kiro: true
         default: false
         }
     }
@@ -312,11 +316,10 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
         case .deepseek: "DeepSeek"
         case .grok: "Grok"
         case .antigravity: "Antigravity"
-        case .qwen: "Qwen Cloud"
+        case .qwen: L10n.t("Qwen", "千问")
         case .alibaba: L10n.t("Alibaba Coding Plan", "阿里云百炼")
         case .volcengine: L10n.t("Volcengine Ark", "火山方舟")
         case .zhipu: L10n.t("Zhipu GLM", "智谱 GLM")
-        case .moonshot: L10n.t("Moonshot API", "Kimi 开放平台")
         case .copilot: "GitHub Copilot"
         case .openrouter: "OpenRouter"
         case .mimo: L10n.t("Xiaomi MiMo", "小米 MiMo")
@@ -347,7 +350,6 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
         case .alibaba: "cloud.fill"
         case .volcengine: "mountain.2"
         case .zhipu: "circle.hexagongrid"
-        case .moonshot: "moon"
         case .copilot: "person.2.wave.2"
         case .openrouter: "arrow.triangle.branch"
         case .mimo: "m.square"
@@ -376,7 +378,6 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
         case .alibaba: "FF7A1A"
         case .volcengine: "5B9BFF"
         case .zhipu: "7C95FF"
-        case .moonshot: "C8C8D0"
         case .copilot: "B79CFF"
         case .openrouter: "8F9BFF"
         case .mimo: "FF7A00"
@@ -405,7 +406,6 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
         case .alibaba: URL(string: "https://bailian.console.aliyun.com/cn-beijing/?tab=model#/efm/coding_plan")
         case .volcengine: URL(string: "https://console.volcengine.com/ark/region:ark+cn-beijing/openManagement")
         case .zhipu: URL(string: "https://bigmodel.cn/coding-plan/personal/usage")
-        case .moonshot: URL(string: "https://platform.moonshot.cn/console/account")
         case .copilot: URL(string: "https://github.com/settings/copilot")
         case .openrouter: URL(string: "https://openrouter.ai/settings/credits")
         case .mimo: URL(string: "https://platform.xiaomimimo.com/#/console/balance")
@@ -458,8 +458,6 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
                 "bailian.console.aliyun.com 登录后的完整 Cookie 头（国际站 Model Studio 控制台也可以）。")
         case .zhipu:
             return L10n.t("API key (bigmodel.cn → API Keys).", "API Key（bigmodel.cn → API Keys）。")
-        case .moonshot:
-            return L10n.t("API key (platform.moonshot.cn → API Keys).", "API Key（platform.moonshot.cn → API Keys）。")
         case .copilot:
             return L10n.t(
                 "Optional; otherwise the GitHub CLI's sign-in is used (`gh auth login`).",
@@ -966,39 +964,6 @@ public enum ProviderError: LocalizedError, Sendable {
         case let .network(message):
             return L10n.t("Network error: \(message)", "网络错误：\(message)")
         }
-    }
-}
-
-// MARK: - Provider protocol
-
-public protocol QuotaProvider: Sendable {
-    var id: ProviderID { get }
-    /// Whether the required credentials can be resolved right now.
-    func isConfigured(config: ConfigStore) -> Bool
-    func fetch(config: ConfigStore) async throws -> UsageSnapshot
-    /// What the next fetch would use, for Settings — nil when there is only
-    /// one way in and nothing to tell apart. Reads local files and the
-    /// keychain memo, never the network.
-    func sourceInfo(config: ConfigStore) -> ProviderSourceInfo?
-}
-
-extension QuotaProvider {
-    public func sourceInfo(config: ConfigStore) -> ProviderSourceInfo? { nil }
-}
-
-/// Which of a provider's credentials is in use, said in a line.
-public struct ProviderSourceInfo: Sendable, Equatable {
-    /// "Kimi Code sign-in · Global (kimi.ai)".
-    public var summary: String
-    /// A second, quieter line: what else is there, or why something is not done.
-    public var note: String?
-    /// The console for the account in use, when it differs by edition.
-    public var consoleURL: URL?
-
-    public init(summary: String, note: String? = nil, consoleURL: URL? = nil) {
-        self.summary = summary
-        self.note = note
-        self.consoleURL = consoleURL
     }
 }
 

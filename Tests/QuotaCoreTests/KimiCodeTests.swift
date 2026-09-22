@@ -1,5 +1,6 @@
 import XCTest
 @testable import QuotaCore
+@testable import QuotaModel
 
 /// The Kimi Code sign-in, read from throwaway directories laid out like
 /// `~/.kimi-code` and `~/.kimi` — never the real ones.

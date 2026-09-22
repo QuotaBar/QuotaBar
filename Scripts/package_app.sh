@@ -81,13 +81,44 @@ if [ -z "$SIGN_ID" ]; then
     | grep 'Developer ID Application' | head -1 | sed -E 's/.*"(.*)".*/\1/' || true)"
 fi
 
+# iCloud sync needs the CloudKit entitlement, and outside the App Store a
+# restricted entitlement is honoured only with a Developer ID provisioning
+# profile embedded beside it. The profile is not in the repository: download
+# it from the developer portal (App ID bar.quota.QuotaBar, iCloud with the
+# container iCloud.bar.quota.QuotaBar) and put it at ICLOUD_PROFILE.
+#
+# Never give an ad-hoc signature these entitlements: with no profile to back
+# them the system kills the app at launch. Without the profile the build
+# simply has no iCloud, and Settings says so.
+ICLOUD_PROFILE="${ICLOUD_PROFILE:-Resources/QuotaBar.provisionprofile}"
+ENTITLEMENTS=Resources/QuotaBar.entitlements
+rm -f "$APP/Contents/embedded.provisionprofile"
+if [ -n "$SIGN_ID" ] && [ -f "$ICLOUD_PROFILE" ]; then
+  TEAM_ID="$(sed -nE 's/.*\(([A-Z0-9]{10})\)$/\1/p' <<<"$SIGN_ID")"
+  PROFILE_PLIST="$(mktemp)"
+  security cms -D -i "$ICLOUD_PROFILE" > "$PROFILE_PLIST"
+  PROFILE_TEAM="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$PROFILE_PLIST")"
+  PROFILE_APP="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.application-identifier' "$PROFILE_PLIST")"
+  rm -f "$PROFILE_PLIST"
+  if [ "$PROFILE_TEAM" != "$TEAM_ID" ] || [ "$PROFILE_APP" != "$TEAM_ID.bar.quota.QuotaBar" ]; then
+    echo "error: $ICLOUD_PROFILE is for $PROFILE_APP, not $TEAM_ID.bar.quota.QuotaBar" >&2
+    exit 1
+  fi
+  cp "$ICLOUD_PROFILE" "$APP/Contents/embedded.provisionprofile"
+  ENTITLEMENTS="$(mktemp -d)/QuotaBar.entitlements"
+  sed "s/\$(TEAM_ID)/$TEAM_ID/g" Resources/QuotaBar-iCloud.entitlements > "$ENTITLEMENTS"
+  echo "iCloud: on (team $TEAM_ID)"
+else
+  echo "iCloud: off — no Developer ID certificate or no $ICLOUD_PROFILE"
+fi
+
 if [ -n "$SIGN_ID" ]; then
   echo "Signing as: $SIGN_ID"
   # --options runtime is what notarization requires; --timestamp gets the secure
   # timestamp that keeps the signature valid after the certificate expires.
   # No --deep: it is deprecated and this bundle has no nested code anyway.
   codesign --force --options runtime --timestamp \
-    --entitlements Resources/QuotaBar.entitlements \
+    --entitlements "$ENTITLEMENTS" \
     --sign "$SIGN_ID" "$APP"
   SIGNED_PROPERLY=1
 else

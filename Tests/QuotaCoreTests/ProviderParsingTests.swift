@@ -1,5 +1,6 @@
 import XCTest
 @testable import QuotaCore
+@testable import QuotaModel
 
 /// Fixtures are real responses recorded from the providers, with account
 /// identifiers replaced. They exist to pin the parsers to the shapes the
@@ -288,7 +289,7 @@ final class ClaudeParsingTests: XCTestCase {
     }
 }
 
-extension ProviderError: @retroactive Equatable {
+extension ProviderError: Equatable {
     public static func == (lhs: ProviderError, rhs: ProviderError) -> Bool {
         lhs.errorDescription == rhs.errorDescription
     }

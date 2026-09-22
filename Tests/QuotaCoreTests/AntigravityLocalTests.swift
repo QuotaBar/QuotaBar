@@ -1,5 +1,6 @@
 import XCTest
 @testable import QuotaCore
+@testable import QuotaModel
 
 /// Antigravity's language server, as it answered on the owner's Mac running
 /// Antigravity 2.14.0 on 2026-09-16 (issue #4); tokens and addresses replaced.

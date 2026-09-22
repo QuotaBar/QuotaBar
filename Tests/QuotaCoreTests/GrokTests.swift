@@ -1,5 +1,6 @@
 import XCTest
 @testable import QuotaCore
+@testable import QuotaModel
 
 final class GrokAuthFileTests: XCTestCase {
     private let far = Date(timeIntervalSince1970: 2_000_000_000)   // 2033

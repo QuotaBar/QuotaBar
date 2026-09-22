@@ -74,42 +74,9 @@ public final class CurrencyRates: @unchecked Sendable {
         return rates
     }
 
-    public static func symbol(for code: String) -> String {
-        switch code {
-        case "USD": "$"
-        case "CNY": "¥"
-        case "JPY": "JP¥"
-        case "HKD": "HK$"
-        case "TWD": "NT$"
-        case "KRW": "₩"
-        case "SGD": "S$"
-        case "EUR": "€"
-        case "GBP": "£"
-        case "CAD": "CA$"
-        case "AUD": "A$"
-        default: code + " "
-        }
-    }
+    public static func symbol(for code: String) -> String { CurrencyFormat.symbol(for: code) }
 
-    public static func displayName(for code: String) -> String {
-        switch code {
-        case "USD": L10n.t("US dollar", "美元")
-        case "CNY": L10n.t("Chinese yuan", "人民币")
-        case "HKD": L10n.t("Hong Kong dollar", "港币")
-        case "TWD": L10n.t("New Taiwan dollar", "新台币")
-        case "JPY": L10n.t("Japanese yen", "日元")
-        case "KRW": L10n.t("Korean won", "韩元")
-        case "SGD": L10n.t("Singapore dollar", "新加坡元")
-        case "EUR": L10n.t("Euro", "欧元")
-        case "GBP": L10n.t("Pound sterling", "英镑")
-        case "CAD": L10n.t("Canadian dollar", "加元")
-        case "AUD": L10n.t("Australian dollar", "澳元")
-        default: code
-        }
-    }
-
-    /// Currencies whose minor unit is not shown.
-    static func wholeUnits(_ code: String) -> Bool { code == "JPY" || code == "KRW" || code == "TWD" }
+    public static func displayName(for code: String) -> String { CurrencyFormat.displayName(for: code) }
 }
 
 extension QuotaFormat {
@@ -118,7 +85,7 @@ extension QuotaFormat {
     public static func money(_ usd: Double, code: String? = nil) -> String {
         let code = code ?? ConfigStore.shared.experience.currency
         guard code != "USD", let rate = CurrencyRates.shared.rate(for: code) else { return self.usd(usd) }
-        return converted(usd * rate, code: code)
+        return amount(usd * rate, code: code)
     }
 
     /// "$13.4K", "¥95.2K" — the compact form for the middle of a ring.
@@ -130,26 +97,8 @@ extension QuotaFormat {
         switch abs(value) {
         case 1_000_000...: return symbol + String(format: "%.1fM", value / 1_000_000)
         case 10_000...: return symbol + String(format: "%.1fK", value / 1_000)
-        default: return converted(value, code: code)
+        default: return amount(value, code: code)
         }
-    }
-
-    /// An amount already in `code`: "¥1,000.00", "$250.00".
-    public static func amount(_ value: Double, code: String) -> String {
-        converted(value, code: code)
-    }
-
-    static func converted(_ value: Double, code: String) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.usesGroupingSeparator = true
-        formatter.groupingSeparator = ","
-        formatter.decimalSeparator = "."
-        let digits = CurrencyRates.wholeUnits(code) ? 0 : 2
-        formatter.minimumFractionDigits = digits
-        formatter.maximumFractionDigits = digits
-        let magnitude = formatter.string(from: NSNumber(value: abs(value))) ?? String(format: "%.2f", abs(value))
-        return (value < 0 ? "-" : "") + CurrencyRates.symbol(for: code) + magnitude
     }
 
     /// The reset phrase in the chosen format: "3 小时 25 分后重置" or

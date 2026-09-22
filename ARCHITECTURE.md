@@ -4,8 +4,17 @@ macOS 14+ menu-bar app that shows how much of each AI coding provider's quota is
 used and when each window resets. Swift 6 toolchain, SwiftUI `MenuBarExtra`, no
 third-party dependencies.
 
+- `Sources/QuotaModel` — what a reading is: `ProviderID`, windows, snapshots,
+  balances, formatting, the usage ramp, `L10n`, and the iCloud payload.
+  Foundation only, and built for iOS as well: the iPhone app links it.
+- `Sources/QuotaCloud` — the readings' trip through the owner's private
+  CloudKit database, shared by the Mac that writes and the phone that reads.
+- `Sources/QuotaRelay` — the Quota Run wire format (request signing, the
+  relay endpoints) and the end-to-end encryption of the readings that pass
+  through quota.run (`SyncCrypto`, `RelayReadings`). Shared with the phone.
 - `Sources/QuotaCore` — provider protocol, HTTP/date helpers, config + keychain,
-  credential readers, cost estimator, one file per provider group.
+  credential readers, cost estimator, one file per provider group. Re-exports
+  `QuotaModel`, so nothing above it imports both.
 - `Sources/QuotaBar` — the SwiftUI app: usage store, menu-bar icon, panel,
   settings, notch island.
 - `Tests/QuotaCoreTests` — everything testable lives in QuotaCore.
@@ -35,8 +44,10 @@ works on the developer's own Mac must never ship.
 
 Distribution is Developer ID only. The App Store sandbox forbids reading
 `~/.codex` / `~/.claude` and other apps' keychain items, which is the entire
-feature set, so `Resources/QuotaBar.entitlements` is deliberately empty and the
-app runs unsandboxed.
+feature set, so the app runs unsandboxed. `Resources/QuotaBar.entitlements` is
+empty; the one entitlement the app can carry is iCloud, for the iPhone sync
+(below), and only a build signed with the Developer ID provisioning profile
+gets it.
 
 `Scripts/dev.sh` runs the bare debug binary — fast, but there is no bundle, so
 `Bundle.main.bundleIdentifier` is nil. Anything gated on a bundle (notifications,
@@ -778,6 +789,209 @@ while the README promised Intel; `package_app.sh` now passes
 `--arch arm64 --arch x86_64` (`UNIVERSAL=0` to skip). The macOS 27 toolchain
 prints a deprecation notice for the x86_64 slice — informational, the slice
 still builds and links.
+
+### iCloud sync to the iPhone
+
+The phone cannot read a provider: every sign-in lives in a file or keychain
+item on the Mac. So the Mac is the only reader and the phone only shows what
+it wrote. `CloudSyncCenter` puts one record per Mac (named by a random id in
+Application Support, not the hardware UUID) in a zone of its own in the
+owner's **private** database, the readings JSON in `encryptedValues` — end to
+end encrypted, so even CloudKit cannot see the accounts and plans in it.
+Results only, never a credential; hidden windows are left out, as on screen.
+
+Off by default (`ExperiencePrefs.iCloudSync`): it is the one thing that sends
+readings off the Mac without a Quota Run account. Turning it off deletes the
+Mac's record, or the phone would go on showing figures that never move.
+
+`CloudSyncPolicy` decides when to write: after a refresh whose `Signature`
+changed (figures to the whole point, resets to the minute, plans, failing or
+not, order — never `fetchedAt`, which moves on its own), no sooner than two
+minutes after the last write, and on a 20-minute heartbeat whatever the
+refresh cadence. The phone reads a Mac silent for a heartbeat and a half as
+asleep (`CloudFreshness.macQuiet`) and says so: staleness is never silent
+there either. A window past its `resetsAt` is shown as reset, not as the
+spent figure from before it.
+
+The phone can ask for a refresh: it overwrites one `RefreshRequest` record
+in the zone, and each syncing Mac fetches that record every 30 seconds —
+polling rather than a push, because a Developer ID Mac would need a push
+entitlement and a notification path for one small record, and a 30-second
+look is one request. `RefreshRequestPolicy` decides: newer than the last one
+this Mac handled, under ten minutes old (a Mac waking from sleep must not
+act on the morning's request), and a minute after the last phone-driven
+refresh, since each refresh is a request to every provider. The refresh that
+follows is always written, whatever the signature says, because the phone
+is watching for that Mac's `updatedAt` to move; it gives up after 90 seconds
+and says the Mac did not answer.
+
+Several Macs merge per provider, newest `fetchedAt` wins (`MergedReadings`).
+The payload decodes per field and per entry: a provider or field only a newer
+Mac knows is skipped, not a failed decode. Past 512KB a balance's charts and
+per-key usage are dropped first; a record holds 1MB.
+
+**Signing.** Outside the App Store the CloudKit entitlement is honoured only
+with a Developer ID provisioning profile embedded as
+`Contents/embedded.provisionprofile`. `package_app.sh` looks for it at
+`Resources/QuotaBar.provisionprofile` (git-ignored; download it from the
+portal), checks it names this team and `bar.quota.QuotaBar`, and signs with
+`Resources/QuotaBar-iCloud.entitlements` — container environment
+`Production`, the only one a Developer ID build may use, so the schema must be
+deployed to Production before a release writes to it. Without the profile, or
+with an ad-hoc signature, the empty entitlements are used: a restricted
+entitlement with no profile behind it gets the app killed at launch.
+CloudKit traps in a process without the entitlement, so nothing touches it
+unless `CloudEntitlement.present`; the dev loop's bare binary and ad-hoc
+builds show the section disabled with a line saying why.
+`release_thin.sh` re-signs each slice with the universal build's own
+entitlements, read back from its signature.
+
+### Through Quota Run, for a phone on another iCloud account
+
+iCloud only reaches a phone on the Mac's own Apple Account. For any other,
+both devices join the owner's Quota Run account and quota.run passes the
+readings on — sealed on the Mac so it cannot read them. The contract is in
+`docs/quota-run.md` of the quota.run repository (*Phone sync*).
+
+- **Keys.** The Mac makes a 32-byte sync key (`RelaySyncKey`, in the keychain
+  beside its Quota Run device key, tied to that device id) and seals the
+  `CloudReadings` JSON with AES-GCM, bound to its device id. The phone makes
+  its own P-256 signing and agreement keys when it signs in. Allowing a phone
+  on the Mac seals the sync key to the phone's agreement key with HPKE, bound
+  to both device ids, so a server that shuffled rows could not pass one Mac's
+  blob or grant off as another's.
+- **Trust.** The server hands the Mac the phone's public key; a server that
+  lied could slip in its own. So both screens show six digits derived from
+  that key (`SyncCrypto.safetyCode`) and Settings says to allow only when they
+  match. Nothing is sent before a phone is allowed.
+- **Revoking** replaces the sync key, re-seals it to every phone still
+  allowed and uploads once with it — even with none left, so what quota.run
+  holds opens for nobody.
+- **Mac side** (`RelaySyncCenter`): active whenever the Mac is on a Quota Run
+  account (it reuses `RunCenter`'s key, `relayClient()`). Every 10 s a tick:
+  the phones every 5 min (every 10 s while Settings › iPhone is open, so a
+  phone that just signed in shows up while the owner waits), then — once one
+  is allowed — the same `CloudSyncPolicy` writes and a 30 s look for a
+  "refresh now". A phone waiting to be allowed is announced once as a
+  notification. Its own log lines go to `icloud-sync.log` prefixed `quota.run:`.
+- **One press, one read.** The phone sends "refresh now" both ways at once;
+  `UsageStore.refreshForPhone()` reads once for the pair (a minute's spacing
+  across both routes), and each route writes after it.
+- **Phone side.** Sign-in is the Mac's device flow: `connect/start` with
+  `platform: "ios"`, quota.run's approval page in `SFSafariViewController`
+  (the owner's GitHub / Google / Apple / email sign-in stays Safari's), and
+  polling until approved. The keys are software P-256 keys in the keychain,
+  in the app group's access group and `AfterFirstUnlockThisDeviceOnly`, so
+  the widgets can fetch while the phone is locked; the Secure Enclave was
+  not used because the widget extension signs too. `ReadingsSync.fetch`
+  reads iCloud and quota.run concurrently into two caches (`readings.json`,
+  `relay-readings.json`); `ReadingsCache.combine` keeps one copy per Mac
+  (`CloudReadings.deviceID`, newest `updatedAt`), so a Mac sending both ways
+  is one Mac. Either route answering is success. Signing out
+  (`DELETE /devices/current`) or quota.run no longer knowing the phone
+  (`unknown_device`) forgets the account, the keys and the relay cache.
+- **Testing.** `RelayLiveTests` runs the whole exchange against a local
+  server (`QUOTA_RUN_LOCAL=http://localhost:8788`, started with
+  `QUOTA_RUN_DEV_LOGIN=1`); `RelayScenario` plays the Mac for a phone build
+  launched with `-QuotaRunAPI http://localhost:8788/api/v1`, approving the
+  code the debug build writes to `Documents/connect-url.txt`. Both skip
+  without their environment.
+
+### The iPhone app
+
+`iOS/QuotaBar.xcodeproj` — an app and a widget extension, iOS 26 and up,
+linking `QuotaModel`, `QuotaCloud` and `QuotaRelay` from this package (`..` as a local
+package reference), so a change to the payload builds both sides at once.
+Folders are synchronised groups: a file dropped into `App/`, `Widgets/` or
+`Shared/` is in the target with nothing to edit. The provider logos are the
+Mac's own PNGs, referenced in place rather than copied.
+
+The app fetches every Mac's record, merges them and writes the result to the
+app group (`ReadingsCache`); the widgets draw from that cache and try a fetch
+of their own with a six-second limit. Updates reach the phone three ways, none
+of them guaranteed: the CloudKit subscription's silent push, a background app
+refresh, and the widgets' 15-minute timeline. The app says how old its figures
+are and when the Mac has gone quiet; a widget says "Mac 未同步" in place of its
+countdown.
+
+Bundle ids are `bar.quota.QuotaBar.ios` and `.ios.widgets` — not the Mac's
+own, which Apple silicon would otherwise see twice. Both need the iCloud
+container `iCloud.bar.quota.QuotaBar` and the app group
+`group.bar.quota.QuotaBar`; the app also push notifications. Their
+entitlements pin the container to **Production** even in debug builds: the
+Mac can only write there, and a phone on Development reads an empty database
+and looks broken. The schema therefore has to exist in Production before
+anything works end to end — create `MacReadings` (`payload` encrypted bytes,
+`version` int, `updatedAt` date) in the CloudKit console's Development
+environment and deploy it. No index is needed: the phone reads the zone's
+changes, never a query.
+
+```bash
+cd iOS
+xcodebuild -scheme QuotaBar -destination 'generic/platform=iOS Simulator' \
+  CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= build
+```
+
+Beyond the windows, each entry carries what the Mac's card shows under its
+arrow (`CloudSpend`, `CloudLinks`): spend per period with its busiest models,
+thirty days of tokens, the console — and the payload carries
+the Mac's currency and rate (`CloudMoney`), so a figure reads the same on
+both. None of it is in the `Signature`: spend moves with every refresh, and
+the 20-minute heartbeat carries it. A tap on a card opens `ProviderDetail`.
+
+Service status is not synced: the pages are public, so the phone reads them
+itself with the Mac's own parser (`StatusPages`, now in `QuotaModel`) and
+shows the band, the page's words, every component and 30 days of uptime in
+a sheet (`StatusSheet`) opened from the detail's 服务状态 button, closed with
+its cross — no link out, and nothing added to the detail page itself. The
+button carries the band's dot, so an outage shows before it is opened. A sleeping Mac therefore never leaves an outage
+unreported. `StatusPages.transport` is `URLSession` by default; the Mac sets
+it to `HTTP.get` at launch so its proxy setting still applies. The card
+shows the badge only when something is wrong.
+The cards reorder by the system's long-press drag (`List` + `onMove`; a
+hand-rolled `onDrag`/`onDrop` over a `ScrollView` lost the gesture to the
+card's tap), and the order lives in the app group (`CardOrder`) so the
+overview widget follows it; `MergedReadings.ordered(by:)` puts a provider the
+order has not seen last rather than first.
+
+A press and hold on a card opens its menu — copy as image, share image —
+and a hold that moves picks the card up instead; `contextMenu` and `onMove`
+share the gesture without a mode. The detail page has the same two in its
+share button. The image is the Mac's `ShareableCard` frame (black, the icon,
+the wordmark and quota.bar) around the card drawn `still`: `ImageRenderer`
+draws no `TimelineView`, so the card takes a fixed date instead, and the
+chevron is left out. Debug builds also write the last copy to Documents as
+`last-copied-card.png`, which is how it is checked on a simulator.
+
+The phone is the same app to look at. The icon is the Mac's, made from
+`Assets/icon.png` by `Scripts/ios_icon.py` (run it after changing that file).
+The word "QuotaBar" is Instrument Sans at semibold from the Mac's own font
+file, registered with `UIAppFonts`, and nowhere else is anything but the
+system face. On iOS `Font.custom(...).weight(.semibold)` does not reach the
+variable font's weight axis and draws the regular cut, so `Font.wordmark`
+sets the `wght` axis on the descriptor; on the Mac `.weight` works and
+matches it exactly. Bars are the Mac's stepped meter (`SteppedMeter`), colours
+the same usage ramp, and the tint is the Mac's neutral accent, not system blue.
+
+Widgets come in three kinds, each configured in the widget itself:
+**单个服务商** (provider, limit and style — ring, two rings, stepped bars or a
+big number — at small, medium and large, plus the lock screen's circle,
+rectangle and line), **总览** (rings, stepped bars or figures, small to
+large, and a lock-screen rectangle) and **花费** (today and 30 days). The
+Today view and StandBy take the same home-screen sizes, so there is nothing
+separate to build for them. The views take their `WidgetFamily` as a
+parameter rather than reading the environment, and the widget files are
+compiled into the app as well (all but `QuotaWidgets.swift`, the bundle's
+`@main`), so a debug build launched with `-QuotaBarWidgetGallery` — add
+`provider`, `overview` or `lock` for one part — draws every style at its
+real size on one page. Placing each on a home screen to look at it takes
+minutes a time. The configuration's option names are shown by the system,
+not by `L10n`, so their Chinese lives in `Shared/Localizable.xcstrings`.
+
+Signed with `-` the simulator still gets the entitlements (the app group
+works; CloudKit answers "not signed in"). Launched with `-QuotaBarDemo` the
+app shows sample readings and writes them to the cache, so the widgets show
+them too — for the simulator and for App Store screenshots.
 
 ## Adding a provider
 

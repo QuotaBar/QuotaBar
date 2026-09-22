@@ -260,7 +260,7 @@ public struct KeyUsageFigures: Sendable, Equatable, Codable {
 
     /// For ordering only: amounts in different currencies are not added up
     /// anywhere a person reads them.
-    var costTotal: Double { costs.reduce(0) { $0 + $1.amount } }
+    public var costTotal: Double { costs.reduce(0) { $0 + $1.amount } }
 
     /// "¥312.40 · $1.20"
     public var costLine: String {
@@ -285,10 +285,10 @@ public struct ModelCost: Sendable, Equatable, Codable, Identifiable {
         self.tokens = tokens
     }
 
-    var costTotal: Double { costs.reduce(0) { $0 + $1.amount } }
+    public var costTotal: Double { costs.reduce(0) { $0 + $1.amount } }
 
     /// Most spent first; requests order the ones that cost nothing.
-    static func busiestFirst(_ a: ModelCost, _ b: ModelCost) -> Bool {
+    public static func busiestFirst(_ a: ModelCost, _ b: ModelCost) -> Bool {
         if a.costTotal != b.costTotal { return a.costTotal > b.costTotal }
         return (a.requests ?? 0) > (b.requests ?? 0)
     }
@@ -297,7 +297,7 @@ public struct ModelCost: Sendable, Equatable, Codable, Identifiable {
 extension QuotaFormat {
     /// "¥107", "$12", "¥1.2K" — an amount already in `code`, shortened.
     public static func amountCompact(_ value: Double, code: String) -> String {
-        let symbol = CurrencyRates.symbol(for: code)
+        let symbol = CurrencyFormat.symbol(for: code)
         switch abs(value) {
         case 1_000_000...: return symbol + String(format: "%.1fM", value / 1_000_000)
         case 10_000...: return symbol + String(format: "%.1fK", value / 1_000)
@@ -307,16 +307,18 @@ extension QuotaFormat {
 }
 
 /// Adds amounts per currency, keeping the order currencies first appear in.
-struct MoneyTally {
+public struct MoneyTally {
     private var order: [String] = []
     private var sums: [String: Double] = [:]
 
-    mutating func add(_ currency: String, _ amount: Double) {
+    public init() {}
+
+    public mutating func add(_ currency: String, _ amount: Double) {
         if sums[currency] == nil { order.append(currency) }
         sums[currency, default: 0] += amount
     }
 
-    var money: [Money] { order.map { Money(currency: $0, amount: sums[$0] ?? 0) } }
+    public var money: [Money] { order.map { Money(currency: $0, amount: sums[$0] ?? 0) } }
 }
 
 // MARK: - A floor under the balance

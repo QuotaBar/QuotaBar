@@ -1,5 +1,6 @@
 import XCTest
 @testable import QuotaCore
+@testable import QuotaModel
 
 /// The ramp replaced a three-step mapping that had been copied into six views
 /// plus a divergent seventh. These pin the properties that make it readable —
@@ -110,4 +111,22 @@ final class UsageRampTests: XCTestCase {
         XCTAssertEqual(loose.level(for: 72), AlertLevel.none)
         XCTAssertEqual(UsageRamp.hex(used: 72), UsageRamp.hex(used: 72))
     }
+
+    // MARK: Logo tone
+
+    /// Qoder's mark: RGB 15/13/12. As saturation it is 20% and "in colour";
+    /// as something to see, it is black, and must take the surface's ink.
+    func testNearBlackIsNeutral() {
+        XCTAssertTrue(LogoTone.isNeutral(red: 15 / 255, green: 13 / 255, blue: 12 / 255))
+        XCTAssertTrue(LogoTone.isNeutral(red: 0, green: 0, blue: 0))
+        XCTAssertTrue(LogoTone.isNeutral(red: 0.5, green: 0.5, blue: 0.52))
+    }
+
+    func testBrandColoursStayColour() {
+        // Claude's orange, DeepSeek's blue, a dark but plainly green mark.
+        XCTAssertFalse(LogoTone.isNeutral(red: 0.85, green: 0.47, blue: 0.34))
+        XCTAssertFalse(LogoTone.isNeutral(red: 0.30, green: 0.42, blue: 0.99))
+        XCTAssertFalse(LogoTone.isNeutral(red: 0.05, green: 0.35, blue: 0.10))
+    }
 }
+

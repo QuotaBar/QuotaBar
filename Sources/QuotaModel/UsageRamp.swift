@@ -89,3 +89,20 @@ public enum UsageRamp {
         return (Int((value >> 16) & 0xFF), Int((value >> 8) & 0xFF), Int(value & 0xFF))
     }
 }
+
+// MARK: - Whether a logo may be recoloured
+
+/// Whether a logo's pixel carries a colour of its own, the test behind
+/// drawing a mark as a template in the surface's ink. Saturation says
+/// nothing at the dark end: Qoder's mark is a warm near-black, RGB 15/13/12,
+/// and three steps between channels at that level read as 20% saturation —
+/// so it was kept "in colour" and drawn black on the black dock, island and
+/// phone. A pixel this dark has no hue anyone can see.
+public enum LogoTone {
+    /// Channels 0...1.
+    public static func isNeutral(red: Double, green: Double, blue: Double) -> Bool {
+        let maxC = max(red, green, blue), minC = min(red, green, blue)
+        if maxC < 0.2 { return true }
+        return (maxC - minC) / maxC <= 0.15
+    }
+}

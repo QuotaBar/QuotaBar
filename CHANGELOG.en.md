@@ -3,6 +3,21 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
+## Unreleased
+
+### 2026-09-23
+
+#### Changed
+
+- The Kimi open platform (Moonshot API balance) is gone; Kimi Code is the Kimi that stays. If it was turned on, it drops out of the list after the update and nothing else changes; the API key saved for it is deleted from the keychain at launch, and no other credential is touched.
+- "Qwen Cloud" is now "Qwen" (千问 in Chinese).
+- Provider order: Gemini and Antigravity, both Google's, sit together.
+- Four new logos: Codex's colour icon, OpenRouter's brand lime, Qwen in purple, and the "Xiaomi MIMO" wordmark.
+
+#### Fixed
+
+- Qoder's logo nearly vanished on the black dock, island and desktop cards: its warm near-black counted as "in colour", so it was not drawn white. A colour that dark is now treated as none, and Qoder shows white on black.
+
 ## 0.5.15 · 2026-09-23
 
 ### 2026-09-23

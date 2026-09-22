@@ -595,7 +595,6 @@ public enum ProviderRegistry {
         case .alibaba: AlibabaCodingPlanProvider()
         case .volcengine: VolcengineArkProvider()
         case .zhipu: ZhipuProvider()
-        case .moonshot: MoonshotBalanceProvider()
         case .copilot: CopilotProvider()
         case .openrouter: OpenRouterProvider()
         case .mimo: MiMoProvider()

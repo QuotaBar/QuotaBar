@@ -94,6 +94,21 @@ final class ExperiencePrefsTests: XCTestCase {
 }
 
 final class SnapshotCacheTests: XCTestCase {
+    /// A cache written while `moonshot` existed still loads; its entry is
+    /// simply never asked for.
+    func testCacheWithARemovedProviderStillLoads() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let language = L10n.isChinese ? "zh" : "en"
+        let json = """
+        {"language":"\(language)","snapshots":{
+          "moonshot":{"fetchedAt":1790000000,"windows":[{"title":"Balance","detail":"¥49.58"}]},
+          "claude":{"fetchedAt":1790000000,"planName":"Max","windows":[{"title":"5h","usedPercent":31}]}}}
+        """
+        try Data(json.utf8).write(to: url)
+        XCTAssertEqual(SnapshotCache(fileURL: url).snapshot(for: .claude)?.planName, "Max")
+    }
+
     func testSnapshotsRoundTrip() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("snap-\(UUID()).json")
         defer { try? FileManager.default.removeItem(at: url) }

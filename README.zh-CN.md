@@ -16,7 +16,7 @@
 [![License](https://img.shields.io/badge/license-MIT-black)](LICENSE)
 
 QuotaBar 是一款 macOS 菜单栏应用，显示每个 AI 编码服务的额度用了多少、各个窗口何时重置、
-大约花了多少钱。支持 23 个服务商，全部在你自己的 Mac 上读取和计算。无需注册账号，没有任何统计上报。
+大约花了多少钱。支持 22 个服务商，全部在你自己的 Mac 上读取和计算。无需注册账号，没有任何统计上报。
 
 [下载](https://github.com/QuotaBar/QuotaBar/releases/latest) ·
 [官网](https://quota.bar) ·
@@ -49,9 +49,25 @@ Gatekeeper 可以直接打开。
 <!-- changelog:start -->
 <!-- 由 Scripts/sync_changelog.py 从 CHANGELOG.md 生成，请勿手改。 -->
 
-最新版本 **0.5.15**（2026-09-23） · [完整更新日志](CHANGELOG.md)
+最新版本 **0.5.15**（2026-09-23） · 开发中 **5** 项改动尚未发布 · [完整更新日志](CHANGELOG.md)
 
 <details open>
+<summary><b>2026-09-23</b> · 未发布 · 调整 4 · 修复 1</summary>
+
+**调整**
+
+- 去掉「Kimi 开放平台」（月之暗面 API 余额），Kimi 只保留 Kimi Code。之前启用过它的，升级后它会从列表里消失，其他设置不受影响；为它保存在钥匙串里的 API Key 会在启动时自动删除，其他服务商的凭据不动。
+- 「Qwen Cloud」改名为「千问」（英文界面叫 Qwen）。
+- 服务商排序：Gemini 和 Antigravity（都是 Google 的）排在一起。
+- 换了 4 个 logo：Codex 换成官方彩色图标，OpenRouter 换成品牌荧光绿，千问换成紫色，小米 MiMo 换成「Xiaomi MIMO」字标。
+
+**修复**
+
+- Qoder 的 logo 在停靠条、刘海岛、桌面卡片这些黑色界面上几乎看不见：它的颜色是带一点暖调的近黑色，被误判成「彩色 logo」没有改成白色。现在极暗的颜色一律按无色处理，Qoder 在黑底上显示为白色。
+
+</details>
+
+<details>
 <summary><b>2026-09-23</b> · 0.5.15 · 新增 3 · 修复 3 · 样式 1</summary>
 
 **新增**
@@ -79,17 +95,6 @@ Gatekeeper 可以直接打开。
 
 - 停靠条上 Codex 的悬浮卡片下方空出一大块：账号从 Plus 换成 Pro 之后，卡片只剩周窗口和备用额度两行，却仍然和三行时一样高，最后一行下面空着一行的位置。卡片背面是本地日志里的用量图，正面和背面同时排版、取两者中较高的，这样翻面时卡片不会在鼠标底下变大变小；背面的柱状图原来固定 56pt 高，两行的正面比它矮，卡片就被背面撑高了。现在背面只要求柱状图最矮的高度（20pt），正面有多少空间它就长多高，正面三行以上时柱状图还是原来的高度。
 - 「--island-preview」多出两张预览图：Codex 备用额度在用时的停靠条悬浮卡片，以及它翻面后的用量图。
-
-</details>
-
-<details>
-<summary><b>2026-09-22</b> · 0.5.13 · 修复 3</summary>
-
-**修复**
-
-- 菜单栏图标选了 Cursor 后，显示的不是当月套餐的用量，而是 Grok Bot 的用量（套餐刚重置、只用了 0.2%，图标却显示 69.3%）。原因：菜单栏没有为 Cursor 单独选额度时走「自动」，而「自动」取的是所有额度里用得最满的那个，连 Grok Bot 这种套餐之外的附加额度也算在内。现在「自动」只在套餐自身的额度里取最满的；Cursor 的 Grok Bot、Codex 的备用额度和单个模型的附加额度不再参与，除非它正在被使用（Codex 套餐用完后改用备用额度时），或者你亲自选了它。菜单栏、刘海岛、停靠条、卡片圆环、桌面卡片和用量告警都按这条规则。
-- 0.5.12 让菜单栏单独选额度之后，在卡片上双击某个额度不再改变菜单栏图标，而那个单独的入口只在设置里，很难找到——选了 Claude 显示在菜单栏，再双击卡片上的「5 小时」，图标没有反应。现在菜单栏重新跟下拉面板里的卡片走：右键图标 →「显示在菜单栏」选服务商（Claude 还是 Codex），再在那张卡片上双击某个额度（5 小时、每周、每月），菜单栏图标和卡片圆环就都按它显示；再双击一次回到「自动」。刘海岛和停靠条仍然各选各的。0.5.12 里为菜单栏单独存的选择不再使用，以卡片上的为准。
-- 右键菜单栏图标，「显示在菜单栏」下面多了一项「Claude 显示的额度」（名字跟着当前选中的服务商变），和在卡片上双击是同一个选择，可以直接选套餐里的某个额度或「自动」。
 
 </details>
 
@@ -126,12 +131,11 @@ Gatekeeper 可以直接打开。
 | MiniMax | `api.minimax.io` 编码套餐余量 | 手动填写 token / Cookie |
 | Manus | `api.manus.im` 额度 | 手动填写会话 token |
 | DeepSeek | `api.deepseek.com/user/balance` | 手动填写 API Key |
-| Qwen Cloud | `home.qwencloud.com` 控制台 → token 套餐用量 | 手动填写 Cookie 请求头 |
+| 千问 | `home.qwencloud.com` 控制台 → token 套餐用量 | 手动填写 Cookie 请求头 |
 | GitHub Copilot | GitHub CLI 登录 (`gh auth token`) → `api.github.com/copilot_internal/user` | 自动 / 手动 |
 | 阿里云百炼 Coding Plan *（实验性）* | 百炼控制台网关 → 编码套餐额度 | Cookie 请求头 / 应用内登录 |
 | 火山方舟 *（实验性）* | `arkcli usage plan --format json` | 自动（arkcli 登录） |
 | 智谱 GLM *（实验性）* | `open.bigmodel.cn/api/monitor/usage/quota/limit` | 手动填写 API Key |
-| Kimi 开放平台 *（实验性）* | `api.moonshot.cn/v1/users/me/balance` | 手动填写 API Key |
 | OpenRouter *（实验性）* | `openrouter.ai/api/v1/credits` + `/key` | 手动填写 API Key |
 | 小米 MiMo *（实验性）* | `platform.xiaomimimo.com/api/v1` 余额 + token 套餐 | Cookie 请求头 / 应用内登录 |
 | Qoder *（实验性）* | `qoder.com/api/v2/me/usages/big_model_credits` | 手动填写 Cookie 请求头 |

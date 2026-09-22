@@ -1,5 +1,6 @@
 import XCTest
 @testable import QuotaCore
+@testable import QuotaModel
 
 final class ServiceStatusTests: XCTestCase {
     private let page = URL(string: "https://status.example.com")!
@@ -249,7 +250,7 @@ final class ServiceStatusTests: XCTestCase {
     func testPagesArePinned() {
         XCTAssertEqual(
             StatusPages.supported,
-            [.codex, .claude, .cursor, .kimi, .minimax, .gemini, .manus, .deepseek, .moonshot, .copilot, .windsurf])
+            [.codex, .claude, .cursor, .kimi, .minimax, .gemini, .manus, .deepseek, .copilot, .windsurf])
         for id in StatusPages.supported {
             XCTAssertEqual(StatusPages.page(for: id)?.scheme, "https")
         }

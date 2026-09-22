@@ -257,10 +257,7 @@ final class BalanceProviderTests: XCTestCase {
 
     // MARK: Others and the cache
 
-    func testMoonshotAndMiMoBalancesAreSheets() throws {
-        let moonshot = try MoonshotBalanceProvider.parse(json(#"{"code":0,"data":{"available_balance":49.58,"voucher_balance":46.58,"cash_balance":3}}"#), currency: "CNY")
-        XCTAssertEqual(moonshot.balance?.balances, [AccountBalance(currency: "CNY", total: 49.58, paid: 3, granted: 46.58)])
-        XCTAssertFalse(moonshot.balance?.hasUsage ?? true, "left for the estimate")
+    func testMiMoBalanceIsASheet() throws {
         let mimo = try MiMoProvider.parse(
             balance: json(#"{"code":0,"data":{"balance":"88.50","currency":"CNY","cashBalance":"80","giftBalance":"8.5"}}"#),
             detail: nil,
@@ -352,8 +349,8 @@ final class BalanceProviderTests: XCTestCase {
 
     func testAnAccountThatCannotPaySpeaksEvenAboveTheFloorAndNothingWithoutOne() {
         let sheet = BalanceSheet(balances: [AccountBalance(currency: "USD", total: 50)], canCallAPI: false)
-        XCTAssertEqual(LowBalanceCheck.evaluate(sheets: [.moonshot: sheet], floor: BalanceFloor(amount: 1), rate: rates, notified: []).alerts.first?.cannotPay, true)
-        XCTAssertTrue(LowBalanceCheck.evaluate(sheets: [.moonshot: sheet], floor: BalanceFloor(), rate: rates, notified: []).alerts.isEmpty)
+        XCTAssertEqual(LowBalanceCheck.evaluate(sheets: [.deepseek: sheet], floor: BalanceFloor(amount: 1), rate: rates, notified: []).alerts.first?.cannotPay, true)
+        XCTAssertTrue(LowBalanceCheck.evaluate(sheets: [.deepseek: sheet], floor: BalanceFloor(), rate: rates, notified: []).alerts.isEmpty)
     }
 
     func testCompactBalance() {
