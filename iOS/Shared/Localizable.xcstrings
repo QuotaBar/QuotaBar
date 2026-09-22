@@ -1,0 +1,156 @@
+{
+  "sourceLanguage": "en",
+  "version": "1.0",
+  "strings": {
+    "Provider": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务商"
+          }
+        }
+      }
+    },
+    "Limit": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "额度"
+          }
+        }
+      }
+    },
+    "Style": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "样式"
+          }
+        }
+      }
+    },
+    "Overview": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "总览"
+          }
+        }
+      }
+    },
+    "Automatic": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动（用得最多的）"
+          }
+        }
+      }
+    },
+    "Short (5 hours)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "短周期（5 小时）"
+          }
+        }
+      }
+    },
+    "Long (weekly or monthly)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "长周期（每周或每月）"
+          }
+        }
+      }
+    },
+    "Ring": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "圆环"
+          }
+        }
+      }
+    },
+    "Two rings": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "双环"
+          }
+        }
+      }
+    },
+    "Stepped bars": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "格子条"
+          }
+        }
+      }
+    },
+    "Big number": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "大数字"
+          }
+        }
+      }
+    },
+    "Rings": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "圆环"
+          }
+        }
+      }
+    },
+    "Figures": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "数字"
+          }
+        }
+      }
+    },
+    "One provider's limit, from QuotaBar on your Mac.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一个服务商的额度，来自 Mac 版 QuotaBar。"
+          }
+        }
+      }
+    },
+    "Every provider your Mac reads.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac 读到的所有服务商。"
+          }
+        }
+      }
+    }
+  }
+}

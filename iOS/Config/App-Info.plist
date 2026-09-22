@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The wordmark's face, the Mac's own file: Instrument Sans (OFL, whose
+	     text ships beside it). Only the word "QuotaBar" uses it. -->
+	<key>UIAppFonts</key>
+	<array>
+		<string>InstrumentSans-Variable.ttf</string>
+	</array>
+	<!-- Without these the system formats dates and countdowns in English
+	     even on a Chinese phone: the app's own strings are inline (L10n). -->
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>zh-Hans</string>
+	</array>
+	<!-- Merged with the keys Xcode generates from the build settings. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>bar.quota.QuotaBar.ios.refresh</string>
+	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+</dict>
+</plist>
