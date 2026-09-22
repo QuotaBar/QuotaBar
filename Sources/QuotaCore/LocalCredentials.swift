@@ -667,6 +667,34 @@ public enum LocalCredentials {
     static var kimiCodeHome: URL { home.appendingPathComponent(".kimi-code") }
     static var kimiLegacyHome: URL { home.appendingPathComponent(".kimi") }
 
+    /// Kimi Desktop, the chat app: an Electron cookie store that keeps its
+    /// cookies in the clear.
+    static var kimiDesktopCookies: URL {
+        home.appendingPathComponent("Library/Application Support/kimi-desktop/Cookies")
+    }
+
+    /// The `kimi-auth` cookie Kimi Desktop is signed in with, for whichever
+    /// edition it holds — kimi.com in China, kimi.ai abroad — and only while
+    /// the token is still good. Read straight from the database: the values
+    /// are not encrypted, so nothing is asked of the keychain.
+    static func kimiDesktopToken(cookies: URL, now: Date) -> (token: String, edition: KimiEdition)? {
+        let query = "SELECT host_key, value FROM cookies WHERE name = 'kimi-auth' AND value <> '' ORDER BY last_access_utc DESC"
+        for row in SQLiteRead.rows(inFile: cookies.path, query: query) {
+            guard let host = row.first ?? nil, let token = row.dropFirst().first ?? nil else { continue }
+            guard !jwtHasExpired(token, now: now) else { continue }
+            return (token, host.contains("kimi.ai") ? .global : .china)
+        }
+        return nil
+    }
+
+    /// True only when the token says so itself: a cookie Chromium still
+    /// keeps can outlive the sign-in inside it.
+    static func jwtHasExpired(_ token: String, now: Date) -> Bool {
+        guard let expiry = jwtPayload(token).flatMap({ QwenProvider.number($0["exp"]) }) else { return false }
+        return expiry <= now.timeIntervalSince1970
+    }
+
+
     static func kimiCodeSession(codeHome: URL, legacyHome: URL, now: Date) -> KimiCodeSession? {
         var usable = kimiCodeSessions(codeHome: codeHome, legacyHome: legacyHome).filter { !$0.needsSignIn(now: now) }
         // Signed out of Kimi Code: a file an earlier edition left behind is

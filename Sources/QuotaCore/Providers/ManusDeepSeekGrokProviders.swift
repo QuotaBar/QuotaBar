@@ -522,7 +522,11 @@ public struct GrokProvider: QuotaProvider {
             // The products split the one credit pool. A product holding all of
             // it — only Grok Build used this week — is the same bar a second
             // time: same figure, same reset (issue #2).
-            if let total = configBody.creditUsagePercent, abs(percent - total) < 0.05 { continue }
+            // Judged on the figure as shown, rounded: 53.4% and 53.1% draw two
+            // rows both reading "53%" with the same reset, which is what a
+            // reporter on 0.5.13 saw; only a 0.05 difference was caught before.
+            if let total = configBody.creditUsagePercent,
+               Int(percent.rounded()) == Int(total.rounded()) { continue }
             let name = productName(raw)
             // `UsageWindow.id` is the title, so a scoped window needs its own.
             windows.append(UsageWindow(

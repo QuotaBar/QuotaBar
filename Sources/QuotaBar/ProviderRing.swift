@@ -75,9 +75,11 @@ struct ProviderRing: View {
                 }
                 // Always-dark surface: force the mark light rather than
                 // leaving it to resolve against the system appearance.
-                // Half the disc: at 0.42 the owner found the marks small, and Kimi's,
-                // on its own black tile, smaller still.
-                ProviderGlyph(id: id, size: diameter * 0.5, tint: .white)
+                // Nearly three fifths of the disc: at 0.42 the owner found the
+                // marks small, at 0.5 still small beside the ring, and Kimi's,
+                // on its own black tile, smaller still. The ring is 3pt and
+                // sits on the disc's edge, so the mark has the room.
+                ProviderGlyph(id: id, size: diameter * 0.58, tint: .white)
             }
             .frame(width: diameter, height: diameter)
             .scaleEffect(discScale)

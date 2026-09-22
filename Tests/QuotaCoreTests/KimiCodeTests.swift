@@ -555,3 +555,76 @@ final class KimiCodeUsageTests: XCTestCase {
         }
     }
 }
+
+/// Kimi Desktop, the chat app, keeps `kimi-auth` in the clear in its
+/// Chromium cookie store; these build that store with the system sqlite3.
+final class KimiDesktopTests: XCTestCase {
+    private var folder: URL!
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    override func setUpWithError() throws {
+        folder = FileManager.default.temporaryDirectory.appendingPathComponent("kimi-desktop-\(UUID())")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: folder)
+    }
+
+    /// A JWT that carries only `exp`.
+    private func jwt(expires: TimeInterval) -> String {
+        func part(_ json: String) -> String {
+            Data(json.utf8).base64EncodedString()
+                .replacingOccurrences(of: "=", with: "")
+                .replacingOccurrences(of: "+", with: "-")
+                .replacingOccurrences(of: "/", with: "_")
+        }
+        return "\(part(#"{"alg":"HS256"}"#)).\(part("{\"exp\":\(Int(expires))}")).signature"
+    }
+
+    /// The store with the given (host, value, last access) rows.
+    private func store(_ rows: [(String, String, Int)]) throws -> URL {
+        let url = folder.appendingPathComponent("Cookies")
+        var sql = "CREATE TABLE cookies (host_key TEXT, name TEXT, value TEXT, last_access_utc INTEGER);"
+        for (host, value, access) in rows {
+            sql += "INSERT INTO cookies VALUES ('\(host)', 'kimi-auth', '\(value)', \(access));"
+        }
+        sql += "INSERT INTO cookies VALUES ('.kimi.com', '_ga', 'GA1.1', 9);"
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        process.arguments = [url.path, sql]
+        try process.run()
+        process.waitUntilExit()
+        XCTAssertEqual(process.terminationStatus, 0)
+        return url
+    }
+
+    func testReadsTheChinaEditionsSignIn() throws {
+        let token = jwt(expires: now.timeIntervalSince1970 + 3600)
+        let found = LocalCredentials.kimiDesktopToken(cookies: try store([("www.kimi.com", token, 1)]), now: now)
+        XCTAssertEqual(found?.token, token)
+        XCTAssertEqual(found?.edition, .china)
+    }
+
+    func testKimiAIIsTheGlobalEdition() throws {
+        let token = jwt(expires: now.timeIntervalSince1970 + 3600)
+        let found = LocalCredentials.kimiDesktopToken(cookies: try store([(".kimi.ai", token, 1)]), now: now)
+        XCTAssertEqual(found?.edition, .global)
+    }
+
+    /// Chromium keeps a cookie past the sign-in inside it; the token's own
+    /// `exp` decides, and an older live one is used instead.
+    func testAnExpiredTokenIsPassedOver() throws {
+        let expired = jwt(expires: now.timeIntervalSince1970 - 60)
+        let live = jwt(expires: now.timeIntervalSince1970 + 3600)
+        let cookies = try store([("www.kimi.com", expired, 2), ("www.kimi.ai", live, 1)])
+        let found = LocalCredentials.kimiDesktopToken(cookies: cookies, now: now)
+        XCTAssertEqual(found?.token, live)
+        XCTAssertEqual(found?.edition, .global)
+    }
+
+    func testNothingWhenSignedOutOrMissing() throws {
+        XCTAssertNil(LocalCredentials.kimiDesktopToken(cookies: try store([]), now: now))
+        XCTAssertNil(LocalCredentials.kimiDesktopToken(cookies: folder.appendingPathComponent("absent"), now: now))
+    }
+}

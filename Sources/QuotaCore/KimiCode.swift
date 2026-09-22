@@ -67,6 +67,8 @@ public enum KimiSource: String, Sendable, CaseIterable {
     case legacySignIn
     case apiKey
     case cookie
+    /// Kimi Desktop, the chat app, read from its own cookie store.
+    case desktop
 
     public var label: String {
         switch self {
@@ -74,6 +76,7 @@ public enum KimiSource: String, Sendable, CaseIterable {
         case .legacySignIn: L10n.t("Older Kimi CLI sign-in", "旧版 Kimi CLI 登录")
         case .apiKey: L10n.t("API key", "API Key")
         case .cookie: L10n.t("kimi-auth cookie", "kimi-auth Cookie")
+        case .desktop: L10n.t("Kimi Desktop sign-in", "Kimi 桌面版登录")
         }
     }
 }

@@ -23,6 +23,11 @@ final class BrowserLogin: NSObject, WKNavigationDelegate, NSWindowDelegate {
         var named = false
         /// Sites the same sign-in may land on instead.
         var otherDomains: [String] = []
+        /// A signed-in-only endpoint on the same site. With no cookie to
+        /// name — Qoder's session cookie has no fixed name — the window asks
+        /// this one from the page itself and takes the cookies once it
+        /// answers, which is the same thing the provider will do.
+        var probe: String?
 
         func matches(_ cookieDomain: String) -> Bool {
             ([domain] + otherDomains).contains { cookieDomain.contains($0) }
@@ -44,6 +49,11 @@ final class BrowserLogin: NSObject, WKNavigationDelegate, NSWindowDelegate {
         case .mimo:
             Target(url: URL(string: "https://platform.xiaomimimo.com/#/console/balance")!,
                    cookie: "api-platform_serviceToken", domain: "xiaomimimo.com", wholeHeader: true)
+        case .qoder:
+            Target(url: URL(string: "https://qoder.com/account/usage")!,
+                   cookie: "", domain: "qoder.com", wholeHeader: true,
+                   otherDomains: ["qoder.com.cn"],
+                   probe: "/api/v2/me/usages/big_model_credits")
         case .qwen:
             Target(url: URL(string: "https://home.qwencloud.com/billing/subscription/token-plan-individual")!,
                    cookie: "login_aliyunid_ticket", domain: "qwencloud.com", wholeHeader: true)
@@ -120,20 +130,41 @@ final class BrowserLogin: NSObject, WKNavigationDelegate, NSWindowDelegate {
     private func checkCookies() async {
         guard !finished, let webView else { return }
         let cookies = await webView.configuration.websiteDataStore.httpCookieStore.allCookies()
+        // No cookie to name: the site is signed in when its own reading
+        // endpoint answers, asked from the page so it carries the session.
+        if target.cookie.isEmpty {
+            guard let probe = target.probe,
+                  cookies.contains(where: { target.matches($0.domain) && !$0.value.isEmpty }),
+                  await answers(probe)
+            else { return }
+            return finish(with: header(from: cookies))
+        }
         guard let match = cookies.first(where: {
             $0.name == target.cookie && target.matches($0.domain) && !$0.value.isEmpty
         }) else { return }
         if target.wholeHeader {
-            let header = cookies
-                .filter { target.matches($0.domain) && !$0.value.isEmpty }
-                .map { "\($0.name)=\($0.value)" }
-                .joined(separator: "; ")
-            finish(with: header)
+            finish(with: header(from: cookies))
         } else if target.named {
             finish(with: "\(match.name)=\(match.value)")
         } else {
             finish(with: match.value)
         }
+    }
+
+    private func header(from cookies: [HTTPCookie]) -> String {
+        cookies
+            .filter { target.matches($0.domain) && !$0.value.isEmpty }
+            .map { "\($0.name)=\($0.value)" }
+            .joined(separator: "; ")
+    }
+
+    /// True when `path` answers 200 to the page itself.
+    private func answers(_ path: String) async -> Bool {
+        guard let webView else { return false }
+        let script = "const response = await fetch(path, { credentials: 'include' }); return response.ok"
+        let result = try? await webView.callAsyncJavaScript(
+            script, arguments: ["path": path], contentWorld: .page)
+        return (result as? Bool) == true
     }
 
     private func finish(with value: String) {

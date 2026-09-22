@@ -101,6 +101,24 @@ final class GrokBillingTests: XCTestCase {
         XCTAssertEqual(snapshot.windows[0].usedPercent, 1)
     }
 
+    /// Two rows that both read "11%" with the same reset are the same bar
+    /// twice, even when the raw figures differ by more than 0.05 (0.5.13).
+    func testAProductRoundingToTheSameFigureIsNotShownTwice() throws {
+        let close = body
+            .replacingOccurrences(of: #"{"product":"GrokImagine","usagePercent":10.0},"#, with: "")
+            .replacingOccurrences(of: #""usagePercent":1.0"#, with: #""usagePercent":10.7"#)
+            .replacingOccurrences(of: #""creditUsagePercent":11.0"#, with: #""creditUsagePercent":11.2"#)
+        let snapshot = try GrokProvider.parse(Data(close.utf8))
+        XCTAssertEqual(snapshot.windows.count, 1)
+        XCTAssertNil(snapshot.windows[0].scope)
+    }
+
+    /// A product holding a different share still gets its own row.
+    func testAProductWithItsOwnShareIsStillListed() throws {
+        let snapshot = try GrokProvider.parse(Data(body.utf8))
+        XCTAssertEqual(snapshot.windows.compactMap(\.scope), ["Grok Imagine", "Grok Build"])
+    }
+
     func testAZeroOnDemandCapAddsNoWindow() throws {
         let snapshot = try GrokProvider.parse(Data(body.utf8))
         XCTAssertEqual(snapshot.windows.count, 3)

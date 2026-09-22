@@ -233,7 +233,9 @@ public struct KimiProvider: QuotaProvider {
     /// A sign-in whose access token has expired counts as configured while
     /// it can still be renewed; one that cannot does not.
     public func isConfigured(config: ConfigStore) -> Bool {
-        config.credential(for: .kimi) != nil || Self.localSession(environment) != nil
+        config.credential(for: .kimi) != nil
+            || Self.localSession(environment) != nil
+            || Self.desktopToken(environment) != nil
     }
 
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
@@ -256,6 +258,13 @@ public struct KimiProvider: QuotaProvider {
 
     static func localSession(_ env: KimiCodeEnvironment) -> LocalCredentials.KimiCodeSession? {
         LocalCredentials.kimiCodeSession(codeHome: env.codeHome, legacyHome: env.legacyHome, now: env.now())
+    }
+
+    /// Kimi Desktop's own sign-in, for a Mac that has the chat app but not
+    /// Kimi Code. Only read when there is no Kimi Code sign-in to use: that
+    /// one reports the coding plan, which is what this card is about.
+    static func desktopToken(_ env: KimiCodeEnvironment) -> (token: String, edition: KimiEdition)? {
+        LocalCredentials.kimiDesktopToken(cookies: env.desktopCookies, now: env.now())
     }
 
     /// For Settings: which source the next refresh uses and for which
@@ -284,7 +293,17 @@ public struct KimiProvider: QuotaProvider {
                 return Self.pastedSource(.apiKey, secret: key, note: note, env)
             }
         }
-        guard let session else { return nil }
+        guard let session else {
+            guard let desktop = Self.desktopToken(env) else { return nil }
+            return ProviderSourceInfo(
+                summary: L10n.t(
+                    "Kimi Desktop sign-in on this Mac · \(desktop.edition.longLabel)",
+                    "本机 Kimi 桌面版登录 · \(desktop.edition.longLabel)"),
+                note: L10n.t(
+                    "Read from the chat app's own cookie store. Sign in to Kimi Code for the coding plan's own limits.",
+                    "读取自聊天客户端保存的登录。要看编程套餐的额度，请登录 Kimi Code。"),
+                consoleURL: desktop.edition.consoleURL)
+        }
         let name = session.isLegacy
             ? L10n.t("Older Kimi CLI sign-in (~/.kimi)", "旧版 Kimi CLI 登录（~/.kimi）")
             : L10n.t("Kimi Code sign-in on this Mac", "Kimi Code 本机登录")
@@ -394,12 +413,17 @@ public struct KimiProvider: QuotaProvider {
     /// The cookie reads the billing gateway of the site it came from:
     /// www.kimi.com, then www.kimi.ai when kimi.com refuses it. It is only
     /// ever sent to those two sites, never to a Code API host.
-    static func fetchCookie(_ token: String, signedInLocally: Bool, _ env: KimiCodeEnvironment) async throws -> UsageSnapshot {
+    static func fetchCookie(
+        _ token: String,
+        signedInLocally: Bool,
+        _ env: KimiCodeEnvironment,
+        desktop: Bool = false) async throws -> UsageSnapshot
+    {
         for edition in pastedEditions.order(for: token) {
             do {
                 var snapshot = try await fetchWeb(token: token, edition: edition, send: env.send)
                 snapshot.edition = edition.rawValue
-                snapshot.source = KimiSource.cookie.rawValue
+                snapshot.source = (desktop ? KimiSource.desktop : .cookie).rawValue
                 pastedEditions.remember(edition, for: token)
                 return snapshot
             } catch ProviderError.unauthorized {
@@ -433,6 +457,11 @@ public struct KimiProvider: QuotaProvider {
     static func fetchLocal(_ env: KimiCodeEnvironment) async throws -> UsageSnapshot {
         let now = env.now()
         guard let session = localSession(env) else {
+            // The chat app's sign-in, when Kimi Code has none: the same
+            // billing gateway a pasted kimi-auth cookie reads.
+            if let desktop = desktopToken(env) {
+                return try await fetchCookie(desktop.token, signedInLocally: true, env, desktop: true)
+            }
             if !LocalCredentials.kimiCodeSessions(codeHome: env.codeHome, legacyHome: env.legacyHome).isEmpty {
                 throw ProviderError.sessionExpired(signInAgainHint)
             }

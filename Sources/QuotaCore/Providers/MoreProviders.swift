@@ -684,27 +684,60 @@ public struct QoderProvider: QuotaProvider {
         throw lastError
     }
 
+    /// One bucket of credits as the reply describes it.
+    struct Bucket {
+        var used: Double
+        var limit: Double
+        /// The percentage the console itself reports, where it does.
+        var percent: Double?
+    }
+
     public static func parse(_ data: Data) throws -> UsageSnapshot {
         guard let root = ProviderJSON.object(data) as? [String: Any] else { throw ProviderError.badResponse }
-        func summary(_ keys: [String]) -> [String: Any]? {
-            guard let container = keys.lazy.compactMap({ root[$0] as? [String: Any] }).first else { return nil }
-            return (container["quotaSummary"] ?? container["quota_summary"]) as? [String: Any]
+        let buckets = Self.buckets(in: root)
+        // A bucket with no allowance is left out. A seat plan of 0 / 0 beside
+        // the organisation's shared pack — the console shows both — carried
+        // "usagePercentage": 100, and reading that one bucket reported a full
+        // quota for an account with credits to spare (a 0.5.10 report).
+        let counted = buckets.filter { $0.limit > 0 }
+        guard !counted.isEmpty else {
+            throw ProviderError.noPlan(L10n.t(
+                "Signed in, but this account has no Qoder credits to read.",
+                "已登录，但这个账号没有可读的 Qoder 额度。"))
         }
-        guard let total = summary(["totalQuota", "total_quota"]) else { throw ProviderError.badResponse }
-        let shared = summary(["sharedQuota", "shared_quota"])
-        func value(_ object: [String: Any]?, _ camel: String, _ snake: String) -> Double {
-            QwenProvider.number(object?[camel] ?? object?[snake]) ?? 0
-        }
-        let used = value(total, "usedValue", "used_value") + value(shared, "usedValue", "used_value")
-        let limit = value(total, "limitValue", "limit_value") + value(shared, "limitValue", "limit_value")
-        let percent = shared == nil
-            ? (QwenProvider.number(total["usagePercentage"] ?? total["usage_percentage"]) ?? ProviderJSON.percent(used: used, total: limit))
+        let used = counted.reduce(0) { $0 + $1.used }
+        let limit = counted.reduce(0) { $0 + $1.limit }
+        // One bucket answers with the console's own percentage; several are
+        // one pool between them, so they are summed.
+        let percent = counted.count == 1
+            ? (counted[0].percent ?? ProviderJSON.percent(used: used, total: limit))
             : ProviderJSON.percent(used: used, total: limit)
         return UsageSnapshot(windows: [UsageWindow(
             title: L10n.t("Credits", "额度"),
             usedPercent: percent.map { min(max($0, 0), 100) },
             detail: L10n.t("\(Int(used)) / \(Int(limit)) credits", "\(Int(used)) / \(Int(limit)) 点"),
             resetsAt: QwenProvider.date(root["nextResetAt"] ?? root["next_reset_at"]))])
+    }
+
+    /// Every quota bucket in the reply, whatever it is called and however
+    /// deep it sits: the subscription seat (`totalQuota`), the shared pack
+    /// (`sharedQuota`), and any the console adds later — each is an object
+    /// carrying a `quotaSummary`.
+    static func buckets(in object: [String: Any], depth: Int = 0) -> [Bucket] {
+        guard depth < 4 else { return [] }
+        var found: [Bucket] = []
+        for key in object.keys.sorted() {
+            guard let child = object[key] as? [String: Any] else { continue }
+            if let summary = (child["quotaSummary"] ?? child["quota_summary"]) as? [String: Any] {
+                found.append(Bucket(
+                    used: QwenProvider.number(summary["usedValue"] ?? summary["used_value"]) ?? 0,
+                    limit: QwenProvider.number(summary["limitValue"] ?? summary["limit_value"]) ?? 0,
+                    percent: QwenProvider.number(summary["usagePercentage"] ?? summary["usage_percentage"])))
+            } else {
+                found.append(contentsOf: buckets(in: child, depth: depth + 1))
+            }
+        }
+        return found
     }
 }
 

@@ -137,6 +137,28 @@ final class MoreProvidersTests: XCTestCase {
         XCTAssertEqual(snapshot.windows.first?.resetsAt, Date(timeIntervalSince1970: 1_800_000_000))
     }
 
+    /// The reporter's account: no seat allowance, the credits in the
+    /// organisation's shared pack. Counting the empty seat reported 100%.
+    func testQoderCountsOnlyBucketsWithAnAllowance() throws {
+        let snapshot = try QoderProvider.parse(json(#"{"totalQuota":{"quotaSummary":{"usedValue":0,"limitValue":0,"usagePercentage":100}},"sharedQuota":{"quotaSummary":{"usedValue":177088,"limitValue":180000,"usagePercentage":99}}}"#))
+        // One bucket left standing, so the console's own figure is kept.
+        XCTAssertEqual(snapshot.windows.first?.usedPercent, 99)
+        XCTAssertEqual(snapshot.windows.first?.detail?.hasPrefix("177088 / 180000"), true)
+    }
+
+    /// The same shape under a name this build has never seen.
+    func testQoderFindsABucketWhateverItIsCalled() throws {
+        let snapshot = try QoderProvider.parse(json(#"{"data":{"resourcePackQuota":{"quotaSummary":{"usedValue":50,"limitValue":200}}}}"#))
+        XCTAssertEqual(snapshot.windows.first?.usedPercent, 25)
+    }
+
+    /// Nothing to read is said as it is, not as a full quota.
+    func testQoderWithoutAnyAllowanceSaysSo() {
+        XCTAssertThrowsError(try QoderProvider.parse(json(#"{"totalQuota":{"quotaSummary":{"usedValue":0,"limitValue":0,"usagePercentage":100}}}"#))) { error in
+            guard case ProviderError.noPlan = error else { return XCTFail("said \(error)") }
+        }
+    }
+
     func testWindsurfCachedPlan() throws {
         let snapshot = try WindsurfProvider.parse(json(#"{"planName":"Pro","endTimestamp":1800000000000,"usage":{"messages":500,"usedMessages":125},"quotaUsage":{"dailyRemainingPercent":80,"weeklyRemainingPercent":55,"weeklyResetAtUnix":1800000000}}"#))
         XCTAssertEqual(snapshot.planName, "Pro")

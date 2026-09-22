@@ -9,6 +9,11 @@ import Foundation
 public struct KimiCodeEnvironment: Sendable {
     public var codeHome: URL
     public var legacyHome: URL
+    /// Kimi Desktop's cookie store — the chat app, not Kimi Code. Its
+    /// Chromium database keeps cookies in the clear, so the sign-in of
+    /// someone who never installed Kimi Code is still readable, with no
+    /// keychain prompt.
+    public var desktopCookies: URL
     public var send: HTTPSend
     public var now: @Sendable () -> Date
     /// The clock that stops while the Mac sleeps, as a lock holder's timer
@@ -36,6 +41,7 @@ public struct KimiCodeEnvironment: Sendable {
     public init(
         codeHome: URL,
         legacyHome: URL,
+        desktopCookies: URL? = nil,
         send: @escaping HTTPSend,
         now: @escaping @Sendable () -> Date = { Date() },
         uptime: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
@@ -50,6 +56,7 @@ public struct KimiCodeEnvironment: Sendable {
     {
         self.codeHome = codeHome
         self.legacyHome = legacyHome
+        self.desktopCookies = desktopCookies ?? LocalCredentials.kimiDesktopCookies
         self.send = send
         self.now = now
         self.uptime = uptime
@@ -67,6 +74,7 @@ public struct KimiCodeEnvironment: Sendable {
         KimiCodeEnvironment(
             codeHome: LocalCredentials.kimiCodeHome,
             legacyHome: LocalCredentials.kimiLegacyHome,
+            desktopCookies: LocalCredentials.kimiDesktopCookies,
             send: HTTP.live,
             mayRenew: KimiCodeRenewal.isAllowedInThisProcess,
             lastReading: { SnapshotCache.shared.snapshot(for: .kimi) })
