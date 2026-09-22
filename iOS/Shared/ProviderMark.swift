@@ -23,9 +23,13 @@ extension Color {
         Color(hex: UsageRamp.hex(used: used))
     }
 
-    /// Behind a widget: the system's own widget surface — white in light
-    /// mode, a dark grey in dark — rather than a black slab of our own.
-    static let widgetSurface = Color(uiColor: .secondarySystemGroupedBackground)
+    /// Behind a widget: white in light mode; in dark, a near-black deeper
+    /// than the system's grey, so the figures stand out as on the Mac.
+    static let widgetSurface = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 10 / 255, green: 10 / 255, blue: 11 / 255, alpha: 1)
+            : .white
+    })
 }
 
 // MARK: - A provider's mark
