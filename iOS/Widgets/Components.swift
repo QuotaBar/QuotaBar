@@ -45,7 +45,7 @@ struct LeftFigure: View {
                 .font(.system(size: size * 0.45, weight: .medium, design: .rounded))
                 .foregroundStyle(.secondary)
         }
-        .foregroundStyle(tinted && used != nil ? Color.usage(used ?? 0) : Color.white)
+        .foregroundStyle(tinted && used != nil ? Color.usage(used ?? 0) : Color.primary)
         .lineLimit(1)
         .minimumScaleFactor(0.6)
     }
@@ -127,27 +127,43 @@ struct WindowBarRow: View {
     let date: Date
     var showsReset = false
     var quiet = false
+    /// Three windows in a medium widget: the reset goes on the label's
+    /// line, or the rows do not fit and the widget is cut at both ends.
+    var compact = false
 
     var body: some View {
         let used = window.usedNow(at: date) ?? 0
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: compact ? 2 : 3) {
             HStack(spacing: 6) {
-                Text(window.shortLabel ?? window.displayName)
+                Text(label)
                     .font(.caption2.weight(.semibold).monospacedDigit())
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                if showsReset && compact {
+                    ResetLine(window: window, date: date, quiet: quiet)
+                        .font(.caption2)
+                        .lineLimit(1)
+                }
                 Spacer(minLength: 4)
                 Text("\(Int((100 - used).rounded()))%")
                     .font(.caption.weight(.semibold).monospacedDigit())
                     .foregroundStyle(Color.usage(used))
             }
-            SteppedMeter(fill: 100 - used, tint: Color.usage(used), height: 5)
-            if showsReset {
+            SteppedMeter(fill: 100 - used, tint: Color.usage(used), height: compact ? 4 : 5)
+            if showsReset && !compact {
                 ResetLine(window: window, date: date, quiet: quiet)
                     .font(.caption2)
                     .lineLimit(1)
             }
         }
+    }
+
+    /// "7d" alone cannot tell Claude's all-models week from its Sonnet one:
+    /// a scoped window says whose it is.
+    private var label: String {
+        guard let short = window.shortLabel else { return window.displayName }
+        guard let scope = window.scope, !scope.isEmpty else { return short }
+        return "\(short) \(scope)"
     }
 }
 

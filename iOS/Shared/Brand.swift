@@ -56,7 +56,7 @@ struct BrandLockup: View {
             BrandIcon(size: iconSize)
             Text("QuotaBar")
                 .font(.wordmark(size: textSize))
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("QuotaBar")

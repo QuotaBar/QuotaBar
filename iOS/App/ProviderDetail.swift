@@ -77,6 +77,14 @@ struct ProviderDetail: View {
                 }
             }
         }
+        #if DEBUG
+        // `-QuotaBarStatus`: the status sheet up at once, for screenshots.
+        .task {
+            guard ProcessInfo.processInfo.arguments.contains("-QuotaBarStatus") else { return }
+            try? await Task.sleep(for: .seconds(1.5))
+            showsStatus = true
+        }
+        #endif
         .sheet(isPresented: $showsStatus) {
             StatusSheet(model: model, provider: provider)
         }

@@ -19,6 +19,9 @@ struct WidgetGallery: View {
 
     private func shows(_ name: String) -> Bool { part == nil || part == name }
 
+    /// `-QuotaBarLight`: the widgets as a light-mode home screen draws them.
+    private let light = ProcessInfo.processInfo.arguments.contains("-QuotaBarLight")
+
     // iPhone 16/17 Pro widget sizes, in points.
     private let small = CGSize(width: 170, height: 170)
     private let medium = CGSize(width: 364, height: 170)
@@ -34,8 +37,8 @@ struct WidgetGallery: View {
             }
             .padding(16)
         }
-        .background(Color(white: 0.16))
-        .preferredColorScheme(.dark)
+        .background(light ? Color(white: 0.86) : Color(white: 0.16))
+        .environment(\.colorScheme, light ? .light : .dark)
     }
 
     @ViewBuilder
@@ -128,7 +131,7 @@ struct WidgetGallery: View {
         content()
             .padding(16)
             .frame(width: size.width, height: size.height)
-            .background(Color.black, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .background(Color.widgetSurface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 }
 

@@ -142,8 +142,11 @@ struct ProviderWidgetView: View {
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 Spacer(minLength: 0)
-                ForEach((snapshot?.shownWindows ?? []).prefix(entry.providerStyle == .bars ? 3 : 2)) { window in
-                    WindowBarRow(window: window, date: entry.date, showsReset: true, quiet: entry.quiet)
+                let windows = Array((snapshot?.shownWindows ?? []).prefix(entry.providerStyle == .bars ? 3 : 2))
+                ForEach(windows) { window in
+                    WindowBarRow(
+                        window: window, date: entry.date, showsReset: true, quiet: entry.quiet,
+                        compact: windows.count > 2)
                 }
                 Spacer(minLength: 0)
             }
@@ -191,7 +194,7 @@ struct ProviderWidgetView: View {
                         .font(.caption2.weight(.semibold))
                         .padding(.horizontal, 5)
                         .padding(.vertical, 1)
-                        .background(Color.white.opacity(0.12), in: Capsule())
+                        .background(Color.primary.opacity(0.12), in: Capsule())
                 }
                 Spacer(minLength: 0)
                 if let todaySpend {

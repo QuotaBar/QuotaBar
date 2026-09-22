@@ -271,6 +271,7 @@ struct SignInButton: View {
             if case .waiting = session.phase {
                 Button(L10n.t("Cancel", "取消"), role: .cancel) { session.cancel() }
                     .font(.footnote)
+                    .buttonStyle(.borderless)
             }
             if case let .failed(message) = session.phase {
                 Text(message)
@@ -293,7 +294,9 @@ struct SignInButton: View {
                 // The tint is the Mac's light neutral: dark type on it.
                 content.buttonStyle(.borderedProminent).controlSize(.large).foregroundStyle(.black)
             } else {
-                content
+                // Beside the Cancel button in one list row: each keeps to
+                // its own hit area.
+                content.buttonStyle(.borderless)
             }
         }
     }

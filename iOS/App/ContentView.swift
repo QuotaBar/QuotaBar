@@ -18,6 +18,9 @@ struct ContentView: View {
                 Group {
                     header
                     FreshnessBanner(readings: model.readings, error: model.error, macRefresh: model.macRefresh)
+                    if model.isDemo && !Demo.isForScreenshots {
+                        DemoBanner { withAnimation(.snappy) { model.endDemo() } }
+                    }
                     if !pendingMacs.isEmpty {
                         AllowOnMacPrompt(macs: pendingMacs, code: model.quotaRun.safetyCode)
                     }
@@ -62,7 +65,19 @@ struct ContentView: View {
             {
                 if case let .waiting(url) = model.quotaRun.phase { ApprovalPage(url: url).ignoresSafeArea() }
             }
-            .navigationDestination(for: ProviderID.self) { provider in
+            #if DEBUG
+            // `-QuotaBarOpen claude`: straight to one provider's detail, for
+            // screenshots.
+            .task {
+                let arguments = ProcessInfo.processInfo.arguments
+                guard let index = arguments.firstIndex(of: "-QuotaBarOpen"), index + 1 < arguments.count,
+                      let provider = ProviderID(rawValue: arguments[index + 1]), path.isEmpty
+                else { return }
+                try? await Task.sleep(for: .seconds(0.5))
+                path = [provider]
+            }
+            #endif
+                        .navigationDestination(for: ProviderID.self) { provider in
                 ProviderDetail(model: model, provider: provider, notice: $notice)
             }
         }
@@ -131,7 +146,7 @@ struct ContentView: View {
                 .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
-            .disabled(model.readings.devices.isEmpty && !Demo.isOn)
+            .disabled(model.readings.devices.isEmpty && !model.isDemo)
             .accessibilityLabel(L10n.t("Ask the Mac to refresh", "让 Mac 立即刷新"))
             Button {
                 showsHelp = true
@@ -284,8 +299,16 @@ private struct EmptyReadings: View {
                         "Waiting for your Mac. On the Mac, sign in to the same Quota Run account and allow this phone in Settings › iPhone.",
                         "正在等待 Mac。请在 Mac 上登录同一个 Quota Run 账号，并在 设置 › iPhone 里允许这台手机。"))
             }
-            Link(L10n.t("Get QuotaBar for Mac", "获取 Mac 版 QuotaBar"), destination: URL(string: "https://quota.bar")!)
-                .font(.subheadline.weight(.semibold))
+            HStack(spacing: 16) {
+                Button(L10n.t("See an example", "查看示例")) {
+                    withAnimation(.snappy) { model.showDemo() }
+                }
+                Link(L10n.t("Get QuotaBar for Mac", "获取 Mac 版 QuotaBar"), destination: URL(string: "https://quota.bar")!)
+            }
+            // In a list row, buttons without their own hit area all answer a
+            // tap anywhere in the row.
+            .buttonStyle(.borderless)
+            .font(.subheadline.weight(.semibold))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
@@ -306,6 +329,33 @@ private struct EmptyReadings: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+}
+
+/// Said while the samples are on, with the way back.
+private struct DemoBanner: View {
+    let exit: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "sparkles.rectangle.stack")
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(L10n.t("Example readings", "示例数据"))
+                    .font(.subheadline.weight(.semibold))
+                Text(L10n.t(
+                    "Not your quotas. Connect a Mac to see your own.",
+                    "这些不是你的额度。连接 Mac 后显示你自己的。"))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Button(L10n.t("Exit", "退出示例"), action: exit)
+                .font(.subheadline.weight(.semibold))
+                .buttonStyle(.bordered)
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 

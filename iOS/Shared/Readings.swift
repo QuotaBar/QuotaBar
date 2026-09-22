@@ -39,7 +39,10 @@ enum ReadingsCache {
 
     /// Both routes' Macs: iCloud's, and what came through quota.run. A Mac
     /// that sends both ways is one Mac — the newer copy stands.
-    static var allDevices: [CloudReadings] { combine(load().devices, RelayCache.load().devices) }
+    static var allDevices: [CloudReadings] {
+        // The samples alone while they are on: nothing real mixed in.
+        Demo.isOn ? load().devices : combine(load().devices, RelayCache.load().devices)
+    }
 
     static func combine(_ cloud: [CloudReadings], _ relay: [CloudReadings]) -> [CloudReadings] {
         var newest: [String: CloudReadings] = [:]
@@ -94,6 +97,9 @@ enum ReadingsSync {
     /// on another iCloud account has nothing in its own.
     @discardableResult
     static func fetch() async -> Result<MergedReadings, Error> {
+        // Showing the samples: a fetch would put the real (empty) readings
+        // over them, in the app and in every widget.
+        if Demo.isOn { return .success(ReadingsCache.merged) }
         async let cloud = fetchCloud()
         async let relay = fetchRelay()
         let (fromCloud, fromRelay) = await (cloud, relay)
@@ -172,19 +178,38 @@ enum Diagnostics {
 
 /// Launched with `-QuotaBarDemo`, the app shows these instead of iCloud's:
 /// for the simulator, and for App Store screenshots.
+/// Sample readings in place of the Macs': turned on from the empty page
+/// ("查看示例") so anyone without QuotaBar for Mac — App Review included —
+/// can see what the app does, or with `-QuotaBarDemo` for screenshots. Kept in
+/// the app group so the widgets show the same samples and do not fetch over
+/// them.
 enum Demo {
-    static var isOn: Bool { ProcessInfo.processInfo.arguments.contains("-QuotaBarDemo") }
+    private static let key = "demoMode"
+
+    static var isOn: Bool {
+        isForScreenshots || (UserDefaults(suiteName: ReadingsCache.appGroup)?.bool(forKey: key) ?? false)
+    }
+
+    /// Launched with `-QuotaBarDemo`: the samples without the banner that
+    /// says they are samples, for App Store screenshots.
+    static var isForScreenshots: Bool { ProcessInfo.processInfo.arguments.contains("-QuotaBarDemo") }
+
+    static func set(_ on: Bool) {
+        UserDefaults(suiteName: ReadingsCache.appGroup)?.set(on, forKey: key)
+    }
 }
 
 extension CloudReadings {
     /// For the widget gallery and placeholders.
     static var sample: CloudReadings {
         let now = Date()
-        func snapshot(_ plan: String, _ short: Double, _ long: Double, credits: ResetCredits? = nil) -> UsageSnapshot {
+        func snapshot(
+            _ plan: String, _ short: Double, _ long: Double, credits: ResetCredits? = nil, more: [UsageWindow] = []) -> UsageSnapshot
+        {
             UsageSnapshot(planName: plan, account: "you@example.com", windows: [
                 UsageWindow(title: "5h", usedPercent: short, resetsAt: now.addingTimeInterval(2 * 3600), windowSeconds: 18_000),
                 UsageWindow(title: "7d", usedPercent: long, resetsAt: now.addingTimeInterval(3 * 86_400), windowSeconds: 604_800),
-            ], fetchedAt: now, resetCredits: credits)
+            ] + more, fetchedAt: now, resetCredits: credits)
         }
         /// A month that climbs, with quieter weekends.
         func spend(_ scale: Double, models: [(String, Double)]) -> CloudSpend {
@@ -211,7 +236,11 @@ extension CloudReadings {
             appVersion: "0.6.0", language: L10n.isChinese ? "zh" : "en",
             updatedAt: now, money: CloudMoney(currency: L10n.isChinese ? "CNY" : "USD", usdRate: 7.1), providers: [
                 .init(
-                    id: ProviderID.claude.rawValue, snapshot: snapshot("Max", 78, 64),
+                    id: ProviderID.claude.rawValue,
+                    // Claude's third limit, as the Mac reads it: the week for one model.
+                    snapshot: snapshot("Max", 78, 64, more: [UsageWindow(
+                        title: "7d Sonnet", usedPercent: 41, resetsAt: now.addingTimeInterval(3 * 86_400),
+                        windowSeconds: 604_800, scope: "Sonnet")]),
                     spend: spend(9_000_000, models: [("claude-opus-5-5", 0.72), ("claude-sonnet-5", 0.24), ("claude-haiku-4-5", 0.04)]),
                     links: CloudLinks(console: URL(string: "https://claude.ai/settings/usage"))),
                 .init(

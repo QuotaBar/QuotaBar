@@ -123,6 +123,9 @@ final class ReadingsModel {
     private(set) var uptime: [String: [UptimeDay]] = [:]
     private var uptimeLoading: Set<String> = []
 
+    /// Showing the sample readings rather than the Macs'.
+    private(set) var isDemo = Demo.isOn
+
     init() {
         if Demo.isOn {
             // Into the cache too, so the widgets show the same sample.
@@ -145,6 +148,32 @@ final class ReadingsModel {
         // can be run on a device nobody is holding.
         if ProcessInfo.processInfo.arguments.contains("-QuotaBarAskMac") { await askMacToRefresh() }
         #endif
+    }
+
+    /// The samples, from the empty page's "查看示例".
+    func showDemo() {
+        Demo.set(true)
+        isDemo = true
+        ReadingsCache.save(CloudReadings.samples)
+        readings = ReadingsCache.merged
+        error = nil
+        WidgetCenter.shared.reloadAllTimelines()
+        Task { await refreshStatus() }
+    }
+
+    /// Back to the Macs' own readings: the samples leave the cache, so no
+    /// widget goes on showing them.
+    func endDemo() {
+        Demo.set(false)
+        isDemo = false
+        ReadingsCache.save([])
+        readings = ReadingsCache.merged
+        WidgetCenter.shared.reloadAllTimelines()
+        Task {
+            // Started in demo mode, the subscription was never made.
+            try? await ReadingsSync.store.subscribe()
+            await refresh()
+        }
     }
 
     /// A card dropped somewhere else in the list; the order is remembered

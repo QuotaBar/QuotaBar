@@ -19,7 +19,7 @@ struct ProviderWidget: Widget {
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: "provider", intent: ProviderWidgetIntent.self, provider: ProviderTimeline()) { entry in
             FamilyReader { ProviderWidgetView(entry: entry, family: $0) }
-                .containerBackground(Color.black, for: .widget)
+                .containerBackground(Color.widgetSurface, for: .widget)
         }
         .configurationDisplayName(L10n.t("Provider", "单个服务商"))
         .description(L10n.t(
@@ -37,7 +37,7 @@ struct OverviewWidget: Widget {
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: "overview", intent: OverviewWidgetIntent.self, provider: OverviewTimeline()) { entry in
             FamilyReader { OverviewWidgetView(entry: entry, family: $0) }
-                .containerBackground(Color.black, for: .widget)
+                .containerBackground(Color.widgetSurface, for: .widget)
         }
         .configurationDisplayName(L10n.t("Overview", "总览"))
         .description(L10n.t(
@@ -52,7 +52,7 @@ struct SpendWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "spend", provider: SpendTimeline()) { entry in
             FamilyReader { SpendWidgetView(entry: entry, family: $0) }
-                .containerBackground(Color.black, for: .widget)
+                .containerBackground(Color.widgetSurface, for: .widget)
         }
         .configurationDisplayName(L10n.t("Spend", "花费"))
         .description(L10n.t(

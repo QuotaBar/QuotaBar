@@ -10,7 +10,7 @@ struct SteppedMeter: View {
     let fill: Double?
     let tint: Color
     var height: CGFloat = 8
-    var track: Color = Color.white.opacity(0.1)
+    var track: Color = Color.primary.opacity(0.1)
 
     private static let segment: CGFloat = 5
     private static let gap: CGFloat = 2
