@@ -363,6 +363,14 @@ private struct HowItWorks: View {
     let model: ReadingsModel
     @Environment(\.dismiss) private var dismiss
 
+    /// "1.0.0 (3)": the version, and the build that tells two uploads of it apart.
+    static var version: String {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        return "\(short) (\(build))"
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -392,10 +400,20 @@ private struct HowItWorks: View {
                         "Press and hold a card, then drag it. The order is kept on this phone and the Overview widget follows it; the Mac keeps its own.",
                         "长按卡片后拖动即可调整顺序。顺序只保存在这台手机上，「总览」小组件也会按这个顺序显示；Mac 上的顺序不受影响。"))
                 }
-                Section(L10n.t("When figures arrive", "数据什么时候更新")) {
+                Section {
                     Text(L10n.t(
                         "The Mac sends after a refresh that changed something, and every 20 minutes otherwise. The phone picks that up within minutes, not instantly — iOS decides when apps and widgets may update. While the Mac is asleep nothing new arrives, and the app says so.",
                         "Mac 在数字有变化的刷新之后同步，没有变化时每 20 分钟同步一次。手机通常在几分钟内收到，不是实时的，因为 App 和小组件什么时候更新由 iOS 决定。Mac 睡眠时不会有新数据，App 会明确提示。"))
+                } header: {
+                    Text(L10n.t("When figures arrive", "数据什么时候更新"))
+                } footer: {
+                    // Which build this is, for a report or a check that an
+                    // update landed.
+                    Text("QuotaBar iOS \(Self.version)")
+                        .font(.footnote.monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 24)
                 }
             }
             .navigationTitle(L10n.t("How it works", "工作原理"))
