@@ -220,6 +220,20 @@ enum Snapshot {
         .frame(width: 74, height: 74)
         .background(Color.black)
         render(sweep, to: url, name: "dock-reset-ring", backing: .black)
+        // Every provider's mark in a dock ring, to check the marks against
+        // the black disc: a dark mark taken for a coloured one vanishes.
+        let rings = LazyVGrid(columns: Array(repeating: GridItem(.fixed(64), spacing: 8), count: 6), spacing: 8) {
+            ForEach(ProviderID.allCases) { id in
+                VStack(spacing: 4) {
+                    ProviderRing(id: id, percent: 40, mode: .used, showsLabel: false)
+                    Text(id.displayName).font(.system(size: 8)).foregroundStyle(.white.opacity(0.6)).lineLimit(1)
+                }
+            }
+        }
+        .padding(12)
+        .background(Color.black)
+        .environment(\.colorScheme, .dark)
+        render(rings, to: url, name: "dock-rings-all", backing: .black)
         for (name, used) in [("low-warning", 88.0), ("low-critical", 97.0)] {
             let dockShape = EdgeDockView.dockShape(onLeft: false)
             let handle = ZStack {
