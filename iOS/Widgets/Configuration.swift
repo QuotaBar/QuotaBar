@@ -85,7 +85,7 @@ enum OverviewStyle: String, AppEnum {
 
 struct ProviderWidgetIntent: WidgetConfigurationIntent {
     static let title: LocalizedStringResource = "Provider"
-    static let description = IntentDescription("One provider's limit, from QuotaBar on your Mac.")
+    static let description = IntentDescription("One provider's limits and when they reset.")
 
     @Parameter(title: "Provider")
     var provider: ProviderEntity?
@@ -99,7 +99,7 @@ struct ProviderWidgetIntent: WidgetConfigurationIntent {
 
 struct OverviewWidgetIntent: WidgetConfigurationIntent {
     static let title: LocalizedStringResource = "Overview"
-    static let description = IntentDescription("Every provider your Mac reads.")
+    static let description = IntentDescription("Every provider's limits at once.")
 
     @Parameter(title: "Style", default: .rings)
     var style: OverviewStyle

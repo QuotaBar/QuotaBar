@@ -132,22 +132,22 @@
         }
       }
     },
-    "One provider's limit, from QuotaBar on your Mac.": {
+    "One provider's limits and when they reset.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "一个服务商的额度，来自 Mac 版 QuotaBar。"
+            "value": "一个服务商的额度和重置时间。"
           }
         }
       }
     },
-    "Every provider your Mac reads.": {
+    "Every provider's limits at once.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mac 读到的所有服务商。"
+            "value": "所有服务商的额度一览。"
           }
         }
       }
