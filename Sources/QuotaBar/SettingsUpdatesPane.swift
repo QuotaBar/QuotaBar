@@ -36,7 +36,12 @@ struct UpdatesPane: View {
                 .opacity(store.updateIsManagedByHomebrew ? 0.45 : 1)
             }
 
-            SettingRow(L10n.t("Check", "检查")) {
+            SettingRow(
+                L10n.t("Check", "检查"),
+                caption: L10n.t(
+                    "Checking for updates connects to quota.bar (GitHub if it cannot be reached). The check carries the app version and, like any web request, your IP address; quota.bar keeps only a salted hash of it to count active installs and deletes the raw logs after seven days. No usage data is sent.",
+                    "检查更新时会连接 quota.bar（连不上时改用 GitHub）。请求带应用版本号，以及和任何网页请求一样的 IP 地址；quota.bar 只保存 IP 的加盐哈希用来统计活跃安装数，原始日志 7 天后删除。不会发送任何用量数据。"))
+            {
                 HStack(spacing: Design.space3) {
                     // A routine check, drawn like Refresh now in General; the
                     // filled style is kept for the step that changes

@@ -7,7 +7,7 @@
 **每个 AI 编码额度，抬眼就看见——在菜单栏、刘海、屏幕边缘或桌面上。**
 
 [![Release](https://img.shields.io/github/v/release/QuotaBar/QuotaBar?color=6ee02b&label=%E7%89%88%E6%9C%AC)](https://github.com/QuotaBar/QuotaBar/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/QuotaBar/QuotaBar/total?color=6ee02b&label=%E4%B8%8B%E8%BD%BD)](https://github.com/QuotaBar/QuotaBar/releases)
+[![Downloads](https://img.shields.io/endpoint?url=https%3A%2F%2Fquota.bar%2Fstats%2Fbadge.json&label=%E4%B8%8B%E8%BD%BD)](https://quota.bar/)
 [![Stars](https://img.shields.io/github/stars/QuotaBar/QuotaBar?style=flat&color=f5c518&label=%E6%98%9F%E6%A0%87)](https://github.com/QuotaBar/QuotaBar/stargazers)
 [![Last commit](https://img.shields.io/github/last-commit/QuotaBar/QuotaBar?color=black&label=%E6%9C%80%E8%BF%91%E6%8F%90%E4%BA%A4)](https://github.com/QuotaBar/QuotaBar/commits/main)
 [![Commit activity](https://img.shields.io/github/commit-activity/m/QuotaBar/QuotaBar?color=black&label=%E6%8F%90%E4%BA%A4)](https://github.com/QuotaBar/QuotaBar/graphs/commit-activity)
@@ -49,9 +49,18 @@ Gatekeeper 可以直接打开。
 <!-- changelog:start -->
 <!-- 由 Scripts/sync_changelog.py 从 CHANGELOG.md 生成，请勿手改。 -->
 
-最新版本 **0.5.14**（2026-09-23） · [完整更新日志](CHANGELOG.md)
+最新版本 **0.5.14**（2026-09-23） · 开发中 **1** 项改动尚未发布 · [完整更新日志](CHANGELOG.md)
 
 <details open>
+<summary><b>2026-09-23</b> · 未发布 · 新增 1</summary>
+
+**新增**
+
+- 检查更新和下载更新改为先连 quota.bar，连不上再用 GitHub。以前反过来：先问 GitHub，它没有答复才去 quota.bar 上的镜像，而有些网络根本连不上 GitHub，每次检查都得先等它超时；同时也一直不知道有多少人在用这个应用——GitHub 只数它自己那边的下载，其中大部分还是应用自己更新时下载的 zip。现在检查更新先问 quota.bar，它答不上来才问 GitHub；开了「测试版更新」时仍会看 GitHub 的列表并取两边较新的那个，因为 quota.bar 上没有预发布版。下载也先取 quota.bar 上的 zip，再取 GitHub 上的附件，装之前照旧验证开发者签名和 Apple 公证。请求的 User-Agent 现在带应用版本和芯片（如 `QuotaBar/0.5.14 (macOS 26.1; arm64)`），quota.bar 靠它统计活跃安装数和各版本、各芯片的分布。设置 → 更新里「检查」一行的说明写明：检查更新时会连接 quota.bar（连不上时改用 GitHub）。请求带应用版本号，以及和任何网页请求一样的 IP 地址；quota.bar 只保存 IP 的加盐哈希用来统计活跃安装数，原始日志 7 天后删除。不会发送任何用量数据。关于页的「你的数据」也按此改写。
+
+</details>
+
+<details>
 <summary><b>2026-09-23</b> · 0.5.14 · 修复 2</summary>
 
 **修复**
@@ -69,19 +78,6 @@ Gatekeeper 可以直接打开。
 - 菜单栏图标选了 Cursor 后，显示的不是当月套餐的用量，而是 Grok Bot 的用量（套餐刚重置、只用了 0.2%，图标却显示 69.3%）。原因：菜单栏没有为 Cursor 单独选额度时走「自动」，而「自动」取的是所有额度里用得最满的那个，连 Grok Bot 这种套餐之外的附加额度也算在内。现在「自动」只在套餐自身的额度里取最满的；Cursor 的 Grok Bot、Codex 的备用额度和单个模型的附加额度不再参与，除非它正在被使用（Codex 套餐用完后改用备用额度时），或者你亲自选了它。菜单栏、刘海岛、停靠条、卡片圆环、桌面卡片和用量告警都按这条规则。
 - 0.5.12 让菜单栏单独选额度之后，在卡片上双击某个额度不再改变菜单栏图标，而那个单独的入口只在设置里，很难找到——选了 Claude 显示在菜单栏，再双击卡片上的「5 小时」，图标没有反应。现在菜单栏重新跟下拉面板里的卡片走：右键图标 →「显示在菜单栏」选服务商（Claude 还是 Codex），再在那张卡片上双击某个额度（5 小时、每周、每月），菜单栏图标和卡片圆环就都按它显示；再双击一次回到「自动」。刘海岛和停靠条仍然各选各的。0.5.12 里为菜单栏单独存的选择不再使用，以卡片上的为准。
 - 右键菜单栏图标，「显示在菜单栏」下面多了一项「Claude 显示的额度」（名字跟着当前选中的服务商变），和在卡片上双击是同一个选择，可以直接选套餐里的某个额度或「自动」。
-
-</details>
-
-<details>
-<summary><b>2026-09-22</b> · 0.5.12 · 新增 1 · 修复 1</summary>
-
-**新增**
-
-- 菜单栏、刘海岛、停靠条可以各自选择显示哪个额度。以前这三处都跟着卡片上「圆环跟随的额度」走，一个服务商在哪里看到的都是同一个数字；有 5 小时和每周两个限制的人想在菜单栏盯 5 小时、在停靠条看每周，做不到，几个位置只是在互相重复。现在三处各选各的，互不影响：在设置 → 展示方式 →「各处显示的额度」里，每个服务商一行、每处一个下拉框，「自动」取用得最满的那个；右键卡片 →「各处显示的额度」也能改；在停靠条弹出的卡片里双击某个额度，改的是停靠条自己的。卡片上的圆环照旧在卡片上双击选择，桌面卡片跟随卡片。刘海岛的闪烁、光晕和自动弹出按刘海岛自己选的额度判断。升级时三处会沿用你原来的选择，之后各自独立。
-
-**修复**
-
-- Codex 卡片「复制为图片」只复制到周窗口，5 小时窗口复制不出来。原因：复制出来的图片画的是卡片收起时显示的额度，而这份选择（右键卡片 →「卡片上显示的额度」）是账号还在 Pro 时保存的，当时套餐只有周窗口；账号换成 Plus 后多出了 5 小时额度，但旧的选择里没有它，于是它被一直收在折叠区，卡片上不显示，图片里也没有。现在，保存选择时会一并记下当时有哪些额度；之后新出现的额度不算被你收起过，按卡片默认规则显示——Codex、Claude 有 5 小时限制时，卡片和复制的图片都会同时显示 5 小时和周两个窗口。你亲手收起的额度照旧保持收起。另外，卡片展开时复制，图片里会带上折叠区里的其他额度行（用量趋势、花费和链接仍只留在卡片上）。
 
 </details>
 
@@ -195,8 +191,8 @@ QuotaBar 只会连接这些地方：
 - 你开启的服务商的用量接口，使用你自己的登录会话或密钥；
 - 各服务的公开状态页，例如 `status.claude.com`；
 - `open.er-api.com`，每天一次，获取汇率；
-- GitHub，检查和下载更新，以及获取模型价目表（LiteLLM 的价目表）；
-- `quota.bar`，仅在你提交反馈时。
+- `quota.bar`，检查和下载更新，以及在你提交反馈时。检查更新的请求带应用版本号，以及和任何网页请求一样的 IP 地址；quota.bar 只保存 IP 的加盐哈希用来统计活跃安装数，原始日志 7 天后删除。不会发送任何用量数据；
+- GitHub，连不上 quota.bar 时检查和下载更新，以及获取模型价目表（LiteLLM 的价目表）。
 
 设置了代理（HTTP、HTTPS 或 SOCKS5）时，以上请求都经过代理。你的用量不会发送到我们的服务器。
 共享屏幕或录屏时，QuotaBar 可以隐藏数字，菜单栏只留下 logo。

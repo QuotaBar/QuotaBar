@@ -730,7 +730,7 @@ final class UsageStore: ObservableObject {
         updateStage = .downloading(release)
         Task {
             do {
-                let staged = try await Updater.stage(release)
+                let staged = try await Updater.stage(release, currentVersion: self.currentVersion ?? "")
                 self.stagedUpdate = staged
                 self.updateStage = .readyToInstall(release)
                 if self.installWhenStaged, !self.updateIsManagedByHomebrew {

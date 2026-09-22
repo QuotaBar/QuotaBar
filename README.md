@@ -7,7 +7,7 @@
 **Every AI coding limit, at a glance — in the menu bar, the notch, at the screen's edge or on the desktop.**
 
 [![Release](https://img.shields.io/github/v/release/QuotaBar/QuotaBar?color=6ee02b&label=release)](https://github.com/QuotaBar/QuotaBar/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/QuotaBar/QuotaBar/total?color=6ee02b&label=downloads)](https://github.com/QuotaBar/QuotaBar/releases)
+[![Downloads](https://img.shields.io/endpoint?url=https%3A%2F%2Fquota.bar%2Fstats%2Fbadge.json)](https://quota.bar/)
 [![Stars](https://img.shields.io/github/stars/QuotaBar/QuotaBar?style=flat&color=f5c518&label=stars)](https://github.com/QuotaBar/QuotaBar/stargazers)
 [![Last commit](https://img.shields.io/github/last-commit/QuotaBar/QuotaBar?color=black&label=last%20commit)](https://github.com/QuotaBar/QuotaBar/commits/main)
 [![Commit activity](https://img.shields.io/github/commit-activity/m/QuotaBar/QuotaBar?color=black&label=commits)](https://github.com/QuotaBar/QuotaBar/graphs/commit-activity)
@@ -50,9 +50,18 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.14** (2026-09-23) · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.14** (2026-09-23) · **1** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-09-23</b> · Unreleased · 1 added</summary>
+
+**Added**
+
+- Update checks and downloads go to quota.bar first and to GitHub only when it cannot be reached. It used to be the other way round: GitHub was asked first and the copy on quota.bar only when GitHub gave no answer, yet some networks cannot reach GitHub at all and every check waited for it to time out first; and how many people use the app was unknown, since GitHub counts only its own downloads, most of them the zip the app fetches when it updates itself. A check now asks quota.bar and turns to GitHub when it gets nothing; with "Beta updates" on it still reads GitHub's list and takes the newer of the two, since quota.bar has no pre-releases. A download takes the zip on quota.bar before the asset on GitHub, and is verified for the developer's signature and Apple's notarization before it installs, as before. The request's User-Agent now carries the app version and the chip (`QuotaBar/0.5.14 (macOS 26.1; arm64)`), which is how quota.bar counts active installs and the spread of versions and chips. Settings → Updates says so in the note beside "Check": Checking for updates connects to quota.bar (GitHub if it cannot be reached). The check carries the app version and, like any web request, your IP address; quota.bar keeps only a salted hash of it to count active installs and deletes the raw logs after seven days. No usage data is sent. The About page's "Your data" list is reworded to match.
+
+</details>
+
+<details>
 <summary><b>2026-09-23</b> · 0.5.14 · 2 fixed</summary>
 
 **Fixed**
@@ -70,19 +79,6 @@ Latest release **0.5.14** (2026-09-23) · [full changelog](CHANGELOG.en.md)
 - With Cursor chosen for the menu-bar icon, it showed Grok Bot's usage rather than the month's plan (a plan just reset at 0.2%, an icon at 69.3%). With no limit chosen for Cursor the menu bar was on Automatic, and Automatic took the fullest of every limit reported, an allowance beside the plan such as Grok Bot included. Automatic now takes the fullest of the plan's own limits: Cursor's Grok Bot, Codex's reserve and its per-model extras are left out unless one is being drawn on (Codex's reserve once the plan is spent) or you pick it yourself. The menu bar, the island, the dock, the card's ring, desktop cards and the usage alert all follow the rule.
 - After 0.5.12 gave the menu bar a choice of limit of its own, double-clicking a limit on a card no longer moved the icon, and the separate choice was only in Settings, where it was hard to find: with Claude shown in the menu bar, double-clicking "5-hour" on its card did nothing to the icon. The menu bar goes with the card in its panel again: right-click the icon → "Show in Menu Bar" picks the provider (Claude or Codex), and double-clicking a limit on that card (5-hour, weekly, monthly) makes both the icon and the card's ring follow it; double-click again for Automatic. The island and the dock still choose for themselves. A choice 0.5.12 stored for the menu bar alone is no longer used; the card's stands.
 - Right-click the icon: under "Show in Menu Bar" there is now "Claude Limit Shown" (named for whichever provider is chosen) — the same choice as the double-click on the card, with the plan's limits and Automatic.
-
-</details>
-
-<details>
-<summary><b>2026-09-22</b> · 0.5.12 · 1 added · 1 fixed</summary>
-
-**Added**
-
-- The menu bar, the island and the dock can each show a different limit. All three used to follow the card's "Ring Follows" choice, so a provider showed the same figure everywhere; with a 5-hour and a weekly limit you could not watch the 5-hour in the menu bar and the week on the dock, and the places only repeated each other. Each now chooses for itself: Settings → Presentation → "Which limit each place shows" has a row per provider and a pop-up per place, where Automatic is whichever limit is fullest; right-click a card → "Limit Shown In" does the same; and double-clicking a limit in the dock's callout sets the dock's own. The card's ring is still chosen by double-clicking on the card, and desktop cards follow the card. The island's flash, glow and auto-open judge by the limit the island itself shows. On update the three places keep the choice you had, and are independent from then on.
-
-**Fixed**
-
-- "Copy as Image" on the Codex card copied the weekly window only; the 5-hour window could not be copied. The image draws the limits the card shows before it is expanded, and that choice (right-click the card → "Limits on the Card") had been saved while the account was on Pro, which has a week and no 5-hour limit. When the account moved to Plus it gained a 5-hour limit the saved choice had never listed, so it stayed folded: off the card, and out of the image. A choice now records which limits existed when it was made; a limit that appears later was never folded by you and takes the place the card gives it by default, so with a 5-hour limit on Codex or Claude both the card and the copied image show the 5-hour and the week. Limits you folded yourself stay folded. And copying a card while it is expanded now includes the folded limits' rows too (the trend, the spend and the links stay on the card).
 
 </details>
 
@@ -206,8 +202,8 @@ QuotaBar connects only to:
 - the usage endpoints of the providers you turn on, with your own session or key;
 - their public status pages, such as `status.claude.com`;
 - `open.er-api.com`, once a day, for exchange rates;
-- GitHub, to check for and download updates and to fetch model prices (LiteLLM's catalog);
-- `quota.bar`, only when you send feedback.
+- `quota.bar`, to check for and download updates, and when you send feedback. A check carries the app version and, like any web request, your IP address; quota.bar keeps only a salted hash of it to count active installs and deletes the raw logs after seven days. No usage data is sent;
+- GitHub, for updates when quota.bar cannot be reached, and to fetch model prices (LiteLLM's catalog).
 
 With a proxy set (HTTP, HTTPS or SOCKS5), all of it goes through the proxy. Your usage is
 never sent to a server of ours. While a screen share or recording is on, QuotaBar can

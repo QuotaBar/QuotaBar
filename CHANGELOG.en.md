@@ -3,6 +3,14 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
+## Unreleased
+
+### 2026-09-23
+
+#### Added
+
+- Update checks and downloads go to quota.bar first and to GitHub only when it cannot be reached. It used to be the other way round: GitHub was asked first and the copy on quota.bar only when GitHub gave no answer, yet some networks cannot reach GitHub at all and every check waited for it to time out first; and how many people use the app was unknown, since GitHub counts only its own downloads, most of them the zip the app fetches when it updates itself. A check now asks quota.bar and turns to GitHub when it gets nothing; with "Beta updates" on it still reads GitHub's list and takes the newer of the two, since quota.bar has no pre-releases. A download takes the zip on quota.bar before the asset on GitHub, and is verified for the developer's signature and Apple's notarization before it installs, as before. The request's User-Agent now carries the app version and the chip (`QuotaBar/0.5.14 (macOS 26.1; arm64)`), which is how quota.bar counts active installs and the spread of versions and chips. Settings → Updates says so in the note beside "Check": Checking for updates connects to quota.bar (GitHub if it cannot be reached). The check carries the app version and, like any web request, your IP address; quota.bar keeps only a salted hash of it to count active installs and deletes the raw logs after seven days. No usage data is sent. The About page's "Your data" list is reworded to match.
+
 ## 0.5.14 · 2026-09-23
 
 ### 2026-09-23

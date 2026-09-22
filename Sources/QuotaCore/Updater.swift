@@ -53,14 +53,22 @@ public enum Updater {
         currentVersion: String,
         includePrereleases: Bool = false) async -> UpdateRelease?
     {
-        var release = await latest(feed: feed, includePrereleases: includePrereleases)
+        let agent = userAgent(version: currentVersion)
+        var release: UpdateRelease?
         if feed.isMirrored {
-            // GitHub unreachable — common enough on some networks that the
-            // copy on quota.bar is where those users get updates at all.
-            if release == nil { release = await latest(feed: .mirror, includePrereleases: false) }
-            if let found = release, found.mirrorURL == nil, found.downloadURL != UpdateFeed.mirrorDownload(version: found.version) {
-                release?.mirrorURL = UpdateFeed.mirrorDownload(version: found.version)
+            // quota.bar before GitHub: it answers on networks where GitHub
+            // does not, and a check there is how the app's active installs
+            // get counted. GitHub is still asked when the mirror is down, and
+            // on the beta channel, since latest.json never lists a
+            // pre-release; whichever is newer wins.
+            release = await latest(feed: .mirror, includePrereleases: false, userAgent: agent)
+            if release == nil || includePrereleases {
+                let fromGitHub = await latest(feed: feed, includePrereleases: includePrereleases, userAgent: agent)
+                release = newer(release, fromGitHub)
             }
+            release = release.map { feed.withBothCopies(of: $0) }
+        } else {
+            release = await latest(feed: feed, includePrereleases: includePrereleases, userAgent: agent)
         }
         guard let release, UpdateCheck.compare(release.version, isNewerThan: currentVersion) else { return nil }
         return release
@@ -68,11 +76,11 @@ public enum Updater {
 
     /// The newest release a feed offers, whatever its version; nil when the
     /// feed cannot be read.
-    private static func latest(feed: UpdateFeed, includePrereleases: Bool) async -> UpdateRelease? {
+    private static func latest(feed: UpdateFeed, includePrereleases: Bool, userAgent: String) async -> UpdateRelease? {
         let url = includePrereleases ? feed.listURL ?? feed.requestURL : feed.requestURL
         guard let response = try? await HTTP.get(url, headers: [
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "QuotaBar",
+            "Accept": feed.accept,
+            "User-Agent": userAgent,
         ]), response.status == 200
         else { return nil }
         return includePrereleases && feed.listURL != nil
@@ -80,17 +88,57 @@ public enum Updater {
             : feed.parse(response.data)
     }
 
+    /// The higher-versioned of two answers; the first when they tie, so the
+    /// mirror's copy stands when both sides have the same release.
+    static func newer(_ first: UpdateRelease?, _ second: UpdateRelease?) -> UpdateRelease? {
+        guard let first else { return second }
+        guard let second else { return first }
+        return UpdateCheck.compare(second.version, isNewerThan: first.version) ? second : first
+    }
+
+    /// `QuotaBar/0.5.14 (macOS 26.1; arm64)` — what the update check and the
+    /// download announce themselves as. quota.bar reads the version and the
+    /// chip off it to count active installs by release.
+    public static func userAgent(
+        version: String,
+        os: OperatingSystemVersion = ProcessInfo.processInfo.operatingSystemVersion,
+        arch: String = architecture) -> String
+    {
+        // A header must be ASCII; a version is digits and dots, but a build
+        // from a working copy could be anything.
+        let clean = version.unicodeScalars.filter { $0.isASCII && !$0.properties.isWhitespace && $0 != "(" && $0 != ")" }
+        let tag = clean.isEmpty ? "dev" : String(String.UnicodeScalarView(clean))
+        return "QuotaBar/\(tag) (macOS \(os.majorVersion).\(os.minorVersion); \(arch))"
+    }
+
+    /// Named as `uname -m` prints it on a Mac, which is what the stats side
+    /// matches against.
+    public static var architecture: String {
+        #if arch(arm64)
+        "arm64"
+        #else
+        "x86_64"
+        #endif
+    }
+
     // MARK: Download and verify
 
     /// Downloads the release, verifies it, and leaves the verified bundle in a
     /// staging directory. Returns its path.
-    public static func stage(_ release: UpdateRelease) async throws -> URL {
+    public static func stage(_ release: UpdateRelease, currentVersion: String) async throws -> URL {
         let work = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("quotabar-update-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
 
         let archive = work.appendingPathComponent("update.zip")
-        guard let data = await download([release.downloadURL, release.mirrorURL].compactMap { $0 }) else {
+        // The copy on quota.bar before the one on GitHub, for the same reason
+        // the check goes there first. A release from someone else's feed has
+        // no mirror and downloads from where it said.
+        var sources: [URL] = []
+        for url in [release.mirrorURL, release.downloadURL].compactMap({ $0 }) where !sources.contains(url) {
+            sources.append(url)
+        }
+        guard let data = await download(sources, userAgent: userAgent(version: currentVersion)) else {
             try? FileManager.default.removeItem(at: work)
             throw UpdateError.downloadFailed
         }
@@ -117,9 +165,11 @@ public enum Updater {
 
     /// The first of the addresses that answers. Which one served the zip does
     /// not matter to safety: `verify` checks the bundle, not where it came from.
-    private static func download(_ urls: [URL]) async -> Data? {
+    private static func download(_ urls: [URL], userAgent: String) async -> Data? {
         for url in urls {
-            if let response = try? await HTTP.get(url), response.status == 200, !response.data.isEmpty {
+            if let response = try? await HTTP.get(url, headers: ["User-Agent": userAgent]),
+               response.status == 200, !response.data.isEmpty
+            {
                 return response.data
             }
         }

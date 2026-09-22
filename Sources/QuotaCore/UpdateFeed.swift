@@ -47,6 +47,34 @@ public enum UpdateFeed: Sendable, Equatable {
         URL(string: "https://quota.bar/download/QuotaBar-\(version).zip")!
     }
 
+    /// The zip as Scripts/publish_release.sh attaches it to the GitHub
+    /// release `v<version>` of `repo` — the same file the mirror serves.
+    static func githubDownload(repo: String, version: String) -> URL {
+        URL(string: "https://github.com/\(repo)/releases/download/v\(version)/QuotaBar-\(version).zip")!
+    }
+
+    /// A release of this project with both of its copies filled in, whichever
+    /// side answered the check: `mirrorURL` is the zip on quota.bar and
+    /// `downloadURL` the asset on GitHub, so a download can fall through from
+    /// one to the other. A feed the mirror does not cover returns the release
+    /// untouched.
+    func withBothCopies(of release: UpdateRelease) -> UpdateRelease {
+        guard isMirrored, case let .github(repo) = self else { return release }
+        let mirror = Self.mirrorDownload(version: release.version)
+        if release.downloadURL == mirror {
+            return UpdateRelease(
+                version: release.version,
+                downloadURL: Self.githubDownload(repo: repo, version: release.version),
+                pageURL: release.pageURL,
+                notes: release.notes,
+                mirrorURL: mirror,
+                publishedAt: release.publishedAt)
+        }
+        var copy = release
+        if copy.mirrorURL == nil { copy.mirrorURL = mirror }
+        return copy
+    }
+
     /// This project's own releases, which quota.bar mirrors. Someone else's
     /// repository or server has no copy there.
     var isMirrored: Bool {
@@ -64,6 +92,13 @@ public enum UpdateFeed: Sendable, Equatable {
             URL(string: "https://api.github.com/repos/\(repo)/releases/latest")!
         case let .custom(url):
             url
+        }
+    }
+
+    var accept: String {
+        switch self {
+        case .github: "application/vnd.github+json"
+        case .custom: "application/json"
         }
     }
 

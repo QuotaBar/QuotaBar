@@ -67,6 +67,52 @@ final class UpdateFeedTests: XCTestCase {
         XCTAssertFalse(UpdateFeed.mirror.isMirrored)
     }
 
+    /// Whichever side answered the check, a release of this project carries
+    /// both addresses, so a download can fall through from one to the other.
+    func testAMirrorReleaseGainsItsGitHubAsset() throws {
+        let json = """
+        {"version":"0.5.0","url":"https://quota.bar/download/QuotaBar-0.5.0.zip","page":"https://quota.bar/changelog.html"}
+        """
+        let release = try XCTUnwrap(UpdateFeed.mirror.parse(Data(json.utf8)))
+        let both = UpdateFeed.default.withBothCopies(of: release)
+        XCTAssertEqual(both.mirrorURL, UpdateFeed.mirrorDownload(version: "0.5.0"))
+        XCTAssertEqual(
+            both.downloadURL.absoluteString,
+            "https://github.com/QuotaBar/QuotaBar/releases/download/v0.5.0/QuotaBar-0.5.0.zip")
+        XCTAssertEqual(both.pageURL, release.pageURL, "the page the mirror named still stands")
+    }
+
+    func testAGitHubReleaseGainsItsMirrorCopy() throws {
+        let json = """
+        {"tag_name":"v0.5.0","assets":[{"name":"QuotaBar-0.5.0.zip","browser_download_url":"https://x/a.zip"}]}
+        """
+        let release = try XCTUnwrap(UpdateFeed.default.parse(Data(json.utf8)))
+        let both = UpdateFeed.default.withBothCopies(of: release)
+        XCTAssertEqual(both.downloadURL.absoluteString, "https://x/a.zip")
+        XCTAssertEqual(both.mirrorURL, UpdateFeed.mirrorDownload(version: "0.5.0"))
+    }
+
+    func testAForksReleaseHasNoMirror() throws {
+        let fork = UpdateFeed.github(repo: "someone/fork")
+        let json = """
+        {"tag_name":"v9.0.0","assets":[{"name":"QuotaBar-9.0.0.zip","browser_download_url":"https://x/fork.zip"}]}
+        """
+        let release = try XCTUnwrap(fork.parse(Data(json.utf8)))
+        XCTAssertNil(fork.withBothCopies(of: release).mirrorURL, "quota.bar has no copy of someone else's build")
+    }
+
+    func testTheNewerOfTwoAnswersWinsAndTheMirrorOnATie() {
+        let page = URL(string: "https://example.com")!
+        let mirror = UpdateRelease(version: "0.5.0", downloadURL: UpdateFeed.mirrorDownload(version: "0.5.0"), pageURL: page)
+        let beta = UpdateRelease(version: "0.6.0-beta.1", downloadURL: URL(string: "https://x/b.zip")!, pageURL: page)
+        let same = UpdateRelease(version: "0.5.0", downloadURL: URL(string: "https://x/a.zip")!, pageURL: page)
+        XCTAssertEqual(Updater.newer(mirror, beta)?.version, "0.6.0-beta.1")
+        XCTAssertEqual(Updater.newer(mirror, same)?.downloadURL, mirror.downloadURL)
+        XCTAssertEqual(Updater.newer(nil, same)?.version, "0.5.0")
+        XCTAssertEqual(Updater.newer(mirror, nil)?.version, "0.5.0")
+        XCTAssertNil(Updater.newer(nil, nil))
+    }
+
     func testCustomFeedNeedsBothFields() {
         XCTAssertNil(UpdateFeed.parseCustom(Data(#"{"version":"1.0"}"#.utf8), page: page))
         XCTAssertNil(UpdateFeed.parseCustom(Data(#"{"url":"https://x/a.zip"}"#.utf8), page: page))
@@ -99,6 +145,33 @@ final class UpdateFeedTests: XCTestCase {
         XCTAssertNil(UpdateFeed(configValue: "a/b/c"))
         XCTAssertNil(UpdateFeed(configValue: "  "))
         XCTAssertNil(UpdateFeed(configValue: "/leading"))
+    }
+}
+
+final class UpdateUserAgentTests: XCTestCase {
+    /// The shape quota.bar parses: product/version, then the macOS
+    /// major.minor and the chip in parentheses.
+    func testNamesTheVersionSystemAndChip() {
+        let os = OperatingSystemVersion(majorVersion: 26, minorVersion: 1, patchVersion: 2)
+        XCTAssertEqual(
+            Updater.userAgent(version: "0.5.14", os: os, arch: "arm64"),
+            "QuotaBar/0.5.14 (macOS 26.1; arm64)")
+        XCTAssertEqual(
+            Updater.userAgent(version: "0.6.0-beta.1", os: os, arch: "x86_64"),
+            "QuotaBar/0.6.0-beta.1 (macOS 26.1; x86_64)")
+    }
+
+    func testAnUnusableVersionBecomesDev() {
+        let os = OperatingSystemVersion(majorVersion: 15, minorVersion: 0, patchVersion: 0)
+        XCTAssertEqual(Updater.userAgent(version: "", os: os, arch: "arm64"), "QuotaBar/dev (macOS 15.0; arm64)")
+        XCTAssertEqual(Updater.userAgent(version: "1.0 (测试)", os: os, arch: "arm64"), "QuotaBar/1.0 (macOS 15.0; arm64)")
+    }
+
+    func testTheRunningMachineFillsTheDefaults() throws {
+        let agent = Updater.userAgent(version: "0.5.14")
+        let pattern = #"^QuotaBar/0\.5\.14 \(macOS \d+\.\d+; (arm64|x86_64)\)$"#
+        XCTAssertNotNil(agent.range(of: pattern, options: .regularExpression), agent)
+        XCTAssertTrue(["arm64", "x86_64"].contains(Updater.architecture))
     }
 }
 
