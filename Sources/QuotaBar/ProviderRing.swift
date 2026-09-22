@@ -541,8 +541,13 @@ struct DailyBars<Trailing: View>: View {
                         RoundedRectangle(cornerRadius: 2, style: .continuous)
                             .fill(accent.opacity(tokens > 0 ? (hovered == nil || hovered == index ? 0.92 : 0.45) : 0.15))
                             .frame(height: max(3, chart.size.height * CGFloat(tokens / peak)))
-                            .frame(maxWidth: .infinity, alignment: .bottom)
-                            .contentShape(Rectangle().size(width: 40, height: 60))
+                            // The whole column is the day's hover target,
+                            // chart top to floor and halfway into the gaps
+                            // either side: the bar itself may be three
+                            // points tall, and a fixed 60pt reached under a
+                            // short chart onto the caption and the switch.
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                            .contentShape(Rectangle().inset(by: -1.5))
                             .onHover { hovered = $0 ? index : (hovered == index ? nil : hovered) }
                             .animation(.easeOut(duration: 0.12), value: hovered)
                     }
