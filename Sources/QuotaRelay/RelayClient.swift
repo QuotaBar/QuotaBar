@@ -174,6 +174,12 @@ public struct RelayClient: Sendable {
         let _: Ignored? = try await callAllowingEmpty("DELETE", "/devices/current")
     }
 
+    /// Deletes the whole Quota Run account this device is on — profile,
+    /// runs, every device and everything relayed — not only this device.
+    public func deleteAccount() async throws {
+        let _: Ignored? = try await callAllowingEmpty("DELETE", "/account")
+    }
+
     // MARK: Signing and sending
 
     private struct Ignored: Decodable {}

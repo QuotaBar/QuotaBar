@@ -30,6 +30,9 @@ final class QuotaRunSession {
     /// the owner allows it.
     private(set) var safetyCode: String?
     private(set) var isSigningOut = false
+    private(set) var isDeleting = false
+    /// Why the account could not be deleted; nothing was removed then.
+    private(set) var deleteError: String?
 
     private var attempt = 0
     private var task: Task<Void, Never>?
@@ -166,6 +169,26 @@ final class QuotaRunSession {
         }
     }
 
+    /// Deletes the Quota Run account on quota.run, then forgets it here. Only
+    /// once quota.run has confirmed: a deletion that did not reach it must
+    /// not look done.
+    func deleteAccount(then done: @escaping @MainActor () async -> Void) {
+        guard !isDeleting, let (client, _, _) = QuotaRunStore.signedIn() else { return }
+        isDeleting = true
+        deleteError = nil
+        Task {
+            do {
+                try await client.deleteAccount()
+                QuotaRunStore.forget()
+                reload()
+                await done()
+            } catch {
+                deleteError = error.localizedDescription
+            }
+            isDeleting = false
+        }
+    }
+
     static var appVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
     }
@@ -194,6 +217,7 @@ struct ApprovalPage: UIViewControllerRepresentable {
 struct QuotaRunSection: View {
     let model: ReadingsModel
     @State private var confirmsSignOut = false
+    @State private var confirmsDelete = false
 
     private var session: QuotaRunSession { model.quotaRun }
 
@@ -223,6 +247,27 @@ struct QuotaRunSection: View {
                             "This phone leaves the account and stops receiving readings through quota.run. Readings from iCloud are not affected.",
                             "这台手机会离开账号，不再通过 quota.run 接收额度。iCloud 同步的数据不受影响。"))
                     }
+                // Account creation happens on quota.run's page from this app,
+                // so deleting the account is here too.
+                Button(L10n.t("Delete Quota Run account", "删除 Quota Run 账号"), role: .destructive) { confirmsDelete = true }
+                    .disabled(session.isDeleting)
+                    .confirmationDialog(
+                        L10n.t("Delete your Quota Run account?", "删除你的 Quota Run 账号？"),
+                        isPresented: $confirmsDelete, titleVisibility: .visible)
+                    {
+                        Button(L10n.t("Delete account", "删除账号"), role: .destructive) {
+                            session.deleteAccount { await model.refresh() }
+                        }
+                    } message: {
+                        Text(L10n.t(
+                            "This deletes the account on quota.run for good: your profile, runs and projects, every Mac and phone connected to it, and every reading relayed through it. Readings from iCloud are not affected. This cannot be undone.",
+                            "这会在 quota.run 上永久删除这个账号：个人资料、成绩和项目、连接到它的所有 Mac 和手机，以及经它转交的所有额度数据。iCloud 同步的数据不受影响。删除后无法恢复。"))
+                    }
+                if let error = session.deleteError {
+                    Text(L10n.t("Not deleted: \(error)", "未能删除：\(error)"))
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                }
             } else {
                 SignInButton(model: model)
             }

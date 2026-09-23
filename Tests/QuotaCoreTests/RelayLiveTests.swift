@@ -11,7 +11,7 @@ import QuotaRelay
 /// and `QUOTA_RUN_ORIGIN` equal to it, e.g.
 /// `QUOTA_RUN_LOCAL=http://localhost:8788 swift test --filter RelayLiveTests`.
 final class RelayLiveTests: XCTestCase {
-    private var origin: URL!
+    fileprivate var origin: URL!
     private var base: URL { origin.appendingPathComponent("api/v1") }
     /// The web session's cookies, kept by hand: a private cookie store
     /// does not hold on to localhost's.
@@ -142,6 +142,30 @@ final class RelayLiveTests: XCTestCase {
     }
 }
 
+extension RelayLiveTests {
+    /// The phone can delete the whole account it joined, as App Review
+    /// requires of an app that creates accounts; the server forgets it.
+    func testThePhoneDeletesTheAccount() async throws {
+        _ = try await signUpForScenario()
+        let signing = P256.Signing.PrivateKey()
+        let joining = RelayClient(base: origin.appendingPathComponent("api/v1"), signer: SoftwareRunSigner(key: signing))
+        let start = try await joining.connectStart(deviceName: "iPhone", appVersion: "1.0.0", chinese: true)
+        try await approveForScenario(start.userCode)
+        let polled = try await joining.connectPoll(requestID: start.requestId)
+        let phone = RelayClient(
+            base: origin.appendingPathComponent("api/v1"), signer: SoftwareRunSigner(key: signing),
+            deviceID: try XCTUnwrap(polled.deviceId))
+        _ = try await phone.macs()
+        try await phone.deleteAccount()
+        do {
+            _ = try await phone.macs()
+            XCTFail("the deleted account's phone still reads")
+        } catch let error as RelayError {
+            XCTAssertEqual(error.code, "unknown_device")
+        }
+    }
+}
+
 /// A Mac for trying the phone app by hand against a local server: it joins
 /// an account, approves the phone's connection code (read from the server's
 /// log, where the approval page's address lands), allows the phone after a
@@ -236,7 +260,8 @@ final class RelayScenario: XCTestCase {
 
 extension RelayLiveTests {
     func signUpForScenario() async throws -> String {
-        let name = ProcessInfo.processInfo.environment["QUOTA_RUN_SCENARIO_USER"] ?? "phoneowner"
+        let name = ProcessInfo.processInfo.environment["QUOTA_RUN_SCENARIO_USER"]
+            ?? "e2e" + String(UUID().uuidString.prefix(8)).lowercased()
         _ = try await web("POST", "auth/dev", ["email": "\(name)@example.com"])
         _ = try await web("POST", "signup", ["username": name, "displayName": "Phone Owner", "region": "global"])
         return name
