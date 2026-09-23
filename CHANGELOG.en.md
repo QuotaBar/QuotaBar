@@ -3,6 +3,14 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
+## 0.5.18 · 2026-09-23
+
+### 2026-09-23
+
+#### Fixed
+
+- Codex's logo came on a white rounded tile, which sat on the black dock, island and desktop cards like a sticker. It is now the blue mark alone with a white ">_", the same on dark and light surfaces.
+
 ## 0.5.17 · 2026-09-23
 
 ### 2026-09-23
