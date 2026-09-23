@@ -173,6 +173,10 @@ final class UsageStore: ObservableObject {
     var notificationsReady = false
 
     let config = ConfigStore.shared
+    /// The Codex accounts kept besides the one the CLI is signed in as (issue #6).
+    let codexAccounts = CodexAccountsModel()
+    /// What the last Codex account switch or save said, for Settings.
+    @Published var codexSwitchNotice: String?
     /// Quota Run: the personal records every reading feeds, and the upload
     /// once the owner has joined.
     let run: RunCenter
@@ -587,6 +591,8 @@ final class UsageStore: ObservableObject {
 
     private func apply(_ id: ProviderID, _ result: Result<UsageSnapshot, Error>) {
         retrying.remove(id)
+        // The other kept Codex accounts are read on the same beat.
+        if id == .codex { Task { await codexAccounts.readOthers() } }
         switch result {
         case let .success(reading):
             let snapshot = withBalanceEstimate(id, reading)

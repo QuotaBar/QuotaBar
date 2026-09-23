@@ -15,6 +15,13 @@ public struct CodexProvider: QuotaProvider {
         guard let auth = LocalCredentials.codexAuth() else {
             throw ProviderError.notConfigured(hint: ProviderID.codex.setupHint)
         }
+        return try await Self.usage(accessToken: auth.accessToken, accountID: auth.accountId)
+    }
+
+    /// One account's limits, read with that account's own token: the one the
+    /// CLI is signed in as, or one QuotaBar keeps (`CodexAccountVault`).
+    public static func usage(accessToken: String, accountID: String?) async throws -> UsageSnapshot {
+        let auth = LocalCredentials.CodexAuth(accessToken: accessToken, accountId: accountID)
         var headers = [
             "Authorization": "Bearer \(auth.accessToken)",
             "Accept": "application/json",
@@ -25,19 +32,19 @@ public struct CodexProvider: QuotaProvider {
         }
         let url = URL(string: "https://chatgpt.com/backend-api/wham/usage")!
         let response = try await HTTP.get(url, headers: headers).requireOK()
-        var snapshot = try Self.parse(response.data, fallbackAccount: auth.accountId)
+        var snapshot = try parse(response.data, fallbackAccount: auth.accountId)
         // The usage reply only counts the resets the account was given; what
         // they are, when each runs out and how many came in all is one list
         // away. A failure there costs those, not the reading (issue #3).
         if let available = snapshot.resetCredits?.available {
             let account = auth.accountId ?? snapshot.account
-            var list = Self.creditList.reusable(account: account, available: available)
+            var list = creditList.reusable(account: account, available: available)
             if list == nil,
                let response = try? await HTTP.get(
                    URL(string: "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits")!, headers: headers).requireOK(),
-               let read = Self.resetCreditList(response.data)
+               let read = resetCreditList(response.data)
             {
-                Self.creditList.store(read, account: account, available: available)
+                creditList.store(read, account: account, available: available)
                 list = read
             }
             if let list {
@@ -70,11 +77,14 @@ public struct CodexProvider: QuotaProvider {
         }
 
         private let lock = NSLock()
-        private var entry: Entry?
+        /// One per account: with several Codex accounts kept (issue #6) they
+        /// are read in turn, and a single entry would be replaced by each,
+        /// sending every account's list back to the endpoint each refresh.
+        private var entries: [String: Entry] = [:]
 
         func reusable(account: String?, available: Int, now: Date = .now) -> ResetCreditList? {
             lock.withLock {
-                guard let entry, entry.account == account, entry.available == available,
+                guard let entry = entries[account ?? ""], entry.account == account, entry.available == available,
                       now.timeIntervalSince(entry.readAt) < 3600,
                       !entry.list.credits.contains(where: { ($0.expiresAt ?? .distantFuture) <= now })
                 else { return nil }
@@ -83,7 +93,7 @@ public struct CodexProvider: QuotaProvider {
         }
 
         func store(_ list: ResetCreditList, account: String?, available: Int, now: Date = .now) {
-            lock.withLock { entry = Entry(account: account, available: available, list: list, readAt: now) }
+            lock.withLock { entries[account ?? ""] = Entry(account: account, available: available, list: list, readAt: now) }
         }
     }
 

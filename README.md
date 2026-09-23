@@ -50,9 +50,18 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.18** (2026-09-23) · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.18** (2026-09-23) · **1** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-09-23</b> · Unreleased · 1 added</summary>
+
+**Added**
+
+- Several Codex accounts. Sign in to each with `codex login`, then save it under Settings → Providers → Codex with "Save Current Account", or from "Codex Accounts" in the Codex card's right-click menu. After that one click switches the account Codex uses, with no signing in again: the account you leave is saved first, with whatever tokens the CLI last refreshed, then ~/.codex/auth.json is rewritten, and the file it replaces is kept as a backup. Under the Codex card's arrow, Accounts lists every saved account with the limit that runs out first and when it resets; the one in use is marked In use, and the menu bar and the island follow it as before. The account in use is refreshed by the Codex CLI alone and the others by QuotaBar near their expiry, so the two never spend the same refresh token; an account whose sign-in has lapsed says to sign in to it again. Saved sign-ins stay in this Mac's keychain and are not synced to iPhone. Codex sessions already running keep the old account until restarted. ([#6](https://github.com/QuotaBar/QuotaBar/issues/6))
+
+</details>
+
+<details>
 <summary><b>2026-09-23</b> · 0.5.18 · 1 fixed</summary>
 
 **Fixed**
@@ -69,22 +78,6 @@ Latest release **0.5.18** (2026-09-23) · [full changelog](CHANGELOG.en.md)
 - A new iPhone section in Settings sends your readings to your own iCloud, for QuotaBar for iPhone and its home- and lock-screen widgets (free on the App Store; the section links to it). It is off until you turn on "Send readings to iPhone". Only the results go — plans, figures, reset times, balances, the last error, and what a card shows under its arrow: spend for today, yesterday and 30 days with its models (in the currency you chose on the Mac), a month of usage, and the console link; sign-ins, tokens and API keys never leave the Mac. The readings are end-to-end encrypted in your private iCloud database, where nobody else, us included, can read them. A refresh that changed something is sent straight away, and otherwise every 20 minutes so the phone knows the Mac is awake. With several Macs each keeps its own copy and the phone shows the newest reading per provider. Turning it off removes this Mac's readings from iCloud. While it is on, "Refresh now" on the phone has the Mac read every provider within half a minute and send the result straight back; refreshes the phone asks for are at least a minute apart, and a request older than ten minutes is ignored. The section shows the sync status and any error in plain sight, with a Sync now button.
 - Settings → iPhone gains "Through Quota Run": readings on an iPhone signed in to another iCloud account than this Mac. Sign in to the same Quota Run account in QuotaBar on the phone and it shows up here (with a notification); allow it once the six-digit code matches the one on the phone. The readings are end-to-end encrypted on this Mac for the phones you allow — quota.run only passes them on and cannot read them — and nothing is sent until you allow one. Revoking a phone switches to a new key at once, so it cannot open anything sent afterwards, and the phones still allowed get the new key. "Ask the Mac to refresh" on the phone arrives this way too; one press arriving by iCloud and by quota.run refreshes once.
 - Settings → iPhone now reads "through your iCloud or your Quota Run account".
-
-</details>
-
-<details>
-<summary><b>2026-09-23</b> · 0.5.16 · 4 changed · 1 fixed</summary>
-
-**Changed**
-
-- The Kimi open platform (Moonshot API balance) is gone; Kimi Code is the Kimi that stays. If it was turned on, it drops out of the list after the update and nothing else changes; the API key saved for it is deleted from the keychain at launch, and no other credential is touched.
-- "Qwen Cloud" is now "Qwen" (千问 in Chinese).
-- Provider order: Gemini and Antigravity, both Google's, sit together.
-- Four new logos: Codex's colour icon, OpenRouter's brand lime, Qwen in purple, and the "Xiaomi MIMO" wordmark.
-
-**Fixed**
-
-- Qoder's logo nearly vanished on the black dock, island and desktop cards: its warm near-black counted as "in colour", so it was not drawn white. A colour that dark is now treated as none, and Qoder shows white on black.
 
 </details>
 

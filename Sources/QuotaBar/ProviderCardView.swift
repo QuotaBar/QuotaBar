@@ -235,6 +235,9 @@ struct ProviderCardView: View {
                 .help(store.resetCreditHelp(credits))
                 ResetCreditDeadlines(store: store, credits: credits, accent: Color(hex: id.accentHex))
             }
+            if id == .codex {
+                CodexAccountsSection(store: store, accounts: store.codexAccounts, compact: compact)
+            }
             if let source = id.costSource {
                 trend(source)
                 spendRows(source)
@@ -345,6 +348,9 @@ struct ProviderCardView: View {
         Button(L10n.t("Copy as Image", "复制为图片")) { copyImage() }
         Divider()
         ProviderQuickMenus(store: store, id: id)
+        if id == .codex {
+            CodexAccountsMenu(store: store, accounts: store.codexAccounts)
+        }
         Divider()
         if store.enabled.first != id {
             Button(L10n.t("Move Up", "上移")) { withAnimation(Motion.animation(Motion.spring)) { store.moveProvider(id, by: -1) } }

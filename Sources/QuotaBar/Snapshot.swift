@@ -148,6 +148,23 @@ enum Snapshot {
                 .claude: [4, 9, 9, 13, 12, 15, 17, 16, 18, 18],
             ])
         store.selected = selected
+        // Three kept Codex accounts, the way #6 asked for them: the one signed
+        // in, one with its week mostly spent, one whose sign-in has lapsed.
+        let now = referenceDate
+        store.codexAccounts.seedForPreview(
+            saved: [
+                CodexAccount(id: "acct-dev", email: "dev@example.com", plan: "pro", savedAt: now),
+                CodexAccount(id: "acct-plus", email: "plus@example.com", plan: "plus", savedAt: now),
+                CodexAccount(id: "acct-old", email: "spare@example.com", plan: "plus", savedAt: now),
+            ],
+            activeID: "acct-dev",
+            readings: [
+                "acct-plus": .init(snapshot: UsageSnapshot(planName: "Plus", windows: [
+                    UsageWindow(title: WindowTitle.forSeconds(604_800), usedPercent: 72,
+                                resetsAt: now.addingTimeInterval(260_000), windowSeconds: 604_800),
+                ])),
+                "acct-old": .init(snapshot: nil, error: CodexAccountError.signInAgain(email: "spare@example.com").localizedDescription),
+            ])
         return store
     }
 

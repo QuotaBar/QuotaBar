@@ -3,6 +3,14 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
+## Unreleased
+
+### 2026-09-23
+
+#### Added
+
+- Several Codex accounts. Sign in to each with `codex login`, then save it under Settings → Providers → Codex with "Save Current Account", or from "Codex Accounts" in the Codex card's right-click menu. After that one click switches the account Codex uses, with no signing in again: the account you leave is saved first, with whatever tokens the CLI last refreshed, then ~/.codex/auth.json is rewritten, and the file it replaces is kept as a backup. Under the Codex card's arrow, Accounts lists every saved account with the limit that runs out first and when it resets; the one in use is marked In use, and the menu bar and the island follow it as before. The account in use is refreshed by the Codex CLI alone and the others by QuotaBar near their expiry, so the two never spend the same refresh token; an account whose sign-in has lapsed says to sign in to it again. Saved sign-ins stay in this Mac's keychain and are not synced to iPhone. Codex sessions already running keep the old account until restarted. (#6)
+
 ## 0.5.18 · 2026-09-23
 
 ### 2026-09-23

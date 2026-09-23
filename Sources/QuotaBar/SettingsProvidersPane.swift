@@ -387,6 +387,12 @@ private struct CredentialEditor: View {
                 }
             }
 
+            if id == .codex {
+                SettingRow(L10n.t("Accounts", "账号")) {
+                    CodexAccountsSettings(store: store, accounts: store.codexAccounts)
+                }
+            }
+
             SettingRow(L10n.t("How to sign in", "如何登录")) {
                 VStack(alignment: .leading, spacing: Design.space2) {
                     Text(id.credentialHint ?? id.setupHint)
