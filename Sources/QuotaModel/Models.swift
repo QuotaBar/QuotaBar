@@ -434,8 +434,8 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
                 "home.qwencloud.com 登录后的完整 Cookie 头（开发者工具 → 网络 → 任一请求 → Cookie）。")
         case .grok:
             return L10n.t(
-                "Optional override; otherwise read from ~/.grok/auth.json (grok CLI login).",
-                "可选覆盖；留空则读取 ~/.grok/auth.json（grok CLI 登录后生成）。")
+                "Optional override; otherwise read from ~/.grok/auth.json (grok CLI login). Grok Bot paid for with SuperGrok is read from the Grok Bot app.",
+                "可选覆盖；留空则读取 ~/.grok/auth.json（grok CLI 登录后生成）。用 SuperGrok 开通的 Grok Bot 从 Grok Bot 应用读取。")
         case .cursor:
             return L10n.t(
                 "Automatic if Cursor.app is signed in. Otherwise paste the WorkosCursorSessionToken cookie (DevTools → Application → Cookies → cursor.com).",
@@ -493,8 +493,8 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
             "Run `claude` once and sign in to create the OAuth session.",
             "运行一次 `claude` 并登录以生成 OAuth 会话。")
         case .grok: return L10n.t(
-            "Sign in with the grok CLI or paste a token in Settings.",
-            "用 grok CLI 登录，或在设置中粘贴 token。")
+            "Sign in with the grok CLI or paste a token in Settings. Grok Bot paid for with SuperGrok shows here once the Grok Bot app is signed in.",
+            "用 grok CLI 登录，或在设置中粘贴 token。用 SuperGrok 开通的 Grok Bot，登录 Grok Bot 应用后显示在这里。")
         case .antigravity: return L10n.t(
             "Open Antigravity and sign in, or run the Antigravity CLI (`agy`) once and sign in. While the app runs, the quota is read from the app itself; otherwise from `agy`, then from the sign-in token the app saved, which lasts an hour. A Gemini CLI sign-in (Code Assist Standard or Enterprise) is read too.",
             "打开 Antigravity 并登录，或者运行一次 Antigravity CLI（`agy`）并登录。应用运行时直接向它读取额度；否则向 `agy` 读取，再不行读应用保存的登录令牌（只有一小时有效）。用 Gemini CLI 登录的企业版（Code Assist Standard / Enterprise）也会读取。")

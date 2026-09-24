@@ -181,7 +181,7 @@ public actor CodexAccountVault {
     public init(
         liveURL: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/auth.json"),
         storage: CredentialStorage = KeychainStorage(),
-        refresher: @escaping @Sendable (String) async throws -> CodexTokenRefresh.Tokens = CodexTokenRefresh.refresh)
+        refresher: @escaping @Sendable (String) async throws -> CodexTokenRefresh.Tokens = { try await CodexTokenRefresh.refresh($0) })
     {
         self.liveURL = liveURL
         self.storage = storage

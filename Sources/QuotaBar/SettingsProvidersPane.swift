@@ -326,7 +326,7 @@ private struct CredentialEditor: View {
     /// Saving, clearing, authorising, signing in — what is left for a line of
     /// its own once the test and the console moved into the header.
     private var hasActions: Bool {
-        isManual || (id == .claude && store.claudeNeedsAuthorization) || BrowserLogin.supports(id)
+        isManual || store.needsKeychainAuthorization(id) || BrowserLogin.supports(id)
     }
 
     var body: some View {
@@ -399,6 +399,9 @@ private struct CredentialEditor: View {
                     if id == .claude, store.claudeNeedsAuthorization {
                         Text(LocalCredentials.claudeAuthorizationHint)
                     }
+                    if id == .grok, store.needsKeychainAuthorization(.grok) {
+                        Text(GrokBot.authorizationHint)
+                    }
                 }
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
@@ -461,8 +464,8 @@ private struct CredentialEditor: View {
                 }
             }
 
-            if id == .claude, store.claudeNeedsAuthorization {
-                Button(L10n.t("Allow keychain access", "授权钥匙串访问")) { store.authorizeClaude() }
+            if store.needsKeychainAuthorization(id) {
+                Button(L10n.t("Allow keychain access", "授权钥匙串访问")) { store.authorizeKeychain(id) }
                     .glassAction(prominent: true)
             }
 

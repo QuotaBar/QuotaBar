@@ -443,20 +443,58 @@ public struct DeepSeekProvider: QuotaProvider {
     }
 }
 
-// MARK: - Grok (grok CLI auth file or manual token → cli-chat-proxy billing)
+// MARK: - Grok (grok CLI auth file or manual token → cli-chat-proxy billing; Grok Bot when SuperGrok pays for it)
 
 public struct GrokProvider: QuotaProvider {
     public let id = ProviderID.grok
 
     public func isConfigured(config: ConfigStore) -> Bool {
         config.credential(for: .grok) != nil || LocalCredentials.grokAccessToken() != nil
+            || GrokBot.isSignedIn()
     }
 
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
         let local = LocalCredentials.grokAuth()
+        let cursorCardShown = config.isEnabled(.cursor) && CursorProvider().isConfigured(config: config)
+        let bot = Task { try await GrokBot.readingForGrokCard(cursorCardShown: cursorCardShown) }
         guard let token = config.credential(for: .grok) ?? local?.accessToken else {
+            // No xAI sign-in: Grok Bot is all there is to show.
+            return try Self.botOnly(await bot.value)
+        }
+        var snapshot: UsageSnapshot
+        do {
+            snapshot = try await Self.credits(token: token, email: local?.email)
+        } catch ProviderError.noPlan(let message) {
+            // Signed in to xAI without a plan, while SuperGrok pays for Grok
+            // Bot on another account: the row is still worth the card.
+            if case let .row(window, plan, account)? = try? await bot.value {
+                return UsageSnapshot(planName: plan, account: account, windows: [window])
+            }
+            throw ProviderError.noPlan(message)
+        }
+        if snapshot.planName == nil { snapshot.planName = LocalCredentials.grokPlanName() }
+        // Beside the credits, Grok Bot is best effort: its sign-in failing
+        // must not cost the card what it showed before.
+        if case let .row(window, _, _)? = try? await bot.value {
+            snapshot.windows.append(window)
+        }
+        return snapshot
+    }
+
+    static func botOnly(_ reading: GrokBot.Reading) throws -> UsageSnapshot {
+        switch reading {
+        case let .row(window, plan, account):
+            return UsageSnapshot(planName: plan, account: account, windows: [window])
+        case .onCursorCard:
+            throw ProviderError.notConfigured(hint: GrokBot.onCursorCardHint)
+        case .needsAuthorization:
+            throw ProviderError.needsAuthorization(hint: GrokBot.authorizationHint)
+        case .nothing:
             throw ProviderError.notConfigured(hint: ProviderID.grok.setupHint)
         }
+    }
+
+    static func credits(token: String, email: String?) async throws -> UsageSnapshot {
         let url = URL(string: "https://cli-chat-proxy.grok.com/v1/billing?format=credits")!
         let response = try await HTTP.get(url, headers: [
             "Authorization": "Bearer \(token)",
@@ -464,9 +502,9 @@ public struct GrokProvider: QuotaProvider {
             "Accept": "application/json",
             "User-Agent": "QuotaBar",
         ]).requireOK()
-        var snapshot = try Self.parse(response.data)
+        var snapshot = try parse(response.data)
         // The billing response carries no identity; the CLI's auth entry does.
-        if snapshot.account == nil { snapshot.account = local?.email }
+        if snapshot.account == nil { snapshot.account = email }
         return snapshot
     }
 
@@ -548,7 +586,14 @@ public struct GrokProvider: QuotaProvider {
                 detail: String(format: "%.2f / %.2f", used, cap),
                 resetsAt: periodEnd))
         }
-        guard !windows.isEmpty else { throw ProviderError.badResponse }
+        // A billing period and nothing in it: signed in, on an account with
+        // no plan that carries credits. Said as it is, not as a reply that
+        // would not parse.
+        guard !windows.isEmpty else {
+            throw ProviderError.noPlan(L10n.t(
+                "This xAI account has no Grok plan with credits to read.",
+                "这个 xAI 账号没有带额度的 Grok 套餐可读。"))
+        }
         return UsageSnapshot(
             planName: configBody.subscriptionTier ?? body.subscriptionTier,
             windows: windows)

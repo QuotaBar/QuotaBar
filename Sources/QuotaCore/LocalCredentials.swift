@@ -439,6 +439,15 @@ public enum LocalCredentials {
         /// the user id and the JWT joined by "::", url-encoded at send time.
         public let sessionCookie: String
         public let email: String?
+        /// The JWT's `sub`, the account the session belongs to.
+        public let subject: String
+
+        /// The whole Cookie header. The composite carries "::" and the JWT's
+        /// own characters, which must be percent-encoded to survive it.
+        public var cookieHeader: String {
+            let encoded = sessionCookie.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? sessionCookie
+            return "WorkosCursorSessionToken=\(encoded)"
+        }
     }
 
     /// Reads the session Cursor.app already established, from the SQLite
@@ -472,7 +481,8 @@ public enum LocalCredentials {
         let trimmedEmail = email?.trimmingCharacters(in: .whitespacesAndNewlines)
         return CursorSession(
             sessionCookie: "\(sub)::\(accessToken)",
-            email: (trimmedEmail?.isEmpty == false) ? trimmedEmail : nil)
+            email: (trimmedEmail?.isEmpty == false) ? trimmedEmail : nil,
+            subject: sub)
     }
 
     /// Decodes a single string claim from a JWT payload without verifying the
@@ -894,6 +904,21 @@ public enum LocalCredentials {
 
     public static func grokAccessToken() -> String? {
         grokAuth()?.accessToken
+    }
+
+    /// The plan the grok CLI shows, "SuperGrok", from the settings it caches
+    /// (`~/.grok/settings_cache.json`: a signed `payload` string, JSON, with
+    /// `settings.subscription_tier_display`). The billing reply names no plan.
+    public static func grokPlanName() -> String? {
+        guard let data = try? Data(contentsOf: home.appendingPathComponent(".grok/settings_cache.json")),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let payload = (root["payload"] as? String)?.data(using: .utf8),
+              let inner = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
+              let settings = inner["settings"] as? [String: Any],
+              let plan = (settings["subscription_tier_display"] as? String)?.trimmingCharacters(in: .whitespaces),
+              !plan.isEmpty
+        else { return nil }
+        return plan
     }
 
     public static func grokAuth() -> GrokAuth? {

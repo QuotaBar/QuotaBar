@@ -7,12 +7,17 @@ Server moves, the website, and build or release scripts don't change the app its
 
 ### 2026-10-02
 
+#### Added
+
+- The Grok card shows Grok Bot's allowance too. Grok Bot paid for with SuperGrok is on the Grok card; paid for with a Cursor plan, it is on the Cursor card, so one allowance is shown once, on the side that pays. When this Mac has no Cursor card (Cursor not installed or not turned on), a Cursor-paid Grok Bot allowance is on the Grok card instead, so it is never shown nowhere. When Grok Bot is signed in to the same Cursor account as the Cursor app, its sign-in is used with no prompt; otherwise QuotaBar opens Grok Bot's own sign-in with the key Grok Bot keeps in the keychain: press "Allow keychain access" under Settings → Providers → Grok or on the Grok card and choose Always Allow. Background refreshes never prompt. With Grok Bot and no grok CLI sign-in, the Grok card shows the Grok Bot row alone.
+
 #### Fixed
 
-- Grok said "Provider response could not be parsed." at the start of a week, before anything was used. xAI's billing reply leaves the usage figure out when it is zero; it now reads as 0% used, with the week's reset as usual.
+- Grok said "Provider response could not be parsed." at the start of a week, before anything was used. xAI's billing reply leaves the usage figure out when it is zero; it now reads as 0% used, with the week's reset as usual. The card's plan now comes from the grok CLI, such as SuperGrok, instead of being blank.
 - z.ai and Zhipu (bigmodel.cn) Coding Plans showed their 5-hour limit as a five-week one: its title, pace and reset alerts all went by five weeks. The endpoint's time-unit code was read wrong (3 is an hour, not a week); it now shows as 5 hours, and the monthly MCP calls (web search, reader) show on their own as "MCP calls".
 - A z.ai or Zhipu key with no Coding Plan usage to read said "Provider response could not be parsed." or showed an empty card; it now says the account has no usage to read, with the endpoint's reason when it gives one.
 - Qwen Token Plan Personal and Solo plans have only a monthly allowance, which could not be read and showed as a parse failure; it now shows as a monthly window with its reset, and plans with 5-hour, weekly and monthly allowances show all three.
+- An xAI account with neither a weekly allowance nor any usage said "Provider response could not be parsed." on the Grok card; it now says the account has no plan to read.
 
 ## 0.5.20 · 2026-10-01
 

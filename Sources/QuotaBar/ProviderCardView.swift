@@ -336,8 +336,8 @@ struct ProviderCardView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(Palette.amber)
                 .fixedSize(horizontal: false, vertical: true)
-            if id == .claude, store.claudeNeedsAuthorization, !forExport {
-                Pressable(action: { store.authorizeClaude() }) {
+            if store.needsKeychainAuthorization(id), !forExport {
+                Pressable(action: { store.authorizeKeychain(id) }) {
                     Text(L10n.t("Allow keychain access", "授权钥匙串访问"))
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.black)

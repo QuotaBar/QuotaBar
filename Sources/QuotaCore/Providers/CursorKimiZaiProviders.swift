@@ -22,11 +22,7 @@ public struct CursorProvider: QuotaProvider {
             return "WorkosCursorSessionToken=\(raw)"
         }
         if let session = LocalCredentials.cursorSession() {
-            // The composite carries "::" and the JWT's own characters, which
-            // must be percent-encoded to survive the Cookie header.
-            let encoded = session.sessionCookie.addingPercentEncoding(
-                withAllowedCharacters: .alphanumerics) ?? session.sessionCookie
-            return "WorkosCursorSessionToken=\(encoded)"
+            return session.cookieHeader
         }
         throw ProviderError.notConfigured(hint: ProviderID.cursor.setupHint)
     }
@@ -67,16 +63,6 @@ public struct CursorProvider: QuotaProvider {
         let email: String?
     }
 
-    /// Grok Bot's weekly included usage — "Sand" inside Cursor — from the
-    /// dashboard endpoint the usage summary does not cover.
-    struct SandUsage: Decodable {
-        let currentPeriodStart: String?
-        let nextResetTimestampUtc: String?
-        let usagePercent: Double?
-        let hasAvailableUsage: Bool?
-        let hasNonZeroIncludedLimit: Bool?
-    }
-
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
         let cookie = try cookieHeader(config)
         let headers = ["Accept": "application/json", "Cookie": cookie]
@@ -88,12 +74,11 @@ public struct CursorProvider: QuotaProvider {
         let account = try? await HTTP.get(URL(string: "https://cursor.com/api/auth/me")!, headers: headers)
             .requireOK().json(Me.self)
 
-        // Best effort, like the account: an account without Grok Bot, or a
-        // stalled endpoint, must not cost the card its plan numbers.
-        let sandURL = URL(string: "https://cursor.com/api/dashboard/get-sand-usage-status")!
-        var sandHeaders = headers
-        sandHeaders["Origin"] = "https://cursor.com"
-        let sand = try? await HTTP.post(sandURL, headers: sandHeaders).requireOK().json(SandUsage.self)
+        // Grok Bot's weekly allowance, from the dashboard endpoint the usage
+        // summary does not cover. Best effort, like the account: an account
+        // without Grok Bot, or a stalled endpoint, must not cost the card its
+        // plan numbers.
+        let sand = try? await GrokBot.status(cookie: cookie)
 
         return Self.snapshot(from: summary, account: account?.email, sand: sand)
     }
@@ -103,11 +88,11 @@ public struct CursorProvider: QuotaProvider {
         guard let summary = try? JSONDecoder().decode(Summary.self, from: data) else {
             throw ProviderError.badResponse
         }
-        let sandUsage = sand.flatMap { try? JSONDecoder().decode(SandUsage.self, from: $0) }
+        let sandUsage = sand.flatMap { try? JSONDecoder().decode(GrokBot.Status.self, from: $0) }
         return snapshot(from: summary, account: account, sand: sandUsage)
     }
 
-    static func snapshot(from summary: Summary, account: String?, sand: SandUsage? = nil) -> UsageSnapshot {
+    static func snapshot(from summary: Summary, account: String?, sand: GrokBot.Status? = nil) -> UsageSnapshot {
         let cycleEnd = Dates.parseAny(summary.billingCycleEnd)
         var windows: [UsageWindow] = []
         if let plan = summary.individualUsage?.plan {
@@ -121,7 +106,9 @@ public struct CursorProvider: QuotaProvider {
                 detail: "\(QuotaFormat.dollars(cents: used)) / \(QuotaFormat.dollars(cents: limit))",
                 resetsAt: cycleEnd))
         }
-        if let sand, let window = grokBotWindow(sand) {
+        // Only while a Cursor plan pays for it: a SuperGrok subscription's
+        // allowance is on the Grok card.
+        if let sand, sand.billing == .cursor, let window = GrokBot.window(sand) {
             windows.append(window)
         }
         return UsageSnapshot(
@@ -172,27 +159,6 @@ public struct CursorProvider: QuotaProvider {
                 scope: L10n.t("Named models", "指定模型")))
         }
         return windows
-    }
-
-    /// Only accounts whose plan includes Grok Bot get the row: the endpoint
-    /// answers for everyone, with `hasNonZeroIncludedLimit` false for the rest,
-    /// and a 0% bar for an allowance that does not exist would be a lie.
-    static func grokBotWindow(_ sand: SandUsage) -> UsageWindow? {
-        guard sand.hasNonZeroIncludedLimit == true, let percent = sand.usagePercent else { return nil }
-        let start = Dates.parseISO(sand.currentPeriodStart)
-        let end = Dates.parseISO(sand.nextResetTimestampUtc)
-        var seconds: Int?
-        if let start, let end, end > start {
-            seconds = Int(end.timeIntervalSince(start).rounded())
-        }
-        var window = UsageWindow(
-            title: "Grok Bot",
-            usedPercent: percent,
-            resetsAt: end,
-            windowSeconds: seconds,
-            scope: "Grok Bot")
-        window.extra = true
-        return window
     }
 }
 

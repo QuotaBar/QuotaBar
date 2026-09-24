@@ -674,6 +674,16 @@ Six ways a provider gets its credential, in order of preference:
    which only holds the in-app browser's third-party cookies. The cookie
    cursor.com wants is `sub::JWT`, not the bare token — `sub` is a claim inside
    the JWT, and the composite is percent-encoded into the cookie.
+   Grok Bot (`GrokBot`) signs in with a Cursor account too, and keeps it in
+   `sand-secrets.json`: accounts keyed by sha256 of `sub`, values encrypted
+   with Electron `safeStorage` (Chromium's v10 scheme, key in the
+   `Grok Bot Safe Storage` keychain item). When Cursor.app is on the same
+   account — a hash comparison, no decrypting — its session is used and the
+   keychain is never touched; otherwise the key is read quietly, and the
+   dialog only ever comes from the "Allow keychain access" button, as for
+   Claude. Its allowance goes on the card of whoever pays for it:
+   `get-sand-usage-status`'s `billingBrand`, or a linked
+   `includedUsageSuperGrokPlan`, puts it on Grok's instead of Cursor's.
 4. **Manual paste** — the fallback for everything, stored in the keychain.
 
 An automatic reader is always tried *after* a manually pasted credential, so a

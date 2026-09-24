@@ -242,6 +242,7 @@ enum Diagnostics {
         } else {
             out += "Kimi     missing\n"
         }
+        out += "Grok Bot \(GrokBot.sessionDescription())\n"
         FileHandle.standardOutput.write(Data(out.utf8))
     }
 
