@@ -268,7 +268,7 @@ extension CloudReadings {
             appVersion: "0.6.0", language: L10n.isChinese ? "zh" : "en",
             updatedAt: now.addingTimeInterval(-240), providers: [
                 .init(id: ProviderID.cursor.rawValue, snapshot: snapshot("Pro", 0, 22)),
-                .init(id: ProviderID.gemini.rawValue, snapshot: snapshot("", 5, 93)),
+                .init(id: ProviderID.antigravity.rawValue, snapshot: snapshot("", 5, 93)),
             ])
         return [sample, desk]
     }

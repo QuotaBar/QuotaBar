@@ -52,7 +52,110 @@ public struct CodexProvider: QuotaProvider {
                 snapshot.resetCredits?.totalEarned = list.totalEarned
             }
         }
+        // The usage reply gives the credit balance but not where it came from
+        // or when it runs out; the account's balance does. Same terms: a
+        // failure costs the deadline, not the reading.
+        if let index = snapshot.windows.firstIndex(where: { $0.credit != nil }),
+           let account = auth.accountId, let balance = snapshot.windows[index].credit?.amount
+        {
+            var grants = creditGrants.reusable(account: account, balance: balance)
+            if grants == nil,
+               let response = try? await HTTP.get(
+                   URL(string: "https://chatgpt.com/backend-api/accounts/\(account)/remaining_balance")!, headers: headers)
+                   .requireOK(),
+               let read = creditGrants(response.data)
+            {
+                creditGrants.store(read, account: account, balance: balance)
+                grants = read
+            }
+            if let grants { apply(grants, to: &snapshot.windows[index]) }
+        }
         return snapshot
+    }
+
+    static let creditGrants = CreditGrantCache()
+
+    /// Where the credits came from and when they run out, as
+    /// `/accounts/{id}/remaining_balance` lists them.
+    struct CreditGrant: Equatable, Sendable {
+        var granted: Double?
+        var remaining: Double?
+        var expiresAt: Date?
+        /// "promotional_credit" for credits given; others for bought ones.
+        var kind: String?
+
+        var isGiven: Bool { kind?.lowercased().contains("promo") == true }
+    }
+
+    /// The last grants read per account, asked again when the balance
+    /// changes or after an hour.
+    final class CreditGrantCache: @unchecked Sendable {
+        private struct Entry {
+            let balance: String
+            let grants: [CreditGrant]
+            let readAt: Date
+        }
+
+        private let lock = NSLock()
+        private var entries: [String: Entry] = [:]
+
+        func reusable(account: String, balance: String, now: Date = .now) -> [CreditGrant]? {
+            lock.withLock {
+                guard let entry = entries[account], entry.balance == balance,
+                      now.timeIntervalSince(entry.readAt) < 3600
+                else { return nil }
+                return entry.grants
+            }
+        }
+
+        func store(_ grants: [CreditGrant], account: String, balance: String, now: Date = .now) {
+            lock.withLock { entries[account] = Entry(balance: balance, grants: grants, readAt: now) }
+        }
+    }
+
+    /// `{"balance":"62500","expiring_balance_details":[{"amount_granted":"62500",
+    /// "amount_remaining":"62500","expiry_date":"2027-01-01T00:00:00Z",
+    /// "grant_type":"promotional_credit"}]}` — the grants with something
+    /// left, soonest deadline first. Nil for a reply that is not that.
+    static func creditGrants(_ data: Data, now: Date = .now) -> [CreditGrant]? {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let details = root["expiring_balance_details"] as? [[String: Any]]
+        else { return nil }
+        func amount(_ value: Any?) -> Double? {
+            if let text = value as? String { return Double(text) }
+            if let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() { return number.doubleValue }
+            return nil
+        }
+        return details
+            .map { detail in
+                CreditGrant(
+                    granted: amount(detail["amount_granted"]),
+                    remaining: amount(detail["amount_remaining"]),
+                    expiresAt: Dates.parseISO(detail["expiry_date"] as? String),
+                    kind: detail["grant_type"] as? String)
+            }
+            .filter { ($0.remaining ?? 1) > 0 && ($0.expiresAt ?? .distantFuture) > now }
+            .sorted { ($0.expiresAt ?? .distantFuture) < ($1.expiresAt ?? .distantFuture) }
+    }
+
+    /// The soonest deadline on the credit row, and what was given.
+    static func apply(_ grants: [CreditGrant], to window: inout UsageWindow) {
+        guard var credit = window.credit, !grants.isEmpty else { return }
+        credit.expiresAt = grants.first?.expiresAt
+        let given = grants.filter(\.isGiven).compactMap(\.granted).reduce(0, +)
+        if given > 0, credit.caption?.hasPrefix(L10n.t("Overage", "已达")) != true {
+            let count = QuotaFormat.grouped(given)
+            credit.caption = grants.allSatisfy(\.isGiven)
+                ? L10n.t("Given \(count) credits", "赠送 \(count) 点")
+                : L10n.t("\(count) given", "其中赠送 \(count) 点")
+        }
+        if grants.count > 1, let soonest = grants.first, let left = soonest.remaining {
+            let note = L10n.t(
+                "\(QuotaFormat.grouped(left)) of them run out first.",
+                "其中 \(QuotaFormat.grouped(left)) 点最先到期。")
+            window.note = [window.note, note].compactMap { $0 }.joined(separator: " ")
+        }
+        window.credit = credit
     }
 
     static let creditList = ResetCreditListCache()
@@ -194,12 +297,16 @@ public struct CodexProvider: QuotaProvider {
         let unlimited: Bool?
         let balance: String?
         let overageLimitReached: Bool?
+        /// How many local Codex messages the balance is worth, fewest to most
+        /// — the range ChatGPT's own usage page gives.
+        let approxLocalMessages: [Int]?
 
         enum CodingKeys: String, CodingKey {
             case hasCredits = "has_credits"
             case unlimited
             case balance
             case overageLimitReached = "overage_limit_reached"
+            case approxLocalMessages = "approx_local_messages"
         }
     }
 
@@ -233,16 +340,17 @@ public struct CodexProvider: QuotaProvider {
         }
     }
 
-    /// The plan as ChatGPT sells it. The usage endpoint names the two Pro
-    /// tiers by their internal ids — `prolite` is the 5× plan, `pro` the 20×
-    /// one — so capitalising the id showed both as "Pro". The mapping is the
-    /// one openusage uses against the same endpoint; anything else is the id
-    /// with its underscores turned into spaces.
+    /// The plan as ChatGPT sells it. The usage endpoint names the three Pro
+    /// tiers by their internal ids, so capitalising the id showed them all as
+    /// "Pro"; the names are the ones ChatGPT's own app gives them —
+    /// `prolite` is Pro 100, `pro` Pro 200, `promax` Pro 500. Anything else
+    /// is the id with its underscores turned into spaces.
     public static func planName(_ raw: String?) -> String? {
         guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
         switch raw.lowercased() {
-        case "prolite": return "Pro 5x"
-        case "pro": return "Pro 20x"
+        case "prolite": return "Pro 100"
+        case "pro": return "Pro 200"
+        case "promax": return "Pro 500"
         case "self_serve_business_prolite": return "Business Premium"
         default:
             return raw.split(separator: "_")
@@ -354,13 +462,43 @@ public struct CodexProvider: QuotaProvider {
                 title: L10n.t("Credits", "额度点数"),
                 detail: L10n.t("Unlimited", "无限制"))
         }
-        // A zero balance on an account that has never bought credits is noise.
-        guard credits.hasCredits == true, let balance = credits.balance else { return nil }
-        return UsageWindow(
+        // A zero balance on an account that has never had credits is noise.
+        guard credits.hasCredits == true, let raw = credits.balance else { return nil }
+        let balance = creditCount(raw)
+        var note: String?
+        if let range = credits.approxLocalMessages, range.count == 2, range[1] > 0 {
+            let low = QuotaFormat.grouped(range[0]), high = QuotaFormat.grouped(range[1])
+            note = L10n.t(
+                "Credits come from a purchase or a promotion and are spent once the plan's limits are used up — about \(low)–\(high) local Codex messages.",
+                "credits 来自购买或赠送，套餐额度用完后才会消耗，大约够在本地发 \(low)–\(high) 条 Codex 消息。")
+        }
+        var window = UsageWindow(
             title: L10n.t("Credits", "额度点数"),
             detail: credits.overageLimitReached == true
                 ? L10n.t("\(balance) · overage limit reached", "\(balance) · 已达超额上限")
-                : balance)
+                : balance,
+            note: note)
+        // The endpoint gives no deadline for credits.
+        window.credit = CreditAmount(
+            amount: balance,
+            caption: credits.overageLimitReached == true
+                ? L10n.t("Overage limit reached", "已达超额上限")
+                : credits.approxLocalMessages.flatMap { range in
+                    range.count == 2 && range[1] > 0
+                        ? L10n.t("About \(QuotaFormat.grouped(range[0]))–\(QuotaFormat.grouped(range[1])) local messages",
+                                 "约可发 \(QuotaFormat.grouped(range[0]))–\(QuotaFormat.grouped(range[1])) 条本地消息")
+                        : nil
+                })
+        return window
+    }
+
+    /// "62500" → "62,500 credits"; a balance that is not a plain number is
+    /// shown as the endpoint gives it.
+    static func creditCount(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespaces)
+        guard let value = Double(trimmed), value.isFinite else { return trimmed }
+        let number = QuotaFormat.grouped(value)
+        return L10n.t("\(number) credits", "\(number) 点")
     }
 }
 
@@ -393,7 +531,165 @@ public struct ClaudeProvider: QuotaProvider {
         // Nor the account; /api/oauth/profile does. Memoized per token, so
         // the extra request happens once per sign-in, not once per minute.
         snapshot.account = await Self.profileEmail(headers: headers, token: token)
+        snapshot.resetCredits = await Self.resetCredits(headers: headers, token: token, windows: snapshot.windows)
         return snapshot
+    }
+
+    // MARK: Limit resets
+
+    /// The limit resets the account was given, read the way Claude Code's
+    /// `/limit-reset` reads them: the usage endpoint lists them only when
+    /// asked (`cedar_ember=1`) by a current Claude Code — another client is
+    /// told `surface`, an old version `cli_version`, and sees none. A failure
+    /// costs the count, never the reading, and keeps the last one read.
+    static func resetCredits(headers: [String: String], token: String, windows: [UsageWindow]) async -> ResetCredits? {
+        let used = windows.compactMap(\.usedPercent).reduce(0, +)
+        if let cached = resetGrants.reusable(token: token, used: used) { return cached }
+        var headers = headers
+        headers["User-Agent"] = "claude-cli/\(claudeCodeVersion) (external, cli)"
+        let url = URL(string: "https://api.anthropic.com/api/oauth/usage?cedar_ember=1&skip_spend=1")!
+        guard let response = try? await HTTP.get(url, headers: headers), response.status == 200,
+              let read = resetCredits(response.data)
+        else {
+            // Asked again in a quarter of an hour, not at every refresh.
+            let last = resetGrants.last(token: token)
+            resetGrants.store(last, token: token, used: used)
+            return last
+        }
+        resetGrants.store(read.credits, token: token, used: used)
+        return read.credits
+    }
+
+    static let resetGrants = ResetGrantCache()
+
+    /// The last count read, so the endpoint is not asked twice a minute. Read
+    /// again after a quarter of an hour, once a deadline it listed has
+    /// passed, or when the figures drop — a reset just used in Claude Code
+    /// shows as limits refilled before their time.
+    final class ResetGrantCache: @unchecked Sendable {
+        private struct Entry {
+            let token: String
+            let credits: ResetCredits?
+            let used: Double
+            let readAt: Date
+        }
+
+        private let lock = NSLock()
+        private var entry: Entry?
+
+        func reusable(token: String, used: Double, now: Date = .now) -> ResetCredits?? {
+            lock.withLock {
+                guard let entry, entry.token == token, now.timeIntervalSince(entry.readAt) < 900,
+                      used >= entry.used - 0.5,
+                      !(entry.credits?.credits ?? []).contains(where: { ($0.expiresAt ?? .distantFuture) <= now })
+                else { return nil }
+                return .some(entry.credits)
+            }
+        }
+
+        func last(token: String) -> ResetCredits? {
+            lock.withLock { entry?.token == token ? entry?.credits : nil }
+        }
+
+        func store(_ credits: ResetCredits?, token: String, used: Double, now: Date = .now) {
+            lock.withLock { entry = Entry(token: token, credits: credits, used: used, readAt: now) }
+        }
+    }
+
+    /// The installed Claude Code's version, newest first among the native
+    /// installer's versions and then npm's; the endpoint lists resets only to
+    /// a version that knows how to use them.
+    static let claudeCodeVersion: String = {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let versions = (try? FileManager.default.contentsOfDirectory(atPath: "\(home)/.local/share/claude/versions")) ?? []
+        if let newest = versions.filter(isVersion).max(by: { $0.compare($1, options: .numeric) == .orderedAscending }) {
+            return newest
+        }
+        for prefix in ["/opt/homebrew/lib", "/usr/local/lib", "\(home)/.npm-global/lib"] {
+            let path = "\(prefix)/node_modules/@anthropic-ai/claude-code/package.json"
+            if let data = FileManager.default.contents(atPath: path),
+               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let version = object["version"] as? String, isVersion(version)
+            {
+                return version
+            }
+        }
+        return "2.1.280"
+    }()
+
+    private static func isVersion(_ text: String) -> Bool {
+        let parts = text.split(separator: ".")
+        return parts.count == 3 && parts.allSatisfy { !$0.isEmpty && $0.allSatisfy(\.isNumber) }
+    }
+
+    struct ResetRead: Equatable {
+        /// Nil when the account has no resets to show: not offered them, or
+        /// none given.
+        var credits: ResetCredits?
+    }
+
+    /// `{"cedar_ember":{"eligible":true,"at_limit":false,"grants":[{"id":
+    /// "opus55-launch-promax-20260921","label":"…","resets_total":1,
+    /// "resets_left":1,"starts_at":"2026-09-22T16:00:00+00:00","ends_at":
+    /// "2026-10-22T16:00:00+00:00","clears":["five_hour","seven_day"],
+    /// "paused":false,"usable_now":true}]}}` — one entry per grant, soonest
+    /// deadline first. Nil for a reply without the block at all.
+    static func resetCredits(_ data: Data, now: Date = .now) -> ResetRead? {
+        struct Grant: Decodable {
+            let id: String?
+            let resetsTotal: Int?
+            let resetsLeft: Int?
+            let startsAt: String?
+            let endsAt: String?
+            let clears: [String]?
+            let paused: Bool?
+            let usableNow: Bool?
+        }
+        struct Block: Decodable {
+            let eligible: Bool?
+            let atLimit: Bool?
+            let grants: [Grant]?
+        }
+        struct Body: Decodable { let cedarEmber: Block? }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        guard let body = try? decoder.decode(Body.self, from: data), let block = body.cedarEmber else { return nil }
+        let grants = (block.grants ?? []).filter { grant in
+            (Dates.parseISO(grant.startsAt) ?? .distantPast) <= now
+        }
+        guard block.eligible == true, !grants.isEmpty else { return ResetRead(credits: nil) }
+        let live = grants.filter { grant in
+            grant.paused != true && (grant.resetsLeft ?? 0) > 0 && (Dates.parseISO(grant.endsAt) ?? .distantFuture) > now
+        }
+        let credits = live
+            .map { grant in
+                ResetCredit(
+                    id: grant.id,
+                    title: resetTitle(grant.clears),
+                    grantedAt: Dates.parseISO(grant.startsAt),
+                    expiresAt: Dates.parseISO(grant.endsAt))
+            }
+            .sorted { ($0.expiresAt ?? .distantFuture) < ($1.expiresAt ?? .distantFuture) }
+        let usable = live.filter { $0.usableNow == true }.map { $0.resetsLeft ?? 0 }.reduce(0, +)
+        return ResetRead(credits: ResetCredits(
+            available: live.map { $0.resetsLeft ?? 0 }.reduce(0, +),
+            applicable: block.atLimit == true ? usable : 0,
+            totalEarned: grants.map { max($0.resetsTotal ?? 0, $0.resetsLeft ?? 0) }.reduce(0, +),
+            credits: credits))
+    }
+
+    /// What a grant refills, from the limits it clears.
+    static func resetTitle(_ clears: [String]?) -> String? {
+        let clears = clears ?? []
+        let session = clears.contains("five_hour")
+        let weekly = clears.contains { $0.hasPrefix("seven_day") }
+        switch (session, weekly) {
+        // Claude's own names for them, kept in every language.
+        case (true, true): return "Full reset"
+        case (true, false): return "Session reset"
+        case (false, true): return "Weekly reset"
+        case (false, false): return nil
+        }
     }
 
     /// Three situations behind a missing token, each said as it is: no
@@ -557,7 +853,84 @@ public struct ClaudeProvider: QuotaProvider {
             windows.append(extra)
         }
         guard !windows.isEmpty else { throw ProviderError.badResponse }
+        windows.append(contentsOf: creditWindows(data))
         return UsageSnapshot(windows: windows)
+    }
+
+    // MARK: Credits given
+
+    /// Credits the account was given beside its plan. Each comes under a code
+    /// name that changes from one promotion to the next — `iguana_necktie`
+    /// held a $250 credit in October 2026 — so any block with a dollar limit
+    /// that is not one of the plan's own windows counts, plus `cinder_cove`,
+    /// the one-time Claude Code and Cowork credit, which has only a
+    /// percentage. Allowances beside the plan, so no figure follows them on
+    /// its own.
+    static func creditWindows(_ data: Data, now: Date = .now) -> [UsageWindow] {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [] }
+        var out: [UsageWindow] = []
+        for key in root.keys.sorted() where !key.hasPrefix("five_hour") && !key.hasPrefix("seven_day") {
+            guard let block = root[key] as? [String: Any] else { continue }
+            let limit = number(block["limit_dollars"]) ?? 0
+            guard limit > 0 || key == "cinder_cove" else { continue }
+            let expires = Dates.parseISO(block["resets_at"] as? String)
+            if let expires, expires <= now { continue }
+            let day = expires.map(creditDay)
+            var window: UsageWindow
+            if limit > 0 {
+                let used = number(block["used_dollars"]) ?? 0
+                let left = number(block["remaining_dollars"]) ?? max(limit - used, 0)
+                let percent = number(block["utilization"]) ?? used / limit * 100
+                var detail = "\(QuotaFormat.usd(used)) / \(QuotaFormat.usd(limit))"
+                if let day { detail += L10n.t(" · expires \(day)", " · \(day)到期") }
+                window = UsageWindow(
+                    title: creditNames[key] ?? L10n.t("Bonus credit", "赠送额度"),
+                    usedPercent: percent,
+                    detail: detail,
+                    note: L10n.t(
+                        "A credit Anthropic added to the account, counted apart from the plan's limits\(day.map { ". What is left runs out \($0)" } ?? "").",
+                        "Anthropic 赠送的额度，和套餐限额分开计算\(day.map { "，没用完的在 \($0)到期" } ?? "")。"))
+                window.credit = CreditAmount(
+                    amount: QuotaFormat.usd(left),
+                    caption: L10n.t("Used \(QuotaFormat.usd(used)) of \(QuotaFormat.usd(limit))",
+                                    "已用 \(QuotaFormat.usd(used)) / \(QuotaFormat.usd(limit))"),
+                    expiresAt: expires)
+            } else {
+                let percent = number(block["utilization"])
+                window = UsageWindow(
+                    title: creditNames[key] ?? L10n.t("Bonus credit", "赠送额度"),
+                    usedPercent: percent,
+                    detail: day.map { L10n.t("One-time credit · expires \($0)", "一次性额度 · \($0)到期") }
+                        ?? L10n.t("One-time credit", "一次性额度"))
+                window.credit = CreditAmount(
+                    amount: L10n.t("\(QuotaFormat.percent(100 - (percent ?? 0))) left", "剩余 \(QuotaFormat.percent(100 - (percent ?? 0)))"),
+                    caption: L10n.t("One-time credit", "一次性额度"),
+                    expiresAt: expires)
+            }
+            window.extra = true
+            out.append(window)
+        }
+        return out
+    }
+
+    /// The credits' names on Claude's own usage page, by code name.
+    static let creditNames = [
+        "iguana_necktie": "Cloud session credit",
+        "cinder_cove": "Claude Code and Cowork credit",
+    ]
+
+    /// A JSON number, not a string and not a boolean.
+    private static func number(_ value: Any?) -> Double? {
+        guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
+        return number.doubleValue.isFinite ? number.doubleValue : nil
+    }
+
+    /// "Nov 5", "11月5日".
+    private static func creditDay(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = L10n.locale
+        formatter.setLocalizedDateFormatFromTemplate("MMMd")
+        return formatter.string(from: date)
     }
 
     private static func convert(_ limit: Limit, body: Body) -> UsageWindow? {

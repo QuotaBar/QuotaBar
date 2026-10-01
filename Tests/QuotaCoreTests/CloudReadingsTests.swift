@@ -213,11 +213,11 @@ final class CloudReadingsTests: XCTestCase {
 
     func testSavedOrderComesFirstAndNewProvidersGoLast() {
         let merged = MergedReadings([readings([
-            entry(.codex, used: 1), entry(.claude, used: 1), entry(.cursor, used: 1), entry(.gemini, used: 1),
+            entry(.codex, used: 1), entry(.claude, used: 1), entry(.cursor, used: 1), entry(.antigravity, used: 1),
         ])])
         let ordered = merged.ordered(by: ["cursor", "codex", "retired-provider"])
-        XCTAssertEqual(ordered.items.map(\.provider), [.cursor, .codex, .claude, .gemini])
-        XCTAssertEqual(merged.ordered(by: []).items.map(\.provider), [.codex, .claude, .cursor, .gemini])
+        XCTAssertEqual(ordered.items.map(\.provider), [.cursor, .codex, .claude, .antigravity])
+        XCTAssertEqual(merged.ordered(by: []).items.map(\.provider), [.codex, .claude, .cursor, .antigravity])
     }
 
     // MARK: Which Mac

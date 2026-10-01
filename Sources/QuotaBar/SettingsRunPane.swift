@@ -136,7 +136,7 @@ enum RunText {
         ProviderID(rawValue: raw)?.displayName ?? raw
     }
 
-    /// "Codex · Pro 20x".
+    /// "Codex · Pro 200".
     static func title(provider: String, plan: String?) -> String {
         [providerName(provider), plan].compactMap { $0 }.joined(separator: " · ")
     }
@@ -373,7 +373,7 @@ enum RunShare {
         ShareableCard(store: store) { RunBestShareCard(best: best) }
     }
 
-    /// "Codex · Pro 20x · Weekly window — 100% in 2h 37m", for the text that
+    /// "Codex · Pro 200 · Weekly window — 100% in 2h 37m", for the text that
     /// travels with the image.
     static func caption(_ best: PersonalBest) -> String {
         let title = "\(RunText.title(provider: best.provider, plan: best.plan)) · \(RunText.window(seconds: best.windowSeconds, scope: best.scope))"

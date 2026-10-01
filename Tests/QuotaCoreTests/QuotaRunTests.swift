@@ -29,7 +29,10 @@ final class RunMathTests: XCTestCase {
     }
 
     func testNormalisationAndKeys() {
-        XCTAssertEqual(RunMath.planNorm("Pro 20x"), "pro20x")
+        XCTAssertEqual(RunMath.planNorm("Pro 200"), "pro200")
+        XCTAssertEqual(RunMath.planNorm("Pro 20x"), "pro200", "the tier's name before October 2026")
+        XCTAssertEqual(RunMath.planNorm("Pro 5x"), "pro100")
+        XCTAssertEqual(RunMath.planNorm("Max 20x"), "max20x")
         XCTAssertEqual(RunMath.planNorm("Pro_Plus"), "proplus")
         XCTAssertEqual(RunMath.planNorm(nil), "")
         XCTAssertEqual(RunMath.windowKey(seconds: 604_800, scope: nil), "604800:")
@@ -62,7 +65,7 @@ final class RunMathTests: XCTestCase {
         let run = try XCTUnwrap(runs.first)
         XCTAssertEqual(run.windowStart, start)
         XCTAssertEqual(run.resetsAt, reset)
-        XCTAssertEqual(run.planNorm, "pro20x")
+        XCTAssertEqual(run.planNorm, "pro200")
         XCTAssertEqual(run.peakPercent, 100)
         XCTAssertEqual(run.secondsTo50, 2_400)
         XCTAssertEqual(run.secondsTo90, 3_600)

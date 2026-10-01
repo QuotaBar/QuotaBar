@@ -30,7 +30,7 @@ extension ResetCredits: Codable {
 
 extension UsageWindow: Codable {
     private enum CodingKeys: String, CodingKey {
-        case id, title, usedPercent, detail, resetsAt, isActive, windowSeconds, scope, label, note, inUse, extra
+        case id, title, usedPercent, detail, resetsAt, isActive, windowSeconds, scope, label, note, inUse, extra, credit
     }
 
     public init(from decoder: Decoder) throws {
@@ -48,6 +48,7 @@ extension UsageWindow: Codable {
             inUse: (try? c.decodeIfPresent(Bool.self, forKey: .inUse)) ?? false)
         if let id = try c.decodeIfPresent(String.self, forKey: .id) { self.id = id }
         extra = (try? c.decodeIfPresent(Bool.self, forKey: .extra)) ?? false
+        credit = try? c.decodeIfPresent(CreditAmount.self, forKey: .credit)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -64,6 +65,7 @@ extension UsageWindow: Codable {
         try c.encodeIfPresent(note, forKey: .note)
         if inUse { try c.encode(inUse, forKey: .inUse) }
         if extra { try c.encode(extra, forKey: .extra) }
+        try c.encodeIfPresent(credit, forKey: .credit)
     }
 }
 

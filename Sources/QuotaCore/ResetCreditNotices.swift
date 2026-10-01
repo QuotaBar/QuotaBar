@@ -2,9 +2,9 @@ import Foundation
 
 // MARK: - Resets the account is given
 
-/// Something to say about the early resets a provider gives out — Codex
-/// hands them to accounts every so often, and each runs out unspent after
-/// about a month.
+/// Something to say about the early resets a provider gives out — Codex and
+/// Claude hand them to accounts every so often, and each runs out unspent
+/// after about a month.
 public struct ResetCreditNotice: Equatable, Sendable {
     public enum Kind: Equatable, Sendable {
         /// The count went up by this many since the reading before.

@@ -168,7 +168,13 @@ struct ProviderCardView: View {
 
     private func rest(_ snapshot: UsageSnapshot) -> [UsageWindow] {
         let shown = Set(primary(snapshot).map(\.id))
-        return drawn(snapshot).windows.filter { !shown.contains($0.id) }
+        return drawn(snapshot).windows.filter { !shown.contains($0.id) && $0.credit == nil }
+    }
+
+    /// Balances the account holds — credits bought or given — drawn as an
+    /// amount and a deadline under the arrow.
+    private func credits(_ snapshot: UsageSnapshot) -> [UsageWindow] {
+        drawn(snapshot).windows.filter { $0.credit != nil }
     }
 
     /// The windows the card draws as rows: a balance sheet draws its own
@@ -181,7 +187,7 @@ struct ProviderCardView: View {
     }
 
     private func hasMore(_ snapshot: UsageSnapshot) -> Bool {
-        !rest(snapshot).isEmpty || snapshot.resetCredits?.isShown == true || id.costSource != nil
+        !rest(snapshot).isEmpty || !credits(snapshot).isEmpty || snapshot.resetCredits?.isShown == true || id.costSource != nil
             || snapshot.balance.map(BalanceSheetView.hasMore) == true
             || StatusPages.page(for: id) != nil || store.dashboardURL(for: id) != nil
     }
@@ -220,7 +226,7 @@ struct ProviderCardView: View {
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.white)
                     Spacer()
-                    if let earned = credits.totalEarned, earned > 0 {
+                    if let earned = credits.totalEarned, earned > credits.available {
                         Text(L10n.t("\(earned) given ·", "累计获得 \(earned) 次 ·"))
                             .font(.system(size: 11))
                             .monospacedDigit()
@@ -234,6 +240,9 @@ struct ProviderCardView: View {
                 .contentShape(Rectangle())
                 .help(store.resetCreditHelp(credits))
                 ResetCreditDeadlines(store: store, credits: credits, accent: Color(hex: id.accentHex))
+            }
+            ForEach(credits(snapshot)) { window in
+                BalanceCreditRow(store: store, window: window, accent: Color(hex: id.accentHex))
             }
             if id == .codex {
                 CodexAccountsSection(store: store, accounts: store.codexAccounts, compact: compact)

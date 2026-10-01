@@ -204,10 +204,10 @@ public enum StatusPages {
         case .minimax: .statuspage(api: URL(string: "https://status.minimax.io")!)
         case .kimi: .statuspage(api: URL(string: "https://status.moonshot.cn")!)
         case .deepseek: .statuspage(api: URL(string: "https://deepseek.statuspage.io")!)
-        case .gemini: .googleCloud(product: "Gemini")
+        case .antigravity: .googleCloud(product: "Gemini")
         case .copilot: .statuspage(api: URL(string: "https://www.githubstatus.com")!)
         case .windsurf: .statuspage(api: URL(string: "https://status.windsurf.com")!)
-        case .zai, .opencodeGo, .grok, .antigravity, .qwen, .alibaba, .volcengine, .zhipu, .openrouter, .mimo, .qoder, .kiro: nil
+        case .zai, .opencodeGo, .grok, .qwen, .alibaba, .volcengine, .zhipu, .openrouter, .mimo, .qoder, .kiro: nil
         }
     }
 
@@ -221,10 +221,10 @@ public enum StatusPages {
         case .minimax: URL(string: "https://status.minimax.io")
         case .kimi: URL(string: "https://status.moonshot.cn")
         case .deepseek: URL(string: "https://status.deepseek.com")
-        case .gemini: URL(string: "https://status.cloud.google.com")
+        case .antigravity: URL(string: "https://status.cloud.google.com")
         case .copilot: URL(string: "https://www.githubstatus.com")
         case .windsurf: URL(string: "https://status.windsurf.com")
-        case .zai, .opencodeGo, .grok, .antigravity, .qwen, .alibaba, .volcengine, .zhipu, .openrouter, .mimo, .qoder, .kiro: nil
+        case .zai, .opencodeGo, .grok, .qwen, .alibaba, .volcengine, .zhipu, .openrouter, .mimo, .qoder, .kiro: nil
         }
     }
 

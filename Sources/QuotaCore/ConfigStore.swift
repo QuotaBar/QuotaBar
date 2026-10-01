@@ -180,7 +180,7 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
         language = QuotaConfig.decodeEnum(from: container, forKey: .language) ?? defaults.language
         // nil is meaningful here (the overview), so an absent or unreadable
         // value simply means "no provider focused".
-        selected = QuotaConfig.decodeEnum(from: container, forKey: .selected)
+        selected = QuotaConfig.decodeProvider(from: container, forKey: .selected)
         updateFeed = (try? container.decodeIfPresent(String.self, forKey: .updateFeed))
             ?? defaults.updateFeed
         checksForUpdates = (try? container.decodeIfPresent(Bool.self, forKey: .checksForUpdates))
@@ -206,8 +206,8 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
         widgetAlwaysOnTop = (try? container.decodeIfPresent(Bool.self, forKey: .widgetAlwaysOnTop))
             ?? defaults.widgetAlwaysOnTop
         widgetScope = QuotaConfig.decodeEnum(from: container, forKey: .widgetScope) ?? defaults.widgetScope
-        islandPin = QuotaConfig.decodeEnum(from: container, forKey: .islandPin)
-        dockPin = QuotaConfig.decodeEnum(from: container, forKey: .dockPin)
+        islandPin = QuotaConfig.decodeProvider(from: container, forKey: .islandPin)
+        dockPin = QuotaConfig.decodeProvider(from: container, forKey: .dockPin)
         widgetPin = QuotaConfig.decodeEnum(from: container, forKey: .widgetPin)
         displayScreen = (try? container.decodeIfPresent(String.self, forKey: .displayScreen))
             .flatMap { $0.isEmpty ? nil : $0 }
@@ -242,9 +242,11 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
         from container: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) -> [ProviderID: String]
     {
         guard let object = try? container.decodeIfPresent([String: String].self, forKey: key) else { return [:] }
-        return object.reduce(into: [:]) { result, pair in
-            if let id = ProviderID(rawValue: pair.key), !pair.value.isEmpty { result[id] = pair.value }
-        }
+        // A current id wins over an old one folded into it.
+        return object.sorted { ProviderID(rawValue: $0.key) == nil && ProviderID(rawValue: $1.key) != nil }
+            .reduce(into: [:]) { result, pair in
+                if let id = ProviderID(stored: pair.key), !pair.value.isEmpty { result[id] = pair.value }
+            }
     }
 
     /// Decodes a string-backed enum, returning nil for a missing key *or* an
@@ -257,6 +259,14 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
         return T(rawValue: raw)
     }
 
+    /// One provider id, an old one read as the provider that took it.
+    private static func decodeProvider(
+        from container: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) -> ProviderID?
+    {
+        guard let raw = try? container.decodeIfPresent(String.self, forKey: key) else { return nil }
+        return ProviderID(stored: raw)
+    }
+
     /// Drops provider ids this build does not recognise instead of discarding
     /// the whole list — a newer build's extra provider must not wipe the
     /// user's other selections.
@@ -265,7 +275,8 @@ public struct QuotaConfig: Codable, Sendable, Equatable {
     {
         guard let values = try? container.decodeIfPresent([String].self, forKey: .enabled)
         else { return nil }
-        return values.compactMap(ProviderID.init(rawValue:))
+        var seen = Set<ProviderID>()
+        return values.compactMap(ProviderID.init(stored:)).filter { seen.insert($0).inserted }
     }
 
     /// Older files store the credential map two different ways: Swift's own

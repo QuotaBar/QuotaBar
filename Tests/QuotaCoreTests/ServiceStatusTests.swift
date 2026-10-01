@@ -82,7 +82,7 @@ final class ServiceStatusTests: XCTestCase {
         XCTAssertEqual(StatusPages.primaryComponent(for: .codex, in: [c("Login"), c("CLI"), c("Codex API")])?.name, "CLI")
         // A page that renamed everything still answers with something.
         XCTAssertEqual(StatusPages.primaryComponent(for: .cursor, in: [c("Everything")])?.name, "Everything")
-        XCTAssertNil(StatusPages.primaryComponent(for: .gemini, in: []))
+        XCTAssertNil(StatusPages.primaryComponent(for: .antigravity, in: []))
     }
 
     // MARK: Focus on the coding services
@@ -250,7 +250,7 @@ final class ServiceStatusTests: XCTestCase {
     func testPagesArePinned() {
         XCTAssertEqual(
             StatusPages.supported,
-            [.codex, .claude, .cursor, .kimi, .minimax, .gemini, .manus, .deepseek, .copilot, .windsurf])
+            [.codex, .claude, .cursor, .kimi, .minimax, .antigravity, .manus, .deepseek, .copilot, .windsurf])
         for id in StatusPages.supported {
             XCTAssertEqual(StatusPages.page(for: id)?.scheme, "https")
         }

@@ -57,7 +57,8 @@ public extension UsageSnapshot {
         for window in windows where window.inUse {
             ids.insert(window.id)
         }
-        return windows.filter { ids.contains($0.id) }
+        // A balance is not a limit: it waits under the arrow with the resets.
+        return windows.filter { ids.contains($0.id) && $0.credit == nil }
     }
 
     private func defaultUpFront(for provider: ProviderID, picked: String?) -> [UsageWindow] {

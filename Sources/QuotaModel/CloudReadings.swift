@@ -61,7 +61,7 @@ public struct CloudReadings: Sendable {
             self.links = links
         }
 
-        public var provider: ProviderID? { ProviderID(rawValue: id) }
+        public var provider: ProviderID? { ProviderID(stored: id) }
     }
 
     public init(

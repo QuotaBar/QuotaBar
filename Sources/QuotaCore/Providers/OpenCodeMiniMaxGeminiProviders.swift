@@ -151,19 +151,14 @@ public struct MiniMaxProvider: QuotaProvider {
     }
 }
 
-// MARK: - Gemini (Gemini CLI OAuth file → cloudcode-pa retrieveUserQuota)
+// MARK: - Gemini CLI (OAuth file → cloudcode-pa retrieveUserQuota)
 
-public struct GeminiProvider: QuotaProvider {
-    public let id = ProviderID.gemini
-
-    public func isConfigured(config: ConfigStore) -> Bool {
-        LocalCredentials.geminiAccessToken() != nil
-    }
-
-    public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
-        guard let token = LocalCredentials.geminiAccessToken() else {
-            throw ProviderError.notConfigured(hint: ProviderID.gemini.setupHint)
-        }
+/// The Gemini CLI's own quota, now the Antigravity card's last way in: since
+/// 2026-06-18 the CLI serves only Code Assist Standard and Enterprise seats
+/// and paid API keys — Pro, Ultra and free users were moved to Antigravity —
+/// so for most people there is nothing here to read.
+enum GeminiCLIQuota {
+    static func read(token: String) async throws -> UsageSnapshot {
         let url = URL(string: "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota")!
         let response = try await HTTP.post(url, headers: [
             "Authorization": "Bearer \(token)",
@@ -188,6 +183,6 @@ public struct GeminiProvider: QuotaProvider {
                 usedPercent: bucket.remainingFraction.map { (1 - $0) * 100 },
                 resetsAt: Dates.parseISO(bucket.resetTime))
         }
-        return UsageSnapshot(windows: Array(windows))
+        return UsageSnapshot(windows: Array(windows), source: "gemini-cli")
     }
 }

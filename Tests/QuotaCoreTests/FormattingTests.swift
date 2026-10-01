@@ -218,7 +218,7 @@ final class ProviderRegistryTests: XCTestCase {
 
     func testAutomaticProvidersHaveNoCredentialField() {
         // These read an existing CLI session; showing a paste box would be wrong.
-        for id in [ProviderID.codex, .claude, .gemini] {
+        for id in [ProviderID.codex, .claude, .antigravity] {
             XCTAssertNil(id.credentialHint, "\(id) should not ask for a pasted secret")
         }
     }

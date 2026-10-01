@@ -133,7 +133,7 @@ public struct RunLocalAccount: Equatable, Sendable, Identifiable {
     public var isEmail: Bool
 
     public var id: String { digest }
-    public var providerID: ProviderID? { ProviderID(rawValue: provider) }
+    public var providerID: ProviderID? { ProviderID(stored: provider) }
 
     public init(provider: String, digest: String, masked: String, isEmail: Bool) {
         self.provider = provider
@@ -296,13 +296,19 @@ public enum RunMath {
     public static let completeAt = 99.5
     public static let resetGrain = 300
 
-    /// `"Pro 20x"` → `pro20x`: lower-case, ASCII letters and digits only.
+    /// `"Pro 200"` → `pro200`: lower-case, ASCII letters and digits only.
+    /// Codex's Pro tiers were called Pro 5x and Pro 20x before October 2026;
+    /// readings kept under those names count with the new ones, as on the
+    /// server (`PLAN_RENAMES`).
     public static func planNorm(_ plan: String?) -> String {
         guard let plan else { return "" }
-        return String(plan.lowercased().unicodeScalars.filter { scalar in
+        let norm = String(plan.lowercased().unicodeScalars.filter { scalar in
             (scalar >= "a" && scalar <= "z") || (scalar >= "0" && scalar <= "9")
         }.map(Character.init))
+        return renamedPlans[norm] ?? norm
     }
+
+    static let renamedPlans = ["pro5x": "pro100", "pro20x": "pro200"]
 
     public static func windowKey(seconds: Int?, scope: String?) -> String {
         "\(max(seconds ?? 0, 0)):\(scope ?? "")"

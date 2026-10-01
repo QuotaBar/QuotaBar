@@ -152,8 +152,8 @@ struct PresentationPane: View {
         {
             if store.showsIsland && store.showsDock {
                 SettingFootnote(L10n.t(
-                    "With the island and the dock both on, split your services between them here — say Claude and Codex on the island, Cursor and Gemini on the dock.",
-                    "刘海岛和停靠条都打开时，可以在这里把服务商分开放，比如刘海岛放 Claude、Codex，停靠条放 Cursor、Gemini。"))
+                    "With the island and the dock both on, split your services between them here — say Claude and Codex on the island, Cursor and Antigravity on the dock.",
+                    "刘海岛和停靠条都打开时，可以在这里把服务商分开放，比如刘海岛放 Claude、Codex，停靠条放 Cursor、Antigravity。"))
             }
             if store.enabled.isEmpty {
                 SettingFootnote(L10n.t("No providers are on.", "还没有开启服务商。"))

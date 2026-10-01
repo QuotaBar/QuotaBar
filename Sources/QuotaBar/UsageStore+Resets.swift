@@ -114,8 +114,8 @@ extension UsageStore {
 
 extension UsageStore {
     /// A reset given since the reading before, and a reset about to run out
-    /// unspent — Codex hands them out every so often and each lasts about a
-    /// month. A reminder is remembered even while notifications are off, so
+    /// unspent — Codex and Claude hand them out every so often and each lasts
+    /// about a month. A reminder is remembered even while notifications are off, so
     /// turning them on does not bring back a day of old ones.
     func noteResetCredits(_ id: ProviderID, previous: UsageSnapshot?, current: ResetCredits?) {
         let notices = ResetCreditCheck.notices(
@@ -150,9 +150,12 @@ extension UsageStore {
         case let .expiring(credit):
             content.title = L10n.t("An early reset is about to expire", "限额重置快过期了")
             let name = credit.title ?? L10n.t("An early reset", "一次限额重置")
+            let howTo = notice.provider == .claude
+                ? L10n.t("Use it with /limit-reset in Claude Code.", "可以在 Claude Code 里用 /limit-reset 兑换。")
+                : L10n.t("Use it with /usage in the Codex CLI.", "可以在 Codex CLI 里用 /usage 兑换。")
             content.body = L10n.t(
-                "\(name) \(QuotaFormat.creditExpiry(credit, format: .countdown)), unspent. Use it with /usage in the Codex CLI.",
-                "\(name) \(QuotaFormat.creditExpiry(credit, format: .countdown))，还没用。可以在 Codex CLI 里用 /usage 兑换。")
+                "\(name) \(QuotaFormat.creditExpiry(credit, format: .countdown)), unspent. \(howTo)",
+                "\(name) \(QuotaFormat.creditExpiry(credit, format: .countdown))，还没用。\(howTo)")
         }
         content.threadIdentifier = "bar.quota.reset-credit"
         UNUserNotificationCenter.current().add(UNNotificationRequest(

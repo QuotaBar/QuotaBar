@@ -13,10 +13,10 @@ struct ProviderEntity: AppEntity {
     static let defaultQuery = ProviderQuery()
 
     var displayRepresentation: DisplayRepresentation {
-        DisplayRepresentation(title: "\(ProviderID(rawValue: id)?.displayName ?? id)")
+        DisplayRepresentation(title: "\(ProviderID(stored: id)?.displayName ?? id)")
     }
 
-    var provider: ProviderID? { ProviderID(rawValue: id) }
+    var provider: ProviderID? { ProviderID(stored: id) }
 }
 
 struct ProviderQuery: EntityQuery {

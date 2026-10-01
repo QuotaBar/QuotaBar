@@ -586,7 +586,6 @@ public enum ProviderRegistry {
         case .zai: ZaiProvider()
         case .opencodeGo: OpenCodeGoProvider()
         case .minimax: MiniMaxProvider()
-        case .gemini: GeminiProvider()
         case .manus: ManusProvider()
         case .deepseek: DeepSeekProvider()
         case .grok: GrokProvider()

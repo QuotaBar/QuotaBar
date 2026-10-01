@@ -15,6 +15,7 @@ public struct AntigravityProvider: QuotaProvider {
 
     public func isConfigured(config: ConfigStore) -> Bool {
         AntigravityLocal.isInstalled || LocalCredentials.antigravityToken() != nil
+            || LocalCredentials.geminiAccessToken() != nil
     }
 
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
@@ -23,12 +24,17 @@ public struct AntigravityProvider: QuotaProvider {
         let local = await AntigravityLocal.read()
         if case let .quota(snapshot) = local { return snapshot }
 
-        guard let token = LocalCredentials.antigravityToken() else {
-            throw ProviderError.notConfigured(hint: ProviderID.antigravity.setupHint)
-        }
         // Written at sign-in and never refreshed; refreshing it would take the
         // app's own OAuth client.
-        guard !token.isExpired() else {
+        guard let token = LocalCredentials.antigravityToken(), !token.isExpired() else {
+            // Without Antigravity, a Gemini CLI sign-in still has a quota of
+            // its own on an enterprise seat.
+            if let gemini = LocalCredentials.geminiAccessToken() {
+                return try await GeminiCLIQuota.read(token: gemini)
+            }
+            if LocalCredentials.antigravityToken() == nil {
+                throw ProviderError.notConfigured(hint: ProviderID.antigravity.setupHint)
+            }
             throw ProviderError.notConfigured(hint: Self.expiredTokenHint(local))
         }
         let headers = [

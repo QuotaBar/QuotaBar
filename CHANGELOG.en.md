@@ -3,6 +3,22 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
+## Unreleased
+
+### 2026-10-01
+
+#### Added
+
+- The Claude card shows its limit resets too: how many early resets Anthropic has given the account and when each runs out, in the same Early resets row as Codex under the card's arrow, with what each one resets and its deadline on hover. A new reset, or one with less than a day left unspent, brings a notification that says to use it with /limit-reset in Claude Code. Anthropic lists resets only to a current Claude Code, so QuotaBar asks with the version of Claude Code installed on this Mac; the count is read every 15 minutes, and again straight away when limits refill early because a reset was just used.
+- The Claude card shows credit Anthropic has given the account, such as the Cloud session credit: its name with the amount left at the end, and beneath it how much is used and when it runs out; the one-time Claude Code and Cowork credit is shown the same way. They are counted apart from the plan's limits and are never the figure the menu bar or the island follows on its own.
+- Under Early resets, each reset is listed by name (Claude calls it Full reset) with its deadline; a click switches between a countdown and the time.
+
+#### Changed
+
+- Codex's Pro plans go by ChatGPT's current names: Pro 100 and Pro 200, plus the new Pro 500 (they were shown as Pro 5x and Pro 20x). On Quota Run, runs under the old names join the boards of the new ones, and their links keep working.
+- Codex credits read as a grouped number, "62,500 credits", and sit under the card's arrow with the early resets: the name with the amount at the end, and beneath it how many were given and when they run out ("Given 62,500 credits · expires Jan 1, 2027"); the hover says roughly how many local messages they are worth. Folded, the card shows only the plan's limits.
+- Gemini and Antigravity are one card. Google stopped serving the Gemini CLI to personal accounts (free, Google AI Pro and Ultra) on June 18, 2026 and moved them to Antigravity, so the two cards showed one account twice. The Antigravity card now reads the Antigravity app, then the sign-in token it saved, then a Gemini CLI sign-in (Code Assist Standard and Enterprise accounts still use it), and says when the reading came from the Gemini CLI. If you had Gemini on, Antigravity is on instead, and pins to the island or the dock move with it.
+
 ## 0.5.19 · 2026-09-24
 
 ### 2026-09-23

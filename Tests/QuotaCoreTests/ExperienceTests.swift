@@ -286,13 +286,13 @@ final class DeskCardTests: XCTestCase {
 }
 
 final class IslandRoomTests: XCTestCase {
-    private let ids: [ProviderID] = [.codex, .claude, .kimi, .cursor, .deepseek, .gemini, .zai]
+    private let ids: [ProviderID] = [.codex, .claude, .kimi, .cursor, .deepseek, .antigravity, .zai]
 
     func testTwoColumnsOfSlots() {
         XCTAssertEqual(IslandRoom.columns(ids, slots: 1).left, [.codex])
         XCTAssertEqual(IslandRoom.columns(ids, slots: 1).right, [.claude])
         XCTAssertEqual(IslandRoom.columns(ids, slots: 3).left, [.codex, .claude, .kimi])
-        XCTAssertEqual(IslandRoom.columns(ids, slots: 3).right, [.cursor, .deepseek, .gemini])
+        XCTAssertEqual(IslandRoom.columns(ids, slots: 3).right, [.cursor, .deepseek, .antigravity])
         XCTAssertEqual(IslandRoom.columns([.codex], slots: 2).left, [.codex])
         XCTAssertEqual(IslandRoom.columns([.codex], slots: 2).right, [])
         XCTAssertEqual(IslandRoom.columns(ids, slots: 0).left, [.codex], "a slot count below one is one")

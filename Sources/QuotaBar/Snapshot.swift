@@ -308,7 +308,7 @@ enum Snapshot {
         let now = Date()
         var states: [ProviderID: ProviderPhase] = [
             .codex: .loaded(UsageSnapshot(
-                planName: "Pro 20x",
+                planName: "Pro 200",
                 windows: [
                     UsageWindow(
                         title: WindowTitle.forSeconds(604_800),
@@ -373,6 +373,38 @@ enum Snapshot {
     /// `logged`: with a month of Codex CLI traffic in the local logs, so the
     /// callout's usage face has bars to draw — what decides the card's
     /// height when the plan reports few windows.
+    /// Codex and Claude as they read in October 2026: Codex credits and a
+    /// reset, Claude a Full reset and a Cloud session credit.
+    private static func givenCreditsStore() -> UsageStore {
+        let codexJSON = """
+        {"email":"you@example.com","plan_type":"pro",
+         "rate_limit":{"allowed":true,"limit_reached":false,
+           "primary_window":{"used_percent":8,"limit_window_seconds":604800,"reset_after_seconds":192904}},
+         "additional_rate_limits":[{"limit_name":"gpt-reserve","metered_feature":"base_model_inference",
+           "rate_limit":{"allowed":true,"limit_reached":false,
+             "primary_window":{"used_percent":0,"limit_window_seconds":604800,"reset_after_seconds":604800}},
+           "normal_model_slug":"gpt-5.6-luna"}],
+         "credits":{"has_credits":true,"unlimited":false,"balance":"62500","approx_local_messages":[15625,81250]},
+         "rate_limit_reset_credits":{"available_count":1,"applicable_available_count":0}}
+        """
+        var codex = (try? CodexProvider.parse(Data(codexJSON.utf8))) ?? UsageSnapshot(windows: [])
+        codex.resetCredits?.credits = [ResetCredit(title: L10n.t("Full reset", "完全重置"), expiresAt: Date().addingTimeInterval(28 * 86_400))]
+        let expiry = ISO8601DateFormatter().string(from: Date().addingTimeInterval(35 * 86_400))
+        let claudeJSON = """
+        {"five_hour":{"utilization":2.0,"resets_at":null},"seven_day":{"utilization":6.0,"resets_at":null},
+         "iguana_necktie":{"utilization":0.0,"resets_at":"\(expiry)","limit_dollars":250,"used_dollars":0.0,"remaining_dollars":250.0},
+         "limits":[{"kind":"session","percent":2,"resets_at":null,"is_active":false},
+                   {"kind":"weekly_all","percent":6,"resets_at":null,"is_active":true}]}
+        """
+        var claude = (try? ClaudeProvider.parse(Data(claudeJSON.utf8))) ?? UsageSnapshot(windows: [])
+        claude.planName = "Max 20x"
+        claude.account = "you@example.com"
+        claude.resetCredits = ResetCredits(available: 1, applicable: 0, totalEarned: 1, credits: [
+            ResetCredit(id: "launch", title: "Full reset", expiresAt: Date().addingTimeInterval(21 * 86_400)),
+        ])
+        return UsageStore.preview(enabled: [.codex, .claude], states: [.codex: .loaded(codex), .claude: .loaded(claude)])
+    }
+
     private static func codexReserveStore(logged: Bool = false) -> UsageStore {
         let json = """
         {"email":"you@example.com","plan_type":"pro",
@@ -457,6 +489,22 @@ enum Snapshot {
                     .background(Color(white: 0.06))
                     .environment(\.colorScheme, .dark),
                 to: url, name: "panel-card-codex-reserve-\(suffix)", backing: Color(white: 0.06))
+            // What the accounts were given — credits and resets — waiting
+            // under the arrow, folded and opened.
+            for expanded in [false, true] {
+                for id in [ProviderID.codex, .claude] {
+                    let store = givenCreditsStore()
+                    store.experience.expandedCards = expanded ? [id.rawValue] : []
+                    render(
+                        ProviderCardView(store: store, id: id)
+                            .frame(width: 340)
+                            .padding(12)
+                            .background(Color(white: 0.06))
+                            .environment(\.colorScheme, .dark),
+                        to: url, name: "panel-card-given-\(id.rawValue)-\(expanded ? "open" : "folded")-\(suffix)",
+                        backing: Color(white: 0.06))
+                }
+            }
             let callout = ProviderCallout(store: failingStore(), id: .claude)
                 .padding(20)
                 .environment(\.colorScheme, .dark)

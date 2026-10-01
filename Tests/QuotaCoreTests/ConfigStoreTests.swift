@@ -167,7 +167,7 @@ final class ConfigStoreTests: XCTestCase {
         first.showsIsland = true
         first.showsDock = true
         first.language = .zhHans
-        first.setEnabled(.gemini, true)
+        first.setEnabled(.antigravity, true)
 
         let second = ConfigStore(fileURL: fileURL, credentials: keychain)
 
@@ -185,7 +185,7 @@ final class ConfigStoreTests: XCTestCase {
         XCTAssertTrue(second.showsIsland)
         XCTAssertTrue(second.showsDock)
         XCTAssertEqual(second.language, .zhHans)
-        XCTAssertTrue(second.isEnabled(.gemini))
+        XCTAssertTrue(second.isEnabled(.antigravity))
         L10n.override = .system
     }
 
@@ -392,6 +392,19 @@ final class ConfigResilienceTests: XCTestCase {
         XCTAssertEqual(config.dockPin, .claude)
         XCTAssertEqual(config.headlineWindows, [.claude: "5h"])
         XCTAssertTrue(config.experience.iCloudSync)
+    }
+
+    /// Gemini was folded into Antigravity: a config that named it means
+    /// Antigravity, once, where Gemini stood.
+    func testGeminiIsReadAsAntigravity() throws {
+        let config = try decode("""
+        {"enabled":["claude","gemini","codex","antigravity"],"refreshMinutes":15,"islandPin":"gemini",
+         "headlineWindows":{"gemini":"pro","antigravity":"Gemini"}}
+        """)
+        XCTAssertEqual(config.enabled, [.claude, .antigravity, .codex])
+        XCTAssertEqual(config.islandPin, .antigravity)
+        XCTAssertEqual(config.headlineWindows, [.antigravity: "Gemini"], "Antigravity's own pick wins")
+        XCTAssertNil(ProviderID(rawValue: "gemini"))
     }
 
     func testAnUnknownProviderIsDroppedNotTheWholeList() throws {

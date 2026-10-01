@@ -781,9 +781,9 @@ extension RunCenter {
         let weekReset = RunMath.roundedReset(clock + 3 * 86_400)
         var readings: [RunReading] = []
         // Codex's current week, a little over a third in.
-        readings += series("codex", plan: "Pro 20x", seconds: week, reset: weekReset, points: [(3_600, 4), (40_000, 18), (250_000, 36.5)])
+        readings += series("codex", plan: "Pro 200", seconds: week, reset: weekReset, points: [(3_600, 4), (40_000, 18), (250_000, 36.5)])
         // Last week's Codex run: full in 2h 37m, read closely enough to verify.
-        readings += series("codex", plan: "Pro 20x", seconds: week, reset: weekReset - week, points: [
+        readings += series("codex", plan: "Pro 200", seconds: week, reset: weekReset - week, points: [
             (600, 6), (1_800, 28), (2_460, 51), (3_600, 64), (4_800, 77), (6_000, 85), (7_200, 90.5), (8_400, 96), (9_420, 100), (10_000, 100),
         ])
         // Claude's 5 hours, running now and three runs back.

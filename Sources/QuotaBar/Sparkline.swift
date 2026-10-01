@@ -74,40 +74,100 @@ struct SparklineView: View {
 
 }
 
-/// When the banked early resets expire, soonest first, under their count —
-/// in the reset rows' format, and a click switches it the way theirs does
-/// (issue #3). Nothing when none of them expires.
+/// Each banked early reset under their count: what it resets, as the
+/// provider names it ("Full reset"), and when it runs out — in the reset
+/// rows' format, and a click switches it the way theirs does (issue #3).
+/// Three at most, then how many more.
 struct ResetCreditDeadlines: View {
     @ObservedObject var store: UsageStore
     let credits: ResetCredits
     let accent: Color
 
     var body: some View {
-        let upcoming = credits.upcomingExpirations()
-        if !upcoming.isEmpty {
+        let now = Date()
+        let listed = credits.credits.filter { ($0.expiresAt ?? .distantFuture) > now }
+        if !listed.isEmpty {
             let prefs = store.experience
-            let other = QuotaFormat.expiryList(
-                upcoming, format: prefs.resetTimeFormat == .countdown ? .exact : .countdown, clock: prefs.clockStyle)
-            HStack(spacing: 6) {
-                Image(systemName: "clock")
-                    .font(.system(size: 10))
-                    .foregroundStyle(accent.opacity(0.8))
-                Text(L10n.t("Expires", "到期"))
-                    .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.5))
-                Spacer(minLength: Design.space2)
-                Text(QuotaFormat.expiryList(upcoming, format: prefs.resetTimeFormat, clock: prefs.clockStyle))
-                    .font(.system(size: 11))
-                    .monospacedDigit()
-                    .foregroundStyle(.white.opacity(0.5))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(listed.prefix(3).enumerated()), id: \.offset) { _, credit in
+                    HStack(spacing: 6) {
+                        Image(systemName: "clock")
+                            .font(.system(size: 10))
+                            .foregroundStyle(accent.opacity(0.8))
+                        Text(credit.title ?? L10n.t("Full reset", "完整重置"))
+                            .font(.system(size: 11))
+                            .foregroundStyle(.white.opacity(0.7))
+                            .lineLimit(1)
+                        Spacer(minLength: Design.space2)
+                        Text(QuotaFormat.creditExpiry(credit, format: prefs.resetTimeFormat, clock: prefs.clockStyle))
+                            .font(.system(size: 11))
+                            .monospacedDigit()
+                            .foregroundStyle(.white.opacity(0.5))
+                            .lineLimit(1)
+                    }
+                    .help(QuotaFormat.creditExpiry(
+                        credit, format: prefs.resetTimeFormat == .countdown ? .exact : .countdown, clock: prefs.clockStyle))
+                }
+                if listed.count > 3 {
+                    Text(L10n.t("+\(listed.count - 3) more", "另 \(listed.count - 3) 次"))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.45))
+                        .padding(.leading, 16)
+                }
             }
             .contentShape(Rectangle())
             .onTapGesture { store.toggleResetFormat() }
-            .help(L10n.t(
-                "Each banked reset expires on its own, soonest first: \(other)",
-                "每次攒下的重置各自到期，最早的在前：\(other)"))
+        }
+    }
+}
+
+/// A balance the account holds — credits bought or given — as its name, the
+/// amount at the end, and beneath it what it is and when it runs out.
+struct BalanceCreditRow: View {
+    @ObservedObject var store: UsageStore
+    let window: UsageWindow
+    let accent: Color
+
+    var body: some View {
+        if let credit = window.credit {
+            let prefs = store.experience
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: "gift")
+                        .font(.system(size: 11))
+                        .foregroundStyle(accent)
+                    Text(window.displayName)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Spacer(minLength: Design.space2)
+                    Text(credit.amount)
+                        .font(.system(size: 11, weight: .semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(accent)
+                        .lineLimit(1)
+                }
+                if credit.caption != nil || credit.expiresAt != nil {
+                    HStack(spacing: 6) {
+                        Text(credit.caption ?? "")
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        Spacer(minLength: Design.space2)
+                        if let expiresAt = credit.expiresAt {
+                            Text(QuotaFormat.creditExpiry(
+                                ResetCredit(expiresAt: expiresAt), format: prefs.resetTimeFormat, clock: prefs.clockStyle))
+                                .monospacedDigit()
+                                .lineLimit(1)
+                        }
+                    }
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .padding(.leading, 17)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { store.toggleResetFormat() }
+            .help(window.note ?? "")
         }
     }
 }
@@ -125,7 +185,7 @@ struct ResetCreditsRow: View {
             Text(L10n.t("Early resets", "限额重置额度"))
                 .font(.callout.weight(.medium))
             Spacer()
-            if let earned = credits.totalEarned, earned > 0 {
+            if let earned = credits.totalEarned, earned > credits.available {
                 Text(L10n.t("\(earned) given ·", "累计获得 \(earned) 次 ·"))
                     .font(.callout)
                     .monospacedDigit()

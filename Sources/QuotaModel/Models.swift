@@ -262,11 +262,14 @@ public enum DockEdge: String, Codable, CaseIterable, Identifiable, Sendable {
 // MARK: - Provider identity
 
 public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
-    // One company's services sit together: Gemini beside Antigravity. The raw
-    // values are what is stored, so the order here is only the order lists
-    // show. `moonshot` (the Kimi open platform's API balance) was dropped: Kimi
-    // Code is the Kimi that matters here, and a config that still names it
-    // loses just that entry on decode.
+    // The raw values are what is stored, so the order here is only the order
+    // lists show. `moonshot` (the Kimi open platform's API balance) was
+    // dropped: Kimi Code is the Kimi that matters here, and a config that
+    // still names it loses just that entry on decode. `gemini` (the Gemini
+    // CLI's quota) was folded into `antigravity` in October 2026: Google moved
+    // its Pro, Ultra and free users from the Gemini CLI to Antigravity on
+    // 2026-06-18, so the two cards showed one account twice; the Gemini CLI's
+    // sign-in is now the Antigravity card's last way in (`renamed`).
     case codex
     case claude
     case cursor
@@ -274,7 +277,6 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
     case zai
     case opencodeGo = "opencode-go"
     case minimax
-    case gemini
     case antigravity
     case manus
     case deepseek
@@ -291,6 +293,16 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
     case kiro
 
     public var id: String { rawValue }
+
+    /// Ids since folded into another provider, and the one that took them:
+    /// a config, a pick or a synced reading that names the old id means the
+    /// new one.
+    public static let renamed = ["gemini": ProviderID.antigravity]
+
+    /// The provider an id stored by this or an older version names.
+    public init?(stored raw: String) {
+        if let id = ProviderID(rawValue: raw) { self = id } else if let id = Self.renamed[raw] { self = id } else { return nil }
+    }
 
     /// Written from public implementations and not yet confirmed against a
     /// live account; Settings says so beside the name.
@@ -311,7 +323,6 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
         case .zai: "z.ai"
         case .opencodeGo: "OpenCode Go"
         case .minimax: "MiniMax"
-        case .gemini: "Gemini"
         case .manus: "Manus"
         case .deepseek: "DeepSeek"
         case .grok: "Grok"
@@ -341,7 +352,6 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
         case .zai: "z.square"
         case .opencodeGo: "curlybraces"
         case .minimax: "square.stack.3d.up"
-        case .gemini: "star"
         case .manus: "hand.raised"
         case .deepseek: "magnifyingglass"
         case .grok: "bolt"
@@ -369,7 +379,6 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
         case .zai: "8E8EF7"
         case .opencodeGo: "5B8DEF"
         case .minimax: "E5484D"
-        case .gemini: "4285F4"
         case .manus: "B08968"
         case .deepseek: "4D9F7B"
         case .grok: "22C55E"
@@ -397,7 +406,6 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
         case .zai: URL(string: "https://z.ai/manage-apikey/coding-plan/personal/my-plan")
         case .opencodeGo: URL(string: "https://opencode.ai")
         case .minimax: URL(string: "https://platform.minimax.io/user-center/payment/coding-plan")
-        case .gemini: URL(string: "https://gemini.google.com")
         case .manus: URL(string: "https://manus.im")
         case .deepseek: URL(string: "https://platform.deepseek.com/usage")
         case .grok: URL(string: "https://grok.com")
@@ -418,7 +426,7 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
     /// nil = credentials are discovered locally (CLI login files / Keychain).
     public var credentialHint: String? {
         switch self {
-        case .codex, .claude, .gemini, .antigravity:
+        case .codex, .claude, .antigravity:
             return nil
         case .qwen:
             return L10n.t(
@@ -484,13 +492,12 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
         case .claude: return L10n.t(
             "Run `claude` once and sign in to create the OAuth session.",
             "运行一次 `claude` 并登录以生成 OAuth 会话。")
-        case .gemini: return L10n.t("Sign in with the Gemini CLI (`gemini`) first.", "请先用 Gemini CLI（`gemini`）登录。")
         case .grok: return L10n.t(
             "Sign in with the grok CLI or paste a token in Settings.",
             "用 grok CLI 登录，或在设置中粘贴 token。")
         case .antigravity: return L10n.t(
-            "Open Antigravity and sign in. While it runs, the quota is read from the app itself; closed, from the sign-in token it saved, which lasts an hour.",
-            "打开 Antigravity 并登录。它运行时直接向它读取额度；关着时读它保存的登录令牌，令牌只有一小时有效。")
+            "Open Antigravity and sign in. While it runs, the quota is read from the app itself; closed, from the sign-in token it saved, which lasts an hour. A Gemini CLI sign-in (Code Assist Standard or Enterprise) is read too.",
+            "打开 Antigravity 并登录。它运行时直接向它读取额度；关着时读它保存的登录令牌，令牌只有一小时有效。用 Gemini CLI 登录的企业版（Code Assist Standard / Enterprise）也会读取。")
         case .volcengine: return L10n.t(
             "Install arkcli and run `arkcli auth login`.",
             "安装 arkcli 并运行 `arkcli auth login` 登录。")
@@ -590,6 +597,10 @@ public struct UsageWindow: Sendable, Identifiable {
     /// what a figure follows on its own — Grok Bot at 69% stood for a Cursor
     /// plan at 0.2% — unless it is the one being drawn on.
     public var extra = false
+    /// Set for a balance the account holds rather than a limit it runs into —
+    /// Codex credits, a credit Anthropic gave. Shown as an amount under the
+    /// card's arrow, never up front.
+    public var credit: CreditAmount?
 
     public init(
         title: String,
@@ -673,6 +684,23 @@ public struct UsageWindow: Sendable, Identifiable {
             return .long
         }
         return seconds < 86_400 ? .short : .long
+    }
+}
+
+/// What a credit row says: the amount at its end, a line beneath, and when
+/// what is left runs out.
+public struct CreditAmount: Sendable, Equatable, Codable {
+    /// "62,500 credits", "$225.00".
+    public var amount: String
+    /// "Used $25.00 of $250.00"; nil for nothing more to say.
+    public var caption: String?
+    /// Nil when the provider gives no deadline.
+    public var expiresAt: Date?
+
+    public init(amount: String, caption: String? = nil, expiresAt: Date? = nil) {
+        self.amount = amount
+        self.caption = caption
+        self.expiresAt = expiresAt
     }
 }
 
@@ -849,9 +877,9 @@ public struct UsageSnapshot: Sendable {
         edition.map { KimiEdition(rawValue: $0)?.label ?? $0 }
     }
 
-    /// "API key", "Kimi Code 本机登录".
+    /// "API key", "Kimi Code 本机登录", "Gemini CLI".
     public var sourceLabel: String? {
-        source.map { KimiSource(rawValue: $0)?.label ?? $0 }
+        source.map { $0 == "gemini-cli" ? "Gemini CLI" : KimiSource(rawValue: $0)?.label ?? $0 }
     }
 
     /// The chip beside the provider's name: the plan and the edition, either
@@ -1055,6 +1083,26 @@ public enum QuotaFormat {
         formatter.groupingSeparator = ","
         formatter.decimalSeparator = "."
         formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+        return formatter
+    }()
+
+    /// "62,500", "12.4" — a count with its thousands grouped, up to two
+    /// decimals, in the same separators as `usd`.
+    public static func grouped(_ value: Double) -> String {
+        groupedFormatter.string(from: NSNumber(value: value)) ?? String(format: "%.0f", value)
+    }
+
+    public static func grouped(_ value: Int) -> String {
+        grouped(Double(value))
+    }
+
+    private static let groupedFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = true
+        formatter.groupingSeparator = ","
+        formatter.decimalSeparator = "."
         formatter.maximumFractionDigits = 2
         return formatter
     }()
