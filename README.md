@@ -50,9 +50,26 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.19** (2026-09-24) · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.20** (2026-10-01) · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-10-01</b> · 0.5.20 · 3 added · 3 changed</summary>
+
+**Added**
+
+- The Claude card shows its limit resets too: how many early resets Anthropic has given the account and when each runs out, in the same Early resets row as Codex under the card's arrow, with what each one resets and its deadline on hover. A new reset, or one with less than a day left unspent, brings a notification that says to use it with /limit-reset in Claude Code. Anthropic lists resets only to a current Claude Code, so QuotaBar asks with the version of Claude Code installed on this Mac; the count is read every 15 minutes, and again straight away when limits refill early because a reset was just used.
+- The Claude card shows credit Anthropic has given the account, such as the Cloud session credit: its name with the amount left at the end, and beneath it how much is used and when it runs out; the one-time Claude Code and Cowork credit is shown the same way. They are counted apart from the plan's limits and are never the figure the menu bar or the island follows on its own.
+- Under Early resets, each reset is listed by name (Claude calls it Full reset) with its deadline; a click switches between a countdown and the time.
+
+**Changed**
+
+- Codex's Pro plans go by ChatGPT's current names: Pro 100 and Pro 200, plus the new Pro 500 (they were shown as Pro 5x and Pro 20x). On Quota Run, runs under the old names join the boards of the new ones, and their links keep working.
+- Codex credits read as a grouped number, "62,500 credits", and sit under the card's arrow with the early resets: the name with the amount at the end, and beneath it how many were given and when they run out ("Given 62,500 credits · expires Jan 1, 2027"); the hover says roughly how many local messages they are worth. Folded, the card shows only the plan's limits.
+- Gemini and Antigravity are one card. Google stopped serving the Gemini CLI to personal accounts (free, Google AI Pro and Ultra) on June 18, 2026 and moved them to Antigravity, so the two cards showed one account twice. The Antigravity card now reads the Antigravity app, then the sign-in token it saved, then a Gemini CLI sign-in (Code Assist Standard and Enterprise accounts still use it), and says when the reading came from the Gemini CLI. If you had Gemini on, Antigravity is on instead, and pins to the island or the dock move with it.
+
+</details>
+
+<details>
 <summary><b>2026-09-23</b> · 0.5.19 · 1 added</summary>
 
 **Added**
@@ -67,17 +84,6 @@ Latest release **0.5.19** (2026-09-24) · [full changelog](CHANGELOG.en.md)
 **Fixed**
 
 - Codex's logo came on a white rounded tile, which sat on the black dock, island and desktop cards like a sticker. It is now the blue mark alone with a white ">_", the same on dark and light surfaces.
-
-</details>
-
-<details>
-<summary><b>2026-09-23</b> · 0.5.17 · 3 added</summary>
-
-**Added**
-
-- A new iPhone section in Settings sends your readings to your own iCloud, for QuotaBar for iPhone and its home- and lock-screen widgets (free on the App Store; the section links to it). It is off until you turn on "Send readings to iPhone". Only the results go — plans, figures, reset times, balances, the last error, and what a card shows under its arrow: spend for today, yesterday and 30 days with its models (in the currency you chose on the Mac), a month of usage, and the console link; sign-ins, tokens and API keys never leave the Mac. The readings are end-to-end encrypted in your private iCloud database, where nobody else, us included, can read them. A refresh that changed something is sent straight away, and otherwise every 20 minutes so the phone knows the Mac is awake. With several Macs each keeps its own copy and the phone shows the newest reading per provider. Turning it off removes this Mac's readings from iCloud. While it is on, "Refresh now" on the phone has the Mac read every provider within half a minute and send the result straight back; refreshes the phone asks for are at least a minute apart, and a request older than ten minutes is ignored. The section shows the sync status and any error in plain sight, with a Sync now button.
-- Settings → iPhone gains "Through Quota Run": readings on an iPhone signed in to another iCloud account than this Mac. Sign in to the same Quota Run account in QuotaBar on the phone and it shows up here (with a notification); allow it once the six-digit code matches the one on the phone. The readings are end-to-end encrypted on this Mac for the phones you allow — quota.run only passes them on and cannot read them — and nothing is sent until you allow one. Revoking a phone switches to a new key at once, so it cannot open anything sent afterwards, and the phones still allowed get the new key. "Ask the Mac to refresh" on the phone arrives this way too; one press arriving by iCloud and by quota.run refreshes once.
-- Settings → iPhone now reads "through your iCloud or your Quota Run account".
 
 </details>
 
