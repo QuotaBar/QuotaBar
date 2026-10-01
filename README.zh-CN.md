@@ -64,7 +64,7 @@ Gatekeeper 可以直接打开。
 
 - Codex 的 Pro 套餐改用 ChatGPT 现在的叫法：Pro 100、Pro 200，并新增 Pro 500（原来显示为 Pro 5x、Pro 20x）。Quota Run 排行榜里旧名的成绩自动并入新名的榜，链接不变。
 - Codex 的额度点数（credits）显示为「62,500 点」这样带千分位的数字，放在卡片展开后，和限额重置次数一起：名称后面是数量，下一行是其中赠送了多少和到期时间（例如「赠送 62,500 点 · 2027年1月1日到期」），悬停说明大约够在本地发多少条消息。卡片收起时只显示套餐额度。
-- Gemini 和 Antigravity 合成一张卡。Google 已在 2026 年 6 月 18 日停止为个人用户（免费、Google AI Pro、Ultra）提供 Gemini CLI，这些账号改用 Antigravity，原来两张卡显示的是同一个账号。现在 Antigravity 卡先读 Antigravity 应用，再读它保存的登录令牌，最后读 Gemini CLI 的登录（仍可用 Gemini CLI 的企业版 Code Assist 账号），卡片上标出是从 Gemini CLI 读到的。之前启用了 Gemini 的，会自动改为启用 Antigravity，钉到刘海岛、停靠条的设置也跟着过去。
+- Gemini 和 Antigravity 合成一张卡。Google 已在 2026 年 6 月 18 日停止为个人用户（免费、Google AI Pro、Ultra）提供 Gemini CLI，这些账号改用 Antigravity，原来两张卡显示的是同一个账号。现在 Antigravity 卡先读 Antigravity 应用；应用没开时改问 Antigravity CLI（`agy`，用它的 `/usage` 报告，不发提问、不耗额度，每 5 分钟最多问一次），然后读它保存的登录令牌，最后读 Gemini CLI 的登录（仍可用 Gemini CLI 的企业版 Code Assist 账号）。只装了 `agy`、没装应用也能用。卡片上会标出读数来自 Antigravity CLI 还是 Gemini CLI。之前启用了 Gemini 的，会自动改为启用 Antigravity，钉到刘海岛、停靠条的设置也跟着过去。
 
 </details>
 
@@ -109,9 +109,8 @@ Gatekeeper 可以直接打开。
 |---|---|---|
 | Codex | `~/.codex/auth.json` OAuth → `chatgpt.com/backend-api/wham/usage` | 自动 |
 | Claude | Claude Code 钥匙串项 → `api.anthropic.com/api/oauth/usage` | 自动 |
-| Gemini | `~/.gemini/oauth_creds.json` → `cloudcode-pa.googleapis.com` | 自动 |
 | Grok | `~/.grok/auth.json` → `cli-chat-proxy.grok.com/v1/billing` | 自动 / 手动 |
-| Antigravity | `~/.gemini/jetski-standalone-oauth-token` → `cloudcode-pa.googleapis.com` | 自动 |
+| Antigravity | 正在运行的应用的语言服务，其次 `~/.gemini/jetski-standalone-oauth-token`，再次 Gemini CLI 的 `~/.gemini/oauth_creds.json` → `cloudcode-pa.googleapis.com` | 自动 |
 | Cursor | Cursor 自己的 `state.vscdb` 会话 → `cursor.com/api/usage-summary` | 自动 / 手动 |
 | OpenCode Go | `~/.local/share/opencode/auth.json` → `opencode.ai/zen/go/v1/usage` | 自动 / 手动 |
 | Kimi Code | Kimi Code 应用 / CLI 登录（`~/.kimi-code/credentials`）→ `api.kimi.com` / `api.kimi.ai` `/coding/v1/usages`，或用 `kimi-auth` JWT 读 `kimi.com` 计费网关 | 自动 / 手动 |
@@ -220,8 +219,8 @@ curl http://127.0.0.1:6736/v1/spend    # 今日、昨日、30 天的花费和 to
 ## 首次使用
 
 1. 全新安装时，QuotaBar 只开启本机已登录工具对应的服务商，并在面板里用一张欢迎卡片告诉你开启了几个。
-2. 自动型服务商需要对应的命令行工具已登录（`codex`、`claude`、`gemini`、`grok`、`gh`），
-   或已安装对应应用（Cursor、Windsurf）。
+2. 自动型服务商需要对应的命令行工具已登录（`codex`、`claude`、`grok`、`gh`），
+   或已安装对应应用（Antigravity、Cursor、Windsurf）。
 3. 手动型服务商：打开「设置 → 服务商」，按该行下方的说明粘贴 token，然后点**测试连接**，
    它会跳过所有缓存，直接向数据源请求。
 

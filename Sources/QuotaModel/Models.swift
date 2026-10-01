@@ -496,8 +496,8 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
             "Sign in with the grok CLI or paste a token in Settings.",
             "用 grok CLI 登录，或在设置中粘贴 token。")
         case .antigravity: return L10n.t(
-            "Open Antigravity and sign in. While it runs, the quota is read from the app itself; closed, from the sign-in token it saved, which lasts an hour. A Gemini CLI sign-in (Code Assist Standard or Enterprise) is read too.",
-            "打开 Antigravity 并登录。它运行时直接向它读取额度；关着时读它保存的登录令牌，令牌只有一小时有效。用 Gemini CLI 登录的企业版（Code Assist Standard / Enterprise）也会读取。")
+            "Open Antigravity and sign in, or run the Antigravity CLI (`agy`) once and sign in. While the app runs, the quota is read from the app itself; otherwise from `agy`, then from the sign-in token the app saved, which lasts an hour. A Gemini CLI sign-in (Code Assist Standard or Enterprise) is read too.",
+            "打开 Antigravity 并登录，或者运行一次 Antigravity CLI（`agy`）并登录。应用运行时直接向它读取额度；否则向 `agy` 读取，再不行读应用保存的登录令牌（只有一小时有效）。用 Gemini CLI 登录的企业版（Code Assist Standard / Enterprise）也会读取。")
         case .volcengine: return L10n.t(
             "Install arkcli and run `arkcli auth login`.",
             "安装 arkcli 并运行 `arkcli auth login` 登录。")
@@ -879,7 +879,13 @@ public struct UsageSnapshot: Sendable {
 
     /// "API key", "Kimi Code 本机登录", "Gemini CLI".
     public var sourceLabel: String? {
-        source.map { $0 == "gemini-cli" ? "Gemini CLI" : KimiSource(rawValue: $0)?.label ?? $0 }
+        source.map { source in
+            switch source {
+            case "gemini-cli": "Gemini CLI"
+            case "agy": "Antigravity CLI"
+            default: KimiSource(rawValue: source)?.label ?? source
+            }
+        }
     }
 
     /// The chip beside the provider's name: the plan and the edition, either

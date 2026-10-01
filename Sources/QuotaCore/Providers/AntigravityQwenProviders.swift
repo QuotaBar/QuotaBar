@@ -14,8 +14,8 @@ public struct AntigravityProvider: QuotaProvider {
     static let base = "https://cloudcode-pa.googleapis.com/v1internal"
 
     public func isConfigured(config: ConfigStore) -> Bool {
-        AntigravityLocal.isInstalled || LocalCredentials.antigravityToken() != nil
-            || LocalCredentials.geminiAccessToken() != nil
+        AntigravityLocal.isInstalled || AntigravityCLI.executable() != nil
+            || LocalCredentials.antigravityToken() != nil || LocalCredentials.geminiAccessToken() != nil
     }
 
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
@@ -23,6 +23,8 @@ public struct AntigravityProvider: QuotaProvider {
         // needs no token: the one on disk is an hour old at most (issue #4).
         let local = await AntigravityLocal.read()
         if case let .quota(snapshot) = local { return snapshot }
+        // Closed, or never installed: the CLI reports the same quota.
+        if let snapshot = await AntigravityCLI.read() { return snapshot }
 
         // Written at sign-in and never refreshed; refreshing it would take the
         // app's own OAuth client.

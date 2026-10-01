@@ -59,10 +59,13 @@ enum ToolRunner {
         return searchPaths.map { "\($0)/\(name)" }.first { fm.isExecutableFile(atPath: $0) }
     }
 
-    static func run(_ path: String, _ arguments: [String], timeout: TimeInterval = 20) -> (status: Int32, output: Data)? {
+    static func run(
+        _ path: String, _ arguments: [String], timeout: TimeInterval = 20, in directory: URL? = nil) -> (status: Int32, output: Data)?
+    {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
         process.arguments = arguments
+        process.currentDirectoryURL = directory
         var environment = ProcessInfo.processInfo.environment
         environment["PATH"] = (searchPaths + [environment["PATH"] ?? ""]).joined(separator: ":")
         environment["NO_COLOR"] = "1"

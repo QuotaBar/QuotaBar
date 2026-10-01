@@ -39,6 +39,9 @@ struct ProviderDetail: View {
                         if let credits = snapshot.resetCredits, credits.isShown {
                             ResetCreditsSection(credits: credits, accent: accent)
                         }
+                        if snapshot.windows.contains(where: { $0.credit != nil }) {
+                            CreditsSection(windows: snapshot.windows.filter { $0.credit != nil }, accent: accent)
+                        }
                         if let balance = snapshot.balance, !balance.balances.isEmpty {
                             BalanceSection(balance: balance)
                         }
@@ -151,10 +154,11 @@ struct ProviderDetail: View {
     private func windows(_ snapshot: UsageSnapshot) -> some View {
         Section(L10n.t("Limits", "额度")) {
             VStack(alignment: .leading, spacing: 14) {
-                ForEach(snapshot.windows.filter { $0.usedPercent != nil }) { window in
+                // Balances have a section of their own below.
+                ForEach(snapshot.windows.filter { $0.usedPercent != nil && $0.credit == nil }) { window in
                     WindowRow(window: window, pace: .always)
                 }
-                ForEach(snapshot.windows.filter { $0.usedPercent == nil && $0.detail != nil }) { window in
+                ForEach(snapshot.windows.filter { $0.usedPercent == nil && $0.detail != nil && $0.credit == nil }) { window in
                     HStack {
                         Text(window.displayName).foregroundStyle(.secondary)
                         Spacer()
@@ -353,17 +357,67 @@ private struct ResetCreditsSection: View {
                         .fontWeight(.semibold)
                         .foregroundStyle(credits.available > 0 ? accent : .secondary)
                 }
-                ForEach(Array(credits.credits.compactMap(\.expiresAt).prefix(5).enumerated()), id: \.offset) { _, date in
+                // Each by the name its provider gives it — Claude's Full
+                // reset — with its deadline.
+                ForEach(Array(credits.credits.filter { $0.expiresAt != nil }.prefix(5).enumerated()), id: \.offset) { _, credit in
                     HStack {
-                        Text(L10n.t("Expires", "到期")).foregroundStyle(.secondary)
+                        Text(credit.title ?? L10n.t("Expires", "到期")).foregroundStyle(.secondary)
                         Spacer()
-                        Text(date.formatted(.dateTime.month().day().hour().minute().locale(L10n.locale)))
-                            .monospacedDigit()
+                        if let date = credit.expiresAt {
+                            Text(L10n.t("expires \(deadline(date))", "\(deadline(date)) 到期"))
+                                .monospacedDigit()
+                        }
                     }
                     .font(.caption)
                 }
             }
             .font(.subheadline)
+        }
+    }
+}
+
+/// "Oct 22, 16:00", "10月22日 16:00".
+private func deadline(_ date: Date) -> String {
+    date.formatted(.dateTime.month().day().hour().minute().locale(L10n.locale))
+}
+
+/// Balances the account holds — Codex credits, a credit Anthropic gave —
+/// each with the amount left, what it is and when it runs out.
+private struct CreditsSection: View {
+    let windows: [UsageWindow]
+    let accent: Color
+
+    var body: some View {
+        Section(L10n.t("Credits", "额度与赠送")) {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(windows) { window in
+                    if let credit = window.credit {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text(window.displayName)
+                                Spacer()
+                                Text(credit.amount)
+                                    .monospacedDigit()
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(accent)
+                            }
+                            .font(.subheadline)
+                            if credit.caption != nil || credit.expiresAt != nil {
+                                HStack {
+                                    Text(credit.caption ?? "")
+                                    Spacer()
+                                    if let date = credit.expiresAt {
+                                        Text(L10n.t("expires \(deadline(date))", "\(deadline(date)) 到期"))
+                                            .monospacedDigit()
+                                    }
+                                }
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

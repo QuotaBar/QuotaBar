@@ -65,7 +65,7 @@ Latest release **0.5.20** (2026-10-01) · [full changelog](CHANGELOG.en.md)
 
 - Codex's Pro plans go by ChatGPT's current names: Pro 100 and Pro 200, plus the new Pro 500 (they were shown as Pro 5x and Pro 20x). On Quota Run, runs under the old names join the boards of the new ones, and their links keep working.
 - Codex credits read as a grouped number, "62,500 credits", and sit under the card's arrow with the early resets: the name with the amount at the end, and beneath it how many were given and when they run out ("Given 62,500 credits · expires Jan 1, 2027"); the hover says roughly how many local messages they are worth. Folded, the card shows only the plan's limits.
-- Gemini and Antigravity are one card. Google stopped serving the Gemini CLI to personal accounts (free, Google AI Pro and Ultra) on June 18, 2026 and moved them to Antigravity, so the two cards showed one account twice. The Antigravity card now reads the Antigravity app, then the sign-in token it saved, then a Gemini CLI sign-in (Code Assist Standard and Enterprise accounts still use it), and says when the reading came from the Gemini CLI. If you had Gemini on, Antigravity is on instead, and pins to the island or the dock move with it.
+- Gemini and Antigravity are one card. Google stopped serving the Gemini CLI to personal accounts (free, Google AI Pro and Ultra) on June 18, 2026 and moved them to Antigravity, so the two cards showed one account twice. The Antigravity card now reads the Antigravity app, with the app closed asks the Antigravity CLI (`agy`, through its `/usage` report, which sends no prompt and spends nothing, at most every 5 minutes), then the sign-in token the app saved, then a Gemini CLI sign-in (Code Assist Standard and Enterprise accounts still use it). `agy` alone, without the app, is enough. The card says when the reading came from the Antigravity CLI or the Gemini CLI. If you had Gemini on, Antigravity is on instead, and pins to the island or the dock move with it.
 
 </details>
 
@@ -110,9 +110,8 @@ Latest release **0.5.20** (2026-10-01) · [full changelog](CHANGELOG.en.md)
 |---|---|---|
 | Codex | `~/.codex/auth.json` OAuth → `chatgpt.com/backend-api/wham/usage` | automatic |
 | Claude | Claude Code keychain item → `api.anthropic.com/api/oauth/usage` | automatic |
-| Gemini | `~/.gemini/oauth_creds.json` → `cloudcode-pa.googleapis.com` | automatic |
 | Grok | `~/.grok/auth.json` → `cli-chat-proxy.grok.com/v1/billing` | automatic / manual |
-| Antigravity | `~/.gemini/jetski-standalone-oauth-token` → `cloudcode-pa.googleapis.com` | automatic |
+| Antigravity | the running app's language server, else `~/.gemini/jetski-standalone-oauth-token`, else the Gemini CLI's `~/.gemini/oauth_creds.json` → `cloudcode-pa.googleapis.com` | automatic |
 | Cursor | Cursor's own `state.vscdb` session → `cursor.com/api/usage-summary` | automatic / manual |
 | OpenCode Go | `~/.local/share/opencode/auth.json` → `opencode.ai/zen/go/v1/usage` | automatic / manual |
 | Kimi Code | Kimi Code app / CLI sign-in (`~/.kimi-code/credentials`) → `api.kimi.com` / `api.kimi.ai` `/coding/v1/usages`, or the `kimi.com` billing gateway with a `kimi-auth` JWT | automatic / manual |
@@ -233,8 +232,8 @@ No credentials, no account names. From a terminal, the same limits without the a
 
 1. On a fresh install QuotaBar turns on only the providers whose tools it finds signed in
    on this Mac, and a welcome card in the panel says how many.
-2. Automatic providers need the matching CLI signed in (`codex`, `claude`, `gemini`,
-   `grok`, `gh`) or the app installed (Cursor, Windsurf).
+2. Automatic providers need the matching CLI signed in (`codex`, `claude`, `grok`,
+   `gh`) or the app installed (Antigravity, Cursor, Windsurf).
 3. Manual providers: open Settings → **Providers**, paste the token described under the
    row, then **Test connection** — it bypasses every cache and asks the source directly.
 
