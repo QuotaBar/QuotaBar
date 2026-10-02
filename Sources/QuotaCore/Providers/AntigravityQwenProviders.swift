@@ -298,7 +298,11 @@ public struct QwenProvider: QuotaProvider {
     public static func parse(_ data: Data, subscription: Data? = nil, now: Date = Date()) throws -> UsageSnapshot {
         guard let raw = try? JSONSerialization.jsonObject(with: data) else { throw ProviderError.badResponse }
         let expanded = expandEmbeddedJSON(raw)
-        guard let usage = findObject(containingAnyOf: ["per5HourPercentage", "per1WeekPercentage"], in: expanded) else {
+        // Personal and Solo Token Plans report one monthly window and nothing
+        // else (`per1MonthPercentage`, as the console's Monthly usage shows).
+        guard let usage = findObject(
+            containingAnyOf: ["per5HourPercentage", "per1WeekPercentage", "per1MonthPercentage"], in: expanded)
+        else {
             if String(decoding: data, as: UTF8.self).lowercased().contains("login") { throw ProviderError.unauthorized }
             throw ProviderError.badResponse
         }
@@ -316,6 +320,13 @@ public struct QwenProvider: QuotaProvider {
                 usedPercent: percent(ratio),
                 resetsAt: date(usage["per1WeekResetTime"]),
                 windowSeconds: 7 * 86_400))
+        }
+        if let ratio = number(usage["per1MonthPercentage"]) {
+            windows.append(UsageWindow(
+                title: L10n.t("Monthly window", "月窗口"),
+                usedPercent: percent(ratio),
+                resetsAt: date(usage["per1MonthResetTime"]),
+                windowSeconds: 2_592_000))
         }
         guard !windows.isEmpty else { throw ProviderError.badResponse }
         return UsageSnapshot(planName: subscription.flatMap(planName), windows: windows)

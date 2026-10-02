@@ -891,7 +891,10 @@ public struct ZaiProvider: QuotaProvider {
             "Authorization": "Bearer \(key)",
             "Accept": "application/json",
         ]).requireOK()
+        return try parseQuota(response.data, host: host)
+    }
 
+    static func parseQuota(_ data: Data, host: String) throws -> UsageSnapshot {
         struct Limit: Decodable {
             let type: String?
             let percentage: Double?
@@ -906,19 +909,39 @@ public struct ZaiProvider: QuotaProvider {
         }
         struct Body: Decodable {
             let data: DataBody?
+            let msg: String?
+            let message: String?
         }
 
-        let body = try response.json(Body.self)
-        guard let limits = body.data?.limits else { throw ProviderError.badResponse }
+        guard let body = try? JSONDecoder().decode(Body.self, from: data) else { throw ProviderError.badResponse }
+        // A key whose account has no Coding Plan — or a plan the endpoint
+        // has no figures for — answers with no limits at all; said as that,
+        // with the endpoint's own words when it gives some, rather than as a
+        // reply that could not be read.
+        guard let limits = body.data?.limits, !limits.isEmpty else {
+            let site = host.contains("bigmodel") ? "bigmodel.cn" : "z.ai"
+            let trimmed = (body.msg ?? body.message)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let said = trimmed?.isEmpty == false ? trimmed : nil
+            throw ProviderError.noPlan(L10n.t(
+                "This key's account has no Coding Plan usage to read\(said.map { " (\($0))" } ?? ""). Check the usage page on \(site).",
+                "这个 Key 对应的账号没有可读的 Coding Plan 用量\(said.map { "（\($0)）" } ?? "")，可以到 \(site) 的用量页查看。"))
+        }
 
-        // z.ai encodes the window as (unit, number); minutes per unit code.
-        let unitMinutes: [Int: Int] = [0: 1, 1: 60, 2: 1440, 3: 10_080, 4: 43_200, 5: 43_800]
+        // z.ai encodes the window as (unit, number): 1 is a day, 3 an hour,
+        // 5 a minute, 6 a week — the Coding Plan's 5-hour limit is (3, 5).
+        // The mapping before read 3 as a week, so that limit showed as five
+        // weeks. TIME_LIMIT with (5, 1) is the monthly allowance of MCP calls
+        // (web search, reader), not a one-minute window.
+        let unitMinutes: [Int: Int] = [1: 1440, 3: 60, 5: 1, 6: 10_080]
         var windows: [UsageWindow] = []
         for limit in limits {
-            let minutes = (limit.number ?? 0) * (unitMinutes[limit.unit ?? -1] ?? 0)
-            let title = minutes > 0
-                ? WindowTitle.forMinutes(minutes)
-                : (limit.type ?? L10n.t("Quota", "额度"))
+            let isMCP = limit.type == "TIME_LIMIT"
+            let minutes = isMCP && limit.unit == 5 && limit.number == 1
+                ? 43_200
+                : (limit.number ?? 0) * (unitMinutes[limit.unit ?? -1] ?? 0)
+            let title = isMCP
+                ? L10n.t("MCP calls", "MCP 调用")
+                : minutes > 0 ? WindowTitle.forMinutes(minutes) : (limit.type ?? L10n.t("Quota", "额度"))
             windows.append(UsageWindow(
                 title: title,
                 usedPercent: limit.percentage,

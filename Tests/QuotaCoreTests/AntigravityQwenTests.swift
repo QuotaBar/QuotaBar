@@ -61,6 +61,24 @@ final class AntigravityParsingTests: XCTestCase {
 }
 
 final class QwenParsingTests: XCTestCase {
+    /// Personal and Solo Token Plans have one monthly window and nothing else
+    /// (the shape CodexBar recorded for them, issue 2349 there).
+    func testAMonthlyOnlyTokenPlanIsRead() throws {
+        let data = Data(#"{"data":{"DataV2":{"data":{"data":{"per1MonthPercentage":0.25,"per1MonthResetTime":1791043200000}}}}}"#.utf8)
+        let snapshot = try QwenProvider.parse(data)
+        XCTAssertEqual(snapshot.windows.count, 1)
+        XCTAssertEqual(snapshot.windows[0].usedPercent, 25)
+        XCTAssertEqual(snapshot.windows[0].windowSeconds, 2_592_000)
+        XCTAssertEqual(snapshot.windows[0].resetsAt, Date(timeIntervalSince1970: 1_791_043_200), "milliseconds")
+    }
+
+    func testTheMonthlyWindowJoinsTheRollingOnes() throws {
+        let data = Data(#"{"per5HourPercentage":0.1,"per1WeekPercentage":0.2,"per1MonthPercentage":0.3}"#.utf8)
+        let snapshot = try QwenProvider.parse(data)
+        XCTAssertEqual(snapshot.windows.map(\.windowSeconds), [18_000, 604_800, 2_592_000])
+        XCTAssertEqual(snapshot.windows.map { $0.usedPercent.map { ($0 * 10).rounded() / 10 } }, [10, 20, 30])
+    }
+
     func testEmbeddedJSONUsageBecomesTwoWindows() throws {
         let inner = #"{"code":0,"data":{"per5HourPercentage":0.03,"per5HourResetTime":1700003600000,"per1WeekPercentage":0.01,"per1WeekResetTime":1700086400000},"success":true}"#
         let payload: [String: Any] = ["data": ["DataV2": ["data": inner]]]
