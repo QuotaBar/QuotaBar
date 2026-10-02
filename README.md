@@ -50,9 +50,18 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.20** (2026-10-01) · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.20** (2026-10-01) · **1** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-10-02</b> · Unreleased · 1 fixed</summary>
+
+**Fixed**
+
+- Grok said "Provider response could not be parsed." at the start of a week, before anything was used. xAI's billing reply leaves the usage figure out when it is zero; it now reads as 0% used, with the week's reset as usual.
+
+</details>
+
+<details>
 <summary><b>2026-10-01</b> · 0.5.20 · 3 added · 3 changed</summary>
 
 **Added**
@@ -75,15 +84,6 @@ Latest release **0.5.20** (2026-10-01) · [full changelog](CHANGELOG.en.md)
 **Added**
 
 - Several Codex accounts. Sign in to each with `codex login`, then save it under Settings → Providers → Codex with "Save Current Account", or from "Codex Accounts" in the Codex card's right-click menu. After that one click switches the account Codex uses, with no signing in again: the account you leave is saved first, with whatever tokens the CLI last refreshed, then ~/.codex/auth.json is rewritten, and the file it replaces is kept as a backup. Under the Codex card's arrow, Accounts lists every saved account with the limit that runs out first and when it resets; the one in use is marked In use, and the menu bar and the island follow it as before. The account in use is refreshed by the Codex CLI alone and the others by QuotaBar near their expiry, so the two never spend the same refresh token; an account whose sign-in has lapsed says to sign in to it again. Saved sign-ins stay in this Mac's keychain and are not synced to iPhone. Codex sessions already running keep the old account until restarted. ([#6](https://github.com/QuotaBar/QuotaBar/issues/6))
-
-</details>
-
-<details>
-<summary><b>2026-09-23</b> · 0.5.18 · 1 fixed</summary>
-
-**Fixed**
-
-- Codex's logo came on a white rounded tile, which sat on the black dock, island and desktop cards like a sticker. It is now the blue mark alone with a white ">_", the same on dark and light surfaces.
 
 </details>
 

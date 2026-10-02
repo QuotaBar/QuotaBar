@@ -83,6 +83,25 @@ final class GrokBillingTests: XCTestCase {
         XCTAssertNil(credits.scope)
     }
 
+    /// Recorded live, October 2026: a week with nothing used yet. Protobuf
+    /// JSON leaves the zero out, so there is no `creditUsagePercent`.
+    func testAWeekWithNothingUsedReadsAsZero() throws {
+        let unused = """
+        {"config":{"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY",
+          "start":"2026-09-30T18:04:26.137506+00:00","end":"2026-10-07T18:04:26.137506+00:00"},
+          "onDemandCap":{"val":0},"onDemandUsed":{"val":0},"isUnifiedBillingUser":true,"prepaidBalance":{"val":0},
+          "topUpMethod":"TOP_UP_METHOD_SAVED_PAYMENT_METHOD",
+          "billingPeriodStart":"2026-09-30T18:04:26.137506+00:00","billingPeriodEnd":"2026-10-07T18:04:26.137506+00:00"}}
+        """
+        let snapshot = try GrokProvider.parse(Data(unused.utf8))
+        XCTAssertEqual(snapshot.windows.count, 1)
+        XCTAssertEqual(snapshot.windows.first?.usedPercent, 0)
+        XCTAssertEqual(snapshot.windows.first?.windowSeconds, 7 * 86_400)
+        XCTAssertNotNil(snapshot.windows.first?.resetsAt)
+        XCTAssertThrowsError(try GrokProvider.parse(Data(#"{"config":{"onDemandCap":{"val":0}}}"#.utf8)),
+                             "no period and no figure is still nothing to show")
+    }
+
     func testEachProductBecomesAScopedWindowWithItsOwnId() throws {
         let snapshot = try GrokProvider.parse(Data(body.utf8))
         let scoped = snapshot.windows.filter { $0.scope != nil }

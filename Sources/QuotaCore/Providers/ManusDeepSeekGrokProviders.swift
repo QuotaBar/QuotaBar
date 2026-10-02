@@ -510,7 +510,12 @@ public struct GrokProvider: QuotaProvider {
         let (title, seconds) = periodLabel(configBody.currentPeriod?.type)
 
         var windows: [UsageWindow] = []
-        if let percent = configBody.creditUsagePercent {
+        // The reply is protobuf JSON, which leaves out a number that is zero:
+        // a week with nothing used yet comes with its period and no
+        // `creditUsagePercent` at all (seen on a unified-billing account,
+        // October 2026). A period with no figure is a period at 0%.
+        let percent = configBody.creditUsagePercent ?? (configBody.currentPeriod?.type != nil ? 0 : nil)
+        if let percent {
             windows.append(UsageWindow(
                 title: title,
                 usedPercent: percent,

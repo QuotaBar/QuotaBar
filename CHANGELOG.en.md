@@ -3,6 +3,14 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
+## Unreleased
+
+### 2026-10-02
+
+#### Fixed
+
+- Grok said "Provider response could not be parsed." at the start of a week, before anything was used. xAI's billing reply leaves the usage figure out when it is zero; it now reads as 0% used, with the week's reset as usual.
+
 ## 0.5.20 · 2026-10-01
 
 ### 2026-10-01
