@@ -10,6 +10,9 @@ Server moves, the website, and build or release scripts don't change the app its
 #### Fixed
 
 - Grok said "Provider response could not be parsed." at the start of a week, before anything was used. xAI's billing reply leaves the usage figure out when it is zero; it now reads as 0% used, with the week's reset as usual.
+- z.ai and Zhipu (bigmodel.cn) Coding Plans showed their 5-hour limit as a five-week one: its title, pace and reset alerts all went by five weeks. The endpoint's time-unit code was read wrong (3 is an hour, not a week); it now shows as 5 hours, and the monthly MCP calls (web search, reader) show on their own as "MCP calls".
+- A z.ai or Zhipu key with no Coding Plan usage to read said "Provider response could not be parsed." or showed an empty card; it now says the account has no usage to read, with the endpoint's reason when it gives one.
+- Qwen Token Plan Personal and Solo plans have only a monthly allowance, which could not be read and showed as a parse failure; it now shows as a monthly window with its reset, and plans with 5-hour, weekly and monthly allowances show all three.
 
 ## 0.5.20 · 2026-10-01
 
