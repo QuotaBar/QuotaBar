@@ -49,10 +49,10 @@ Gatekeeper 可以直接打开。
 <!-- changelog:start -->
 <!-- 由 Scripts/sync_changelog.py 从 CHANGELOG.md 生成，请勿手改。 -->
 
-最新版本 **0.5.21**（2026-10-02） · 开发中 **1** 项改动尚未发布 · [完整更新日志](CHANGELOG.md)
+最新版本 **0.5.22**（2026-10-02） · [完整更新日志](CHANGELOG.md)
 
 <details open>
-<summary><b>2026-10-02</b> · 未发布 · 修复 1</summary>
+<summary><b>2026-10-02</b> · 0.5.22 · 修复 1</summary>
 
 **修复**
 
