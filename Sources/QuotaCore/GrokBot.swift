@@ -25,26 +25,31 @@ public enum GrokBot {
         let usagePercent: Double?
         let hasAvailableUsage: Bool?
         let hasNonZeroIncludedLimit: Bool?
-        /// `SAND_BILLING_BRAND_CURSOR` for an allowance a Cursor plan pays
-        /// for. Newer than the schema Grok Bot 0.58 ships with, so its other
-        /// values are not on record: one naming Grok or xAI counts as Grok's.
+        /// Whose billing system runs the allowance. It says
+        /// `SAND_BILLING_BRAND_CURSOR` for a SuperGrok-included allowance too
+        /// (seen live, October 2026, on a Cursor Free account), so it is not
+        /// who pays; a value naming Grok or xAI still counts as Grok's.
         let billingBrand: String?
-        /// The SuperGrok tier ("SuperGrok Plus") when a linked SuperGrok
-        /// subscription is what includes the allowance.
+        /// The SuperGrok tier ("supergrok") when a linked SuperGrok
+        /// subscription is what includes the allowance — who pays.
         let includedUsageSuperGrokPlan: String?
+        /// The tier as Grok names it, "SuperGrok".
+        let grokPlanLabel: String?
 
         var billing: Billing {
+            if superGrokPlan != nil { return .grok }
             let brand = billingBrand?.uppercased() ?? ""
             if brand.contains("GROK") || brand.contains("XAI") || brand.contains("X_AI") { return .grok }
-            if brand.contains("CURSOR") { return .cursor }
-            return superGrokPlan != nil ? .grok : .cursor
+            return .cursor
         }
 
+        /// "SuperGrok": Grok's own label when it gives one, else the tier id.
         var superGrokPlan: String? {
             guard let plan = includedUsageSuperGrokPlan?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !plan.isEmpty
             else { return nil }
-            return plan
+            let label = grokPlanLabel?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return label?.isEmpty == false ? label : plan
         }
     }
 

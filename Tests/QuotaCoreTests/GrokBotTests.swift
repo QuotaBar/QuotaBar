@@ -24,10 +24,13 @@ final class GrokBotTests: XCTestCase {
         XCTAssertEqual(try status(#"{"billingBrand":"SAND_BILLING_BRAND_CURSOR"}"#).billing, .cursor)
         XCTAssertEqual(try status(#"{"billingBrand":"SAND_BILLING_BRAND_GROK"}"#).billing, .grok)
         XCTAssertEqual(try status(#"{"billingBrand":"SAND_BILLING_BRAND_XAI"}"#).billing, .grok)
-        // Said outright, the brand wins over the SuperGrok field.
-        XCTAssertEqual(
-            try status(#"{"billingBrand":"SAND_BILLING_BRAND_CURSOR","includedUsageSuperGrokPlan":"SuperGrok"}"#).billing,
-            .cursor)
+        // Recorded live, October 2026: SuperGrok includes the allowance on a
+        // Cursor Free account, and the brand still says Cursor. SuperGrok pays.
+        let live = try status(#"{"currentPeriodStart":"2026-09-25T20:55:38.747Z","nextResetTimestampUtc":"2026-10-02T20:55:38.747Z","usagePercent":100,"hasAvailableUsage":true,"hasNonZeroIncludedLimit":true,"includedUsageSuperGrokPlan":"supergrok","grokPlanLabel":"SuperGrok","cursorPlanName":"Free","billingBrand":"SAND_BILLING_BRAND_CURSOR"}"#)
+        XCTAssertEqual(live.billing, .grok)
+        XCTAssertEqual(live.superGrokPlan, "SuperGrok")
+        XCTAssertEqual(GrokBot.window(live)?.usedPercent, 100)
+        XCTAssertEqual(GrokBot.window(live)?.windowSeconds, 7 * 86_400)
     }
 
     /// A Cursor-paid allowance on a Mac without a Cursor card — Cursor
