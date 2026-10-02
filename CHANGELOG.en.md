@@ -3,6 +3,14 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
+## Unreleased
+
+### 2026-10-02
+
+#### Fixed
+
+- The folded dock opened while the pointer was still well away from the small handle at the screen edge: nearness was judged by the full width of the open strip. It now opens only when the pointer reaches the handle, with 4 points to spare; once open, leaving the strip folds it as before.
+
 ## 0.5.21 · 2026-10-02
 
 ### 2026-10-02

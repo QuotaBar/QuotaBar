@@ -122,18 +122,34 @@ final class EdgeDockCoordinator {
 
     /// Click-through outside what is drawn: the folded window is mostly empty,
     /// and that emptiness must not swallow clicks meant for the window under it.
+    ///
+    /// It is also what opens the folded strip. The window is the open strip's
+    /// full size the whole time, so SwiftUI's hover saw the pointer anywhere
+    /// in that invisible area — far left of the handle — and the strip opened
+    /// before the pointer was anywhere near it. Folded, only the handle
+    /// itself, and a few points around it, opens it now.
     private func installMouseTracking() {
         let update: () -> Void = { [weak self] in
             guard let self, let panel = self.panel else { return }
             let point = NSEvent.mouseLocation
-            let live = self.expanded || self.alwaysVisible ? panel.frame : self.handleFrame
+            let open = self.expanded || self.alwaysVisible
+            let live = open ? panel.frame : self.handleFrame
             let inside = live.contains(point)
             if panel.ignoresMouseEvents == inside { panel.ignoresMouseEvents = !inside }
+            if !open, self.handleZone.contains(point) { self.openFromHandle?() }
         }
         mouseMonitors = MouseThrough.monitors(update: update)
         refreshMouseThrough = update
     }
     private var refreshMouseThrough: (() -> Void)?
+    /// Set by the view: opens the strip the way its hover used to.
+    var openFromHandle: (() -> Void)?
+    /// How far around the handle still counts as reaching it.
+    static let handleSlack: CGFloat = Design.space1
+    /// The handle and its slack, the only place a folded strip opens from.
+    var handleZone: NSRect { handleFrame.insetBy(dx: -Self.handleSlack, dy: -Self.handleSlack) }
+    /// Whether the strip is open, for the view's hover.
+    var isExpanded: Bool { expanded }
 
     // MARK: Callout
 
@@ -614,13 +630,19 @@ struct EdgeDockView: View {
         // windows (GlassStyle.swift has the numbers); black is what the
         // owner wants. Always dark, like the panel, the island and the widget.
         .environment(\.colorScheme, .dark)
+        // Opening is the pointer reaching the handle (`openFromHandle`); the
+        // hover only keeps an open strip open, and folds it on leaving.
         .onHover { inside in
-            coordinator.setExpanded(inside) { expanded = $0 }
             if inside {
+                if coordinator.isExpanded { coordinator.setExpanded(true) { expanded = $0 } }
                 hoverClearTask?.cancel()
             } else {
+                coordinator.setExpanded(false) { expanded = $0 }
                 scheduleHoverClear()
             }
+        }
+        .onAppear {
+            coordinator.openFromHandle = { coordinator.setExpanded(true) { expanded = $0 } }
         }
         .onChange(of: hovered) { _, id in
             presentCallout(for: id)

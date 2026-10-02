@@ -50,9 +50,18 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.21** (2026-10-02) · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.21** (2026-10-02) · **1** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-10-02</b> · Unreleased · 1 fixed</summary>
+
+**Fixed**
+
+- The folded dock opened while the pointer was still well away from the small handle at the screen edge: nearness was judged by the full width of the open strip. It now opens only when the pointer reaches the handle, with 4 points to spare; once open, leaving the strip folds it as before.
+
+</details>
+
+<details>
 <summary><b>2026-10-02</b> · 0.5.21 · 1 added · 6 fixed</summary>
 
 **Added**
@@ -84,15 +93,6 @@ Latest release **0.5.21** (2026-10-02) · [full changelog](CHANGELOG.en.md)
 - Codex's Pro plans go by ChatGPT's current names: Pro 100 and Pro 200, plus the new Pro 500 (they were shown as Pro 5x and Pro 20x). On Quota Run, runs under the old names join the boards of the new ones, and their links keep working.
 - Codex credits read as a grouped number, "62,500 credits", and sit under the card's arrow with the early resets: the name with the amount at the end, and beneath it how many were given and when they run out ("Given 62,500 credits · expires Jan 1, 2027"); the hover says roughly how many local messages they are worth. Folded, the card shows only the plan's limits.
 - Gemini and Antigravity are one card. Google stopped serving the Gemini CLI to personal accounts (free, Google AI Pro and Ultra) on June 18, 2026 and moved them to Antigravity, so the two cards showed one account twice. The Antigravity card now reads the Antigravity app, with the app closed asks the Antigravity CLI (`agy`, through its `/usage` report, which sends no prompt and spends nothing, at most every 5 minutes), then the sign-in token the app saved, then a Gemini CLI sign-in (Code Assist Standard and Enterprise accounts still use it). `agy` alone, without the app, is enough. The card says when the reading came from the Antigravity CLI or the Gemini CLI. If you had Gemini on, Antigravity is on instead, and pins to the island or the dock move with it.
-
-</details>
-
-<details>
-<summary><b>2026-09-23</b> · 0.5.19 · 1 added</summary>
-
-**Added**
-
-- Several Codex accounts. Sign in to each with `codex login`, then save it under Settings → Providers → Codex with "Save Current Account", or from "Codex Accounts" in the Codex card's right-click menu. After that one click switches the account Codex uses, with no signing in again: the account you leave is saved first, with whatever tokens the CLI last refreshed, then ~/.codex/auth.json is rewritten, and the file it replaces is kept as a backup. Under the Codex card's arrow, Accounts lists every saved account with the limit that runs out first and when it resets; the one in use is marked In use, and the menu bar and the island follow it as before. The account in use is refreshed by the Codex CLI alone and the others by QuotaBar near their expiry, so the two never spend the same refresh token; an account whose sign-in has lapsed says to sign in to it again. Saved sign-ins stay in this Mac's keychain and are not synced to iPhone. Codex sessions already running keep the old account until restarted. ([#6](https://github.com/QuotaBar/QuotaBar/issues/6))
 
 </details>
 

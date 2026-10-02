@@ -49,9 +49,18 @@ Gatekeeper 可以直接打开。
 <!-- changelog:start -->
 <!-- 由 Scripts/sync_changelog.py 从 CHANGELOG.md 生成，请勿手改。 -->
 
-最新版本 **0.5.21**（2026-10-02） · [完整更新日志](CHANGELOG.md)
+最新版本 **0.5.21**（2026-10-02） · 开发中 **1** 项改动尚未发布 · [完整更新日志](CHANGELOG.md)
 
 <details open>
+<summary><b>2026-10-02</b> · 未发布 · 修复 1</summary>
+
+**修复**
+
+- 停靠条收起时，鼠标离贴边的小把手还很远就展开了：原来是按展开后的整条宽度判断靠近。现在只有指针碰到小把手（周围留 4 点余量）才展开；展开后，离开整条停靠条照常收起。
+
+</details>
+
+<details>
 <summary><b>2026-10-02</b> · 0.5.21 · 新增 1 · 修复 6</summary>
 
 **新增**
@@ -83,15 +92,6 @@ Gatekeeper 可以直接打开。
 - Codex 的 Pro 套餐改用 ChatGPT 现在的叫法：Pro 100、Pro 200，并新增 Pro 500（原来显示为 Pro 5x、Pro 20x）。Quota Run 排行榜里旧名的成绩自动并入新名的榜，链接不变。
 - Codex 的额度点数（credits）显示为「62,500 点」这样带千分位的数字，放在卡片展开后，和限额重置次数一起：名称后面是数量，下一行是其中赠送了多少和到期时间（例如「赠送 62,500 点 · 2027年1月1日到期」），悬停说明大约够在本地发多少条消息。卡片收起时只显示套餐额度。
 - Gemini 和 Antigravity 合成一张卡。Google 已在 2026 年 6 月 18 日停止为个人用户（免费、Google AI Pro、Ultra）提供 Gemini CLI，这些账号改用 Antigravity，原来两张卡显示的是同一个账号。现在 Antigravity 卡先读 Antigravity 应用；应用没开时改问 Antigravity CLI（`agy`，用它的 `/usage` 报告，不发提问、不耗额度，每 5 分钟最多问一次），然后读它保存的登录令牌，最后读 Gemini CLI 的登录（仍可用 Gemini CLI 的企业版 Code Assist 账号）。只装了 `agy`、没装应用也能用。卡片上会标出读数来自 Antigravity CLI 还是 Gemini CLI。之前启用了 Gemini 的，会自动改为启用 Antigravity，钉到刘海岛、停靠条的设置也跟着过去。
-
-</details>
-
-<details>
-<summary><b>2026-09-23</b> · 0.5.19 · 新增 1</summary>
-
-**新增**
-
-- 多个 Codex 账号：在 Codex CLI 里用 `codex login` 依次登录每个账号，登录后在设置 → 服务商 → Codex 里点「保存当前账号」，或在 Codex 卡片的右键菜单「Codex 账号」里保存。之后点一下就能切换 Codex 当前使用的账号，不用再重新登录：切换时会先保存你离开的那个账号（连同 CLI 最新刷新过的令牌），再改写 ~/.codex/auth.json，原文件留一份备份。Codex 卡片展开后的「账号」一栏列出每个已保存账号的额度（最先见底的那个窗口）和重置时间，当前账号标「使用中」；菜单栏和刘海岛照常跟随当前账号。当前账号的令牌只由 Codex CLI 自己刷新，其他账号的令牌由 QuotaBar 在快到期时刷新，两边不会用到同一个刷新令牌；某个账号的登录失效时，卡片会提示重新登录它。已保存的登录只存在这台 Mac 的钥匙串里，不会同步到 iPhone。已经在运行的 Codex 会话要重启后才会用新账号。（[#6](https://github.com/QuotaBar/QuotaBar/issues/6)）
 
 </details>
 
