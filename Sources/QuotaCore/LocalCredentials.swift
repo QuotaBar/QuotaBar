@@ -193,7 +193,7 @@ public enum LocalCredentials {
         ]
         var result: AnyObject?
         let status: OSStatus = interactive
-            ? SecItemCopyMatching(query as CFDictionary, &result)
+            ? KeychainUI.withPrompts { SecItemCopyMatching(query as CFDictionary, &result) }
             : KeychainUI.withoutPrompts { SecItemCopyMatching(query as CFDictionary, &result) }
         return classify(status: status, data: result as? Data)
     }
@@ -392,6 +392,20 @@ public enum LocalCredentials {
             var previous: UInt8 = 1
             _ = get(&previous)
             _ = set(0)
+            defer { _ = set(previous) }
+            return body()
+        }
+
+        /// Runs `body` with the dialog allowed, for the one read a button
+        /// asks for. Takes the same lock, so a background read cannot have
+        /// the switch off at that moment — the dialog would then never show
+        /// and the press would come back refused.
+        static func withPrompts<T>(_ body: () -> T) -> T {
+            lock.lock(); defer { lock.unlock() }
+            guard let set, let get else { return body() }
+            var previous: UInt8 = 1
+            _ = get(&previous)
+            _ = set(1)
             defer { _ = set(previous) }
             return body()
         }

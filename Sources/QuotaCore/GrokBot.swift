@@ -351,7 +351,7 @@ public enum GrokBot {
         ]
         var result: AnyObject?
         let status: OSStatus = interactive
-            ? SecItemCopyMatching(query as CFDictionary, &result)
+            ? LocalCredentials.KeychainUI.withPrompts { SecItemCopyMatching(query as CFDictionary, &result) }
             : LocalCredentials.KeychainUI.withoutPrompts { SecItemCopyMatching(query as CFDictionary, &result) }
         switch status {
         case errSecSuccess:
