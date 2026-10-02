@@ -186,6 +186,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Diagnostics.printLimitsJSON(force: arguments.contains("--force"))
             NSApp.terminate(nil)
         }
+        if arguments.contains("--grok-bot-keychain") {
+            print(GrokBot.probeKeychain())
+            NSApp.terminate(nil)
+        }
         if arguments.contains("--credentials") {
             Diagnostics.printCredentials()
             NSApp.terminate(nil)

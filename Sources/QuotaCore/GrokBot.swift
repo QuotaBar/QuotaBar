@@ -366,6 +366,23 @@ public enum GrokBot {
 
     enum KeyAnswer { case key(Data), refused, missing }
 
+    /// `QuotaBar --grok-bot-keychain`: the raw answer to the read the button
+    /// makes, dialog allowed, for when the button seems to do nothing.
+    public static func probeKeychain() -> String {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: AnyObject?
+        let interaction = LocalCredentials.KeychainUI.isInteractionAllowed
+        let status = LocalCredentials.KeychainUI.withPrompts { SecItemCopyMatching(query as CFDictionary, &result) }
+        let message = SecCopyErrorMessageString(status, nil) as String? ?? ""
+        let found = (result as? Data).map { "\($0.count) bytes" } ?? "nothing"
+        return "interaction allowed before: \(interaction)\nstatus: \(status) \(message)\nread: \(found)"
+    }
+
     /// The key never changes while Grok Bot stays installed, so once read it
     /// is kept for the life of the process: one "Allow" is enough until the
     /// next launch. A refusal is kept for a minute, so a refresh timer cannot
