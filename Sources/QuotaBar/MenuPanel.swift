@@ -347,6 +347,7 @@ struct MenuPanelView: View {
                         WelcomeCard(store: store)
                     }
                     UpdateBanner(store: store)
+                    ProfileSwitcher(store: store)
                     if store.experience.showSpendCard {
                         SpendCardView(store: store)
                     }
@@ -710,6 +711,17 @@ private struct OptionsMenuButton: NSViewRepresentable {
             }
             copy.submenu = submenu
             menu.addItem(copy)
+            // Work and personal (#8): the same switch as the panel's top.
+            if store.accountProfiles.count > 1 {
+                let profiles = NSMenuItem(title: L10n.t("Profile", "账号组"), action: nil, keyEquivalent: "")
+                let list = NSMenu()
+                for profile in store.accountProfiles {
+                    add(list, profile.name, "") { [store] in store.setActiveProfile(profile.id) }
+                    list.items.last?.state = store.activeProfile?.id == profile.id ? .on : .off
+                }
+                profiles.submenu = list
+                menu.addItem(profiles)
+            }
             menu.addItem(.separator())
             add(menu, L10n.t("Refresh Everything", "全部刷新"), "r") { [store] in store.forceRefreshAll() }
             add(menu, L10n.t("Check for Updates…", "检查更新…"), "") { [store] in store.checkForUpdate(manual: true, presenting: true) }

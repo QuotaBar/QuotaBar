@@ -3,6 +3,18 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
+## Unreleased
+
+### 2026-10-06
+
+#### Added
+
+- Profiles: a Claude sign-in and a Codex account kept together — Personal and Work, say — and switched in one press. Add them in Settings → Providers → Profiles, and pick for each its Claude sign-in (the default one, or another organization signed in with `CLAUDE_CONFIG_DIR`) and its Codex account (the Codex CLI's sign-in, or one QuotaBar keeps). With two profiles, a switch appears at the top of the menu-bar panel, and in its ⋯ menu and the Claude and Codex cards in the dock; the Claude and Codex cards read again at once, and the menu bar, the island, the dock and the desktop cards follow. Switching changes which accounts QuotaBar reads, never what the CLIs are signed in as. The section shows once this Mac has a second Claude sign-in or a second kept Codex account. (#8)
+
+#### Fixed
+
+- Opening the Claude or Codex card in the side dock showed no Organizations or Accounts section; only the menu-bar panel's cards had them. The dock's cards have them now. (#8)
+
 ## 0.5.24 · 2026-10-05
 
 ### 2026-10-05

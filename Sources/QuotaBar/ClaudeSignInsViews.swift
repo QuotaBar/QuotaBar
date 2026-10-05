@@ -157,6 +157,6 @@ struct ClaudeSignInsSettings: View {
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .task { await signIns.read() }
+        .task { await store.readClaudeSignIns() }
     }
 }

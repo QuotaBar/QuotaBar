@@ -674,6 +674,12 @@ Six ways a provider gets its credential, in order of preference:
    them by name (attributes only, no dialog) and reads them like the default,
    read only — never a refresh, which would spend Claude Code's rotating token.
    Their readings live in `ClaudeSignInsModel`, Mac-side, not in `UsageSnapshot`.
+   Profiles (`AccountProfile`, in `ExperiencePrefs`) pair one Claude item with
+   one kept Codex account; with two or more, the active one decides what
+   `ClaudeProvider` and `CodexProvider` read (`claudeService`,
+   `codexAccountID`), so every surface follows without knowing about them.
+   Switching clears both cards' state before reading again, so a card never
+   shows one account's figures under another's.
    The default sign-in's access token lasts eight hours and only Claude Code
    renews it. Once it has run out, `ClaudeCodeRenewal` has Claude Code renew
    it (CodexBar's "delegated refresh"): `claude --safe-mode` in a PTY of

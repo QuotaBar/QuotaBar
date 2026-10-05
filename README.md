@@ -50,9 +50,22 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.24** (2026-10-05) · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.24** (2026-10-05) · **2** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-10-06</b> · Unreleased · 1 added · 1 fixed</summary>
+
+**Added**
+
+- Profiles: a Claude sign-in and a Codex account kept together — Personal and Work, say — and switched in one press. Add them in Settings → Providers → Profiles, and pick for each its Claude sign-in (the default one, or another organization signed in with `CLAUDE_CONFIG_DIR`) and its Codex account (the Codex CLI's sign-in, or one QuotaBar keeps). With two profiles, a switch appears at the top of the menu-bar panel, and in its ⋯ menu and the Claude and Codex cards in the dock; the Claude and Codex cards read again at once, and the menu bar, the island, the dock and the desktop cards follow. Switching changes which accounts QuotaBar reads, never what the CLIs are signed in as. The section shows once this Mac has a second Claude sign-in or a second kept Codex account. ([#8](https://github.com/QuotaBar/QuotaBar/issues/8))
+
+**Fixed**
+
+- Opening the Claude or Codex card in the side dock showed no Organizations or Accounts section; only the menu-bar panel's cards had them. The dock's cards have them now. ([#8](https://github.com/QuotaBar/QuotaBar/issues/8))
+
+</details>
+
+<details>
 <summary><b>2026-10-05</b> · 0.5.24 · 1 added · 1 fixed</summary>
 
 **Added**
@@ -76,15 +89,6 @@ Latest release **0.5.24** (2026-10-05) · [full changelog](CHANGELOG.en.md)
 **Fixed**
 
 - A Claude token that had run out made the card say the session had expired and to sign in again, which was never needed. It now says running Claude Code once renews it, and, when QuotaBar's own request for that did not take, that it asks again within half an hour.
-
-</details>
-
-<details>
-<summary><b>2026-10-02</b> · 0.5.22 · 1 fixed</summary>
-
-**Fixed**
-
-- The folded dock opened while the pointer was still well away from the small handle at the screen edge: nearness was judged by the full width of the open strip. It now opens only when the pointer reaches the handle, with 4 points to spare; once open, leaving the strip folds it as before.
 
 </details>
 

@@ -12,6 +12,13 @@ public struct CodexProvider: QuotaProvider {
     }
 
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
+        // A profile (#8) reading a kept account other than the CLI's.
+        if let kept = config.experience.activeProfile?.codexAccountID,
+           await CodexAccountVault.shared.live()?.accountID != kept
+        {
+            let file = try await CodexAccountVault.shared.credentials(for: kept)
+            return try await Self.usage(accessToken: file.accessToken, accountID: file.accountID)
+        }
         guard let auth = LocalCredentials.codexAuth() else {
             throw ProviderError.notConfigured(hint: ProviderID.codex.setupHint)
         }
@@ -514,6 +521,10 @@ public struct ClaudeProvider: QuotaProvider {
     }
 
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
+        // A profile (#8) reading another config dir's sign-in.
+        if let service = config.experience.activeProfile?.claudeService, service != LocalCredentials.claudeService {
+            return try await Self.fetchSignIn(service: service)
+        }
         // Run out after eight hours away from Claude Code: have it renew.
         var renewal: ClaudeCodeRenewal.Outcome?
         if let expiry = LocalCredentials.claudeTokenExpiry(), expiry <= Date().addingTimeInterval(60) {
@@ -526,6 +537,33 @@ public struct ClaudeProvider: QuotaProvider {
             return try await Self.usage(token: token, plan: LocalCredentials.claudePlanName())
         } catch ProviderError.unauthorized {
             throw ProviderError.sessionExpired(Self.expiredMessage(renewal))
+        }
+    }
+
+    /// Another config dir's sign-in, read the way the card's list reads it:
+    /// never renewed by QuotaBar, only by Claude Code running with that dir.
+    static func fetchSignIn(service: String) async throws -> UsageSnapshot {
+        let lookup = LocalCredentials.claudeLookup(service: service)
+        switch lookup.state {
+        case .needsAuthorization:
+            throw ProviderError.needsAuthorization(hint: LocalCredentials.claudeAuthorizationHint)
+        case .signedOut:
+            throw ProviderError.sessionExpired(ClaudeSignIns.signedOutMessage)
+        case .missing:
+            throw ProviderError.notConfigured(hint: L10n.t(
+                "The profile's Claude sign-in is no longer on this Mac. Pick another in Settings › Providers › Profiles.",
+                "这个账号组选的 Claude 登录已经不在这台 Mac 上了。在设置 › 服务商 › 账号组里换一个。"))
+        case .available:
+            break
+        }
+        guard let token = lookup.token else { throw ProviderError.notConfigured(hint: ProviderID.claude.setupHint) }
+        if let expiry = lookup.expiresAt, expiry <= Date() {
+            throw ProviderError.sessionExpired(ClaudeSignIns.expiredMessage)
+        }
+        do {
+            return try await usage(token: token, plan: lookup.plan)
+        } catch ProviderError.unauthorized {
+            throw ProviderError.sessionExpired(ClaudeSignIns.expiredMessage)
         }
     }
 

@@ -100,7 +100,7 @@ public enum LocalCredentials {
         var expiresAt: Date? = nil
     }
 
-    static let claudeService = "Claude Code-credentials"
+    public static let claudeService = "Claude Code-credentials"
 
     /// Shown wherever the app is waiting on the user's say-so.
     public static var claudeAuthorizationHint: String {

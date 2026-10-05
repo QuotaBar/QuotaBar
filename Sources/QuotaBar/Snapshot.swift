@@ -169,6 +169,16 @@ enum Snapshot {
         return store
     }
 
+    /// Personal and Work, the second reading the team organization.
+    private static func seedProfiles(_ store: UsageStore) {
+        store.experience.accountProfiles = [
+            AccountProfile(id: "personal", name: L10n.t("Personal", "个人")),
+            AccountProfile(id: "work", name: L10n.t("Work", "工作"),
+                           claudeService: "Claude Code-credentials-1a2b3c4d", codexAccountID: "acct-plus"),
+        ]
+        store.experience.activeProfileID = "personal"
+    }
+
     /// Two more Claude Code sign-ins, the way #8 has them: a team
     /// organization of the same email, and one left idle until it ran out.
     private static func seedClaudeSignIns(_ store: UsageStore) {
@@ -544,6 +554,15 @@ enum Snapshot {
                     .environment(\.colorScheme, .dark),
                 to: url, name: "panel-card-claude-organizations-\(suffix)",
                 backing: Color(white: 0.06))
+            // The dock's full card with profiles to switch between (#8). Set
+            // on the store directly: `updateExperience` would save them.
+            let profiled = givenCreditsStore(withClaudeSignIns: true)
+            seedProfiles(profiled)
+            render(
+                ProviderCallout(store: profiled, id: .claude, detail: true)
+                    .padding(20)
+                    .environment(\.colorScheme, .dark),
+                to: url, name: "dock-callout-claude-profiles-\(suffix)", backing: Color(hex: "3A4A5A"))
             let callout = ProviderCallout(store: failingStore(), id: .claude)
                 .padding(20)
                 .environment(\.colorScheme, .dark)
@@ -819,6 +838,16 @@ enum Snapshot {
         for language in [L10n.Language.zhHans, .en] {
             L10n.override = language
             let suffix = language == .en ? "en" : "zh"
+            let profiled = makeStore(selected: nil)
+            seedProfiles(profiled)
+            write(
+                ProfilesSettingsCard(store: profiled, signIns: profiled.claudeSignIns, accounts: profiled.codexAccounts)
+                    .environment(\.glassDisabled, true)
+                    .frame(width: 620)
+                    .padding(Design.space4),
+                to: base,
+                name: "settings-profiles-\(suffix)",
+                dark: false)
             for id in [ProviderID.codex, .cursor, .claude] {
                 write(
                     ProviderSettingsRow(store: store, id: id, isExpanded: true, onToggle: {})

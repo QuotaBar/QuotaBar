@@ -1,0 +1,167 @@
+import SwiftUI
+import QuotaCore
+
+// MARK: - Switching
+
+/// Personal | Work (#8): one press and the Claude and Codex cards — and the
+/// menu bar, the island, the dock and the desktop cards with them — read the
+/// other profile's accounts. Nothing while there is one profile or none.
+struct ProfileSwitcher: View {
+    @ObservedObject var store: UsageStore
+
+    var body: some View {
+        if store.accountProfiles.count > 1 {
+            HStack(spacing: 4) {
+                ForEach(store.accountProfiles) { profile in
+                    let on = store.activeProfile?.id == profile.id
+                    Pressable(action: { store.setActiveProfile(profile.id) }) {
+                        Text(profile.name)
+                            .font(.system(size: 11, weight: on ? .semibold : .medium))
+                            .lineLimit(1)
+                            .foregroundStyle(on ? Color.black : Color.white.opacity(0.75))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 5)
+                            .background(Capsule().fill(on ? Color.white : Color.clear))
+                            .contentShape(Capsule())
+                    }
+                }
+            }
+            .padding(3)
+            .background(Capsule().fill(Color.white.opacity(0.08)))
+            .help(L10n.t(
+                "Which accounts the Claude and Codex cards read. Set up in Settings › Providers › Profiles.",
+                "Claude 和 Codex 卡片读取哪一组账号。在 设置 › 服务商 › 账号组 里设置。"))
+        }
+    }
+}
+
+// MARK: - In Settings
+
+/// Settings › Providers: the profiles, and the Claude sign-in and Codex
+/// account each one reads. Shown once there is something to choose between.
+struct ProfilesSettingsCard: View {
+    @ObservedObject var store: UsageStore
+    @ObservedObject var signIns: ClaudeSignInsModel
+    @ObservedObject var accounts: CodexAccountsModel
+
+    private var shown: Bool {
+        !store.accountProfiles.isEmpty || signIns.services.count > 1 || accounts.saved.count > 1
+    }
+
+    var body: some View {
+        Group {
+            if shown {
+                SettingsCard(L10n.t("Profiles", "账号组"), help: L10n.t(
+                    "A profile is one Claude sign-in and one Codex account — Personal and Work, say. The profile in use decides which accounts the Claude and Codex cards read, and the menu bar, the island and the dock follow. Switch at the top of the menu-bar panel, from its ⋯ menu, or from a card in the dock. It never changes what the CLIs are signed in as.",
+                    "一个账号组就是一个 Claude 登录加一个 Codex 账号，比如「个人」和「工作」。当前账号组决定 Claude 和 Codex 卡片读取哪些账号，菜单栏、刘海岛和停靠条都跟着变。在菜单栏面板顶部、面板的 ⋯ 菜单或停靠条的卡片里切换。切换不会改变 CLI 当前登录的账号。"))
+                {
+                    ForEach(store.accountProfiles) { profile in
+                        row(profile)
+                        Divider().opacity(0.4)
+                    }
+                    HStack(spacing: Design.space2) {
+                        Button(L10n.t("Add Profile", "添加账号组")) { store.addProfile() }
+                            .glassAction(prominent: store.accountProfiles.count < 2)
+                        if store.accountProfiles.count < 2 {
+                            Text(L10n.t(
+                                "Profiles take effect once there are two to switch between.",
+                                "有两个账号组时才能切换，才会生效。"))
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                }
+            } else {
+                Color.clear.frame(height: 0)
+            }
+        }
+        .task {
+            await store.readClaudeSignIns()
+            await accounts.reload()
+        }
+    }
+
+    private func row(_ profile: AccountProfile) -> some View {
+        VStack(alignment: .leading, spacing: Design.space2) {
+            HStack(spacing: Design.space2) {
+                GlassTextField(
+                    placeholder: L10n.t("Name", "名称"),
+                    text: Binding(
+                        get: { profile.name },
+                        set: { name in rename(profile.id, to: name) }),
+                    monospaced: false)
+                    .frame(width: 160)
+                Spacer(minLength: Design.space2)
+                if store.activeProfile?.id == profile.id {
+                    Text(L10n.t("In use", "使用中"))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                } else if store.accountProfiles.count > 1 {
+                    Button(L10n.t("Use", "使用")) { store.setActiveProfile(profile.id) }
+                        .glassAction(compact: true)
+                }
+                Button(L10n.t("Remove", "移除")) {
+                    store.updateProfiles { $0.removeAll { $0.id == profile.id } }
+                }
+                .glassAction(compact: true)
+            }
+            SettingRow("Claude") {
+                GlassPopUp(
+                    options: claudeChoices(including: profile.claudeItem),
+                    selection: profile.claudeItem,
+                    onSelect: { service in
+                        store.updateProfiles { profiles in
+                            guard let index = profiles.firstIndex(where: { $0.id == profile.id }) else { return }
+                            profiles[index].claudeService = service == LocalCredentials.claudeService ? nil : service
+                        }
+                    })
+                    .frame(width: 320)
+            }
+            SettingRow("Codex") {
+                GlassPopUp(
+                    options: codexChoices(including: profile.codexAccountID),
+                    selection: profile.codexAccountID ?? "",
+                    onSelect: { id in
+                        store.updateProfiles { profiles in
+                            guard let index = profiles.firstIndex(where: { $0.id == profile.id }) else { return }
+                            profiles[index].codexAccountID = id.isEmpty ? nil : id
+                        }
+                    })
+                    .frame(width: 320)
+            }
+        }
+    }
+
+    private func rename(_ id: String, to name: String) {
+        store.updateProfiles { profiles in
+            guard let index = profiles.firstIndex(where: { $0.id == id }) else { return }
+            profiles[index].name = name
+        }
+    }
+
+    /// Every Claude Code sign-in on this Mac, the default first; one a
+    /// profile picked that has since gone stays listed, so the choice reads
+    /// as what it is.
+    private func claudeChoices(including picked: String) -> [(value: String, label: String)] {
+        var services = signIns.services.isEmpty ? [LocalCredentials.claudeService] : signIns.services
+        if !services.contains(picked) { services.append(picked) }
+        return services.map { (value: $0, label: signIns.choiceLabel($0, masked: store.isPrivacyMasked)) }
+    }
+
+    /// The account the CLI is signed in as, then every kept one.
+    private func codexChoices(including picked: String?) -> [(value: String, label: String)] {
+        var choices: [(value: String, label: String)] = [
+            (value: "", label: L10n.t("The Codex CLI's sign-in", "Codex CLI 当前登录的账号")),
+        ]
+        for account in accounts.saved {
+            var label = accounts.label(account, masked: store.isPrivacyMasked)
+            if let plan = CodexProvider.planName(account.plan) { label += " · \(plan)" }
+            choices.append((value: account.id, label: label))
+        }
+        if let picked, !accounts.saved.contains(where: { $0.id == picked }) {
+            choices.append((value: picked, label: L10n.t("An account no longer kept", "已不再保存的账号")))
+        }
+        return choices
+    }
+}

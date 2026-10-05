@@ -10,15 +10,23 @@ final class ClaudeSignInsModel: ObservableObject {
     @Published private(set) var others: [ClaudeSignIns.Reading] = []
     /// Who the card's own sign-in is.
     @Published private(set) var card: ClaudeProvider.Identity?
+    /// Every Claude Code keychain item on this Mac, the default first: what a
+    /// profile can be set to read.
+    @Published private(set) var services: [String] = []
+    /// Who each of them is, as far as read.
+    @Published private(set) var identities: [String: ClaudeProvider.Identity] = [:]
     private var reading = false
 
     /// A failure keeps the last good figures beside the reason.
-    func read() async {
+    func read(cardService: String = LocalCredentials.claudeService) async {
         guard !reading else { return }
         reading = true
         defer { reading = false }
-        card = await ClaudeSignIns.cardIdentity()
-        let fresh = await ClaudeSignIns.readOthers()
+        card = await ClaudeSignIns.cardIdentity(service: cardService)
+        let fresh = await ClaudeSignIns.readOthers(card: cardService)
+        services = [LocalCredentials.claudeService] + LocalCredentials.claudeExtraServices()
+        if let card { identities[cardService] = card }
+        for reading in fresh { if let identity = reading.identity { identities[reading.id] = identity } }
         let last = Dictionary(others.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         others = fresh.map { reading in
             var reading = reading
@@ -32,6 +40,23 @@ final class ClaudeSignInsModel: ObservableObject {
     func seedForPreview(card: ClaudeProvider.Identity?, others: [ClaudeSignIns.Reading]) {
         self.card = card
         self.others = others
+        services = [LocalCredentials.claudeService] + others.map(\.id)
+        identities[LocalCredentials.claudeService] = card
+        for reading in others { identities[reading.id] = reading.identity }
+    }
+
+    /// A profile's choice, named: the organization, else the email, else
+    /// which item it is.
+    func choiceLabel(_ service: String, masked: Bool) -> String {
+        let identity = identities[service]
+        let isDefault = service == LocalCredentials.claudeService
+        if !masked, let name = identity?.organization ?? identity?.email {
+            let email = identity?.organization != nil ? identity?.email.map { " · \($0)" } ?? "" : ""
+            return name + email + (isDefault ? L10n.t(" (default)", "（默认）") : "")
+        }
+        return isDefault
+            ? L10n.t("Default sign-in", "默认登录")
+            : L10n.t("Sign-in \(service.suffix(8))", "登录 \(service.suffix(8))")
     }
 
     /// The organization, which is what tells two sign-ins of one email

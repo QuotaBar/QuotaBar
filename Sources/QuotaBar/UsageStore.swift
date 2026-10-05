@@ -612,7 +612,7 @@ final class UsageStore: ObservableObject {
         // The other kept Codex accounts are read on the same beat.
         if id == .codex { Task { await codexAccounts.readOthers() } }
         // And Claude Code's other config dirs' sign-ins.
-        if id == .claude { Task { await claudeSignIns.read() } }
+        if id == .claude { Task { await readClaudeSignIns() } }
         switch result {
         case let .success(reading):
             let snapshot = withBalanceEstimate(id, reading)

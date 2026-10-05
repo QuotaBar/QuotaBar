@@ -32,18 +32,24 @@ public enum ClaudeSignIns {
         }
     }
 
-    /// Who the card's sign-in is. Answered from the memo the card's own read
-    /// filled, so no request of its own.
-    public static func cardIdentity() async -> ClaudeProvider.Identity? {
-        guard let token = LocalCredentials.claudeOAuthToken() else { return nil }
+    /// Who the card's sign-in is: the default one, or the profile's in use.
+    /// Answered from the memo the card's own read filled, so no request of
+    /// its own.
+    public static func cardIdentity(service: String = LocalCredentials.claudeService) async -> ClaudeProvider.Identity? {
+        let token = service == LocalCredentials.claudeService
+            ? LocalCredentials.claudeOAuthToken()
+            : LocalCredentials.claudeLookup(service: service).token
+        guard let token else { return nil }
         return await ClaudeProvider.profile(token: token)
     }
 
-    /// Every other sign-in, read side by side.
-    public static func readOthers(now: Date = .now) async -> [Reading] {
-        let services = LocalCredentials.claudeExtraServices()
-        guard !services.isEmpty else { return [] }
-        let card = await cardIdentity()
+    /// Every other sign-in, read side by side — the default one among them
+    /// while a profile (#8) has the card read another.
+    public static func readOthers(card cardService: String = LocalCredentials.claudeService, now: Date = .now) async -> [Reading] {
+        let extras = LocalCredentials.claudeExtraServices()
+        guard !extras.isEmpty else { return [] }
+        let services = ([LocalCredentials.claudeService] + extras).filter { $0 != cardService }
+        let card = await cardIdentity(service: cardService)
         var readings: [Reading] = []
         await withTaskGroup(of: Reading.self) { group in
             for service in services {
@@ -81,21 +87,23 @@ public enum ClaudeSignIns {
     }
 
     static func read(service: String, now: Date) async -> Reading {
-        let lookup = LocalCredentials.claudeLookup(service: service)
+        var lookup = LocalCredentials.claudeLookup(service: service)
+        // Off the card, the default sign-in is still Claude Code's to renew.
+        if service == LocalCredentials.claudeService, let expiry = lookup.expiresAt, expiry <= now.addingTimeInterval(60),
+           await ClaudeCodeRenewal.renewIfExpired() == .renewed
+        {
+            lookup = LocalCredentials.readClaudeNow()
+        }
         var reading = Reading(id: service, plan: lookup.plan)
         switch lookup.state {
         case .needsAuthorization:
-            reading.error = L10n.t(
-                "QuotaBar may not read this sign-in yet. Press “Allow keychain access” in Settings › Claude.",
-                "QuotaBar 还不能读取这个登录。在设置 › Claude 里点「授权钥匙串访问」。")
+            reading.error = needsAuthorizationMessage
             return reading
         case .signedOut:
-            reading.error = L10n.t(
-                "Signed out in Claude Code. Sign in again with the same CLAUDE_CONFIG_DIR.",
-                "已在 Claude Code 里退出登录。用同一个 CLAUDE_CONFIG_DIR 重新登录即可。")
+            reading.error = signedOutMessage
             return reading
         case .missing:
-            reading.error = L10n.t("No sign-in in this keychain item.", "这个钥匙串项里没有登录信息。")
+            reading.error = missingMessage
             return reading
         case .available:
             break
@@ -116,6 +124,22 @@ public enum ClaudeSignIns {
             reading.error = error.localizedDescription
         }
         return reading
+    }
+
+    static var needsAuthorizationMessage: String {
+        L10n.t(
+            "QuotaBar may not read this sign-in yet. Press “Allow keychain access” in Settings › Claude.",
+            "QuotaBar 还不能读取这个登录。在设置 › Claude 里点「授权钥匙串访问」。")
+    }
+
+    static var signedOutMessage: String {
+        L10n.t(
+            "Signed out in Claude Code. Sign in again with the same CLAUDE_CONFIG_DIR.",
+            "已在 Claude Code 里退出登录。用同一个 CLAUDE_CONFIG_DIR 重新登录即可。")
+    }
+
+    static var missingMessage: String {
+        L10n.t("No sign-in in this keychain item.", "这个钥匙串项里没有登录信息。")
     }
 
     public static var expiredMessage: String {

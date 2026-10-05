@@ -328,6 +328,10 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
     /// "http://host:port" or "socks5://host:port"; empty = direct.
     public var proxy: String = ""
     public var betaUpdates: Bool = false
+    /// Work and personal (#8): which Claude sign-in and Codex account each
+    /// reads, and the one in use. Empty: the CLIs' own sign-ins.
+    public var accountProfiles: [AccountProfile] = []
+    public var activeProfileID: String?
 
     // Sharing
     public var shareSignature: String = ""
@@ -349,6 +353,7 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
         case placeWindows, placeWindowsSeeded
         case spendBudget, budgetNotified, balanceFloor, balanceFloorNotified, balanceChart, weeklyDigest, weeklyDigestSent
         case shareSignature, shareShowsSignature, shareMasksAccount
+        case accountProfiles, activeProfileID
     }
 
     public init(from decoder: Decoder) throws {
@@ -411,6 +416,8 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
         shareSignature = value(.shareSignature, d.shareSignature)
         shareShowsSignature = value(.shareShowsSignature, d.shareShowsSignature)
         shareMasksAccount = value(.shareMasksAccount, d.shareMasksAccount)
+        accountProfiles = value(.accountProfiles, d.accountProfiles)
+        activeProfileID = try? c.decodeIfPresent(String.self, forKey: .activeProfileID)
     }
 }
 

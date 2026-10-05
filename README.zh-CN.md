@@ -49,9 +49,22 @@ Gatekeeper 可以直接打开。
 <!-- changelog:start -->
 <!-- 由 Scripts/sync_changelog.py 从 CHANGELOG.md 生成，请勿手改。 -->
 
-最新版本 **0.5.24**（2026-10-05） · [完整更新日志](CHANGELOG.md)
+最新版本 **0.5.24**（2026-10-05） · 开发中 **2** 项改动尚未发布 · [完整更新日志](CHANGELOG.md)
 
 <details open>
+<summary><b>2026-10-06</b> · 未发布 · 新增 1 · 修复 1</summary>
+
+**新增**
+
+- 账号组：把一个 Claude 登录和一个 Codex 账号编成一组，比如「个人」和「工作」，一键切换。在 设置 → 服务商 → 账号组 里添加账号组，给每组选好 Claude 登录（默认登录，或用 `CLAUDE_CONFIG_DIR` 登录的其他组织）和 Codex 账号（Codex CLI 当前登录的，或已保存的账号）。有两个账号组后，菜单栏面板顶部会出现切换条，面板的 ⋯ 菜单和停靠条里的 Claude、Codex 卡片也能切换；切换后 Claude 和 Codex 卡片立刻重新读取，菜单栏、刘海岛、停靠条和桌面卡片一起跟着变。切换只改变 QuotaBar 读取哪个账号，不会改变 CLI 当前登录的账号。只有一台 Mac 上有第二个 Claude 登录或第二个已保存的 Codex 账号时，设置里才会出现这一栏。（[#8](https://github.com/QuotaBar/QuotaBar/issues/8)）
+
+**修复**
+
+- 在侧边停靠条里展开 Claude 或 Codex 卡片时，看不到「组织」和「账号」两栏，只有菜单栏面板里的卡片有。现在停靠条的卡片里也有。（[#8](https://github.com/QuotaBar/QuotaBar/issues/8)）
+
+</details>
+
+<details>
 <summary><b>2026-10-05</b> · 0.5.24 · 新增 1 · 修复 1</summary>
 
 **新增**
@@ -75,15 +88,6 @@ Gatekeeper 可以直接打开。
 **修复**
 
 - Claude 的令牌过期时，卡片提示「会话已过期，请重新登录」，其实不需要重新登录。现在会说明运行一次 Claude Code 就能续期；QuotaBar 让它续期没成功时，也会说明半小时内会再试。
-
-</details>
-
-<details>
-<summary><b>2026-10-02</b> · 0.5.22 · 修复 1</summary>
-
-**修复**
-
-- 停靠条收起时，鼠标离贴边的小把手还很远就展开了：原来是按展开后的整条宽度判断靠近。现在只有指针碰到小把手（周围留 4 点余量）才展开；展开后，离开整条停靠条照常收起。
 
 </details>
 

@@ -293,6 +293,17 @@ struct ProviderCallout: View {
             ResetCreditsRow(store: store, credits: credits, accent: Color(hex: id.accentHex))
             ResetCreditDeadlines(store: store, credits: credits, accent: Color(hex: id.accentHex))
         }
+        // The accounts beside the card's, as under the panel card's arrow,
+        // and the switch between profiles where they apply.
+        if UsageStore.profileProviders.contains(id) {
+            ProfileSwitcher(store: store)
+        }
+        if id == .codex {
+            CodexAccountsSection(store: store, accounts: store.codexAccounts, compact: true)
+        }
+        if id == .claude {
+            ClaudeSignInsSection(store: store, signIns: store.claudeSignIns, compact: true)
+        }
         Text(L10n.t(
             "Updated \(QuotaFormat.age(of: snapshot.fetchedAt))",
             "更新于 \(QuotaFormat.age(of: snapshot.fetchedAt))"))

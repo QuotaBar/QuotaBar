@@ -86,6 +86,8 @@ struct ProvidersPane: View {
                 takeRequestedProvider()
             }
         }
+
+        ProfilesSettingsCard(store: store, signIns: store.claudeSignIns, accounts: store.codexAccounts)
     }
 
     private func takeRequestedProvider() {

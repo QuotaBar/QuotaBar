@@ -53,6 +53,12 @@ struct CodexAccountsSection: View {
                         .foregroundStyle(.white.opacity(0.6))
                 }
                 Spacer(minLength: 6)
+                if !active, store.activeProfile?.codexAccountID == account.id {
+                    // A profile (#8) has the card read this one, not the CLI's.
+                    Text(L10n.t("On the card", "卡片显示中"))
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.6))
+                }
                 if active {
                     Text(L10n.t("In use", "使用中"))
                         .font(.system(size: 10, weight: .semibold))
