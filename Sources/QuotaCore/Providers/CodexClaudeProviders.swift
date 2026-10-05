@@ -514,10 +514,38 @@ public struct ClaudeProvider: QuotaProvider {
     }
 
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
+        // Run out after eight hours away from Claude Code: have it renew.
+        var renewal: ClaudeCodeRenewal.Outcome?
+        if let expiry = LocalCredentials.claudeTokenExpiry(), expiry <= Date().addingTimeInterval(60) {
+            renewal = await ClaudeCodeRenewal.renewIfExpired()
+        }
         guard let token = LocalCredentials.claudeOAuthToken() else {
             throw Self.credentialError(for: LocalCredentials.claudeCredentialState())
         }
-        return try await Self.usage(token: token, plan: LocalCredentials.claudePlanName())
+        do {
+            return try await Self.usage(token: token, plan: LocalCredentials.claudePlanName())
+        } catch ProviderError.unauthorized {
+            throw ProviderError.sessionExpired(Self.expiredMessage(renewal))
+        }
+    }
+
+    /// Run out, and not renewed: said as it is. Signing in again is not
+    /// needed — running Claude Code once is.
+    static func expiredMessage(_ renewal: ClaudeCodeRenewal.Outcome?) -> String {
+        switch renewal {
+        case .noClaudeCode?:
+            return L10n.t(
+                "Claude Code's sign-in has run out, and QuotaBar could not find `claude` to have it renewed. Run Claude Code once.",
+                "Claude Code 的登录已过期，QuotaBar 找不到 `claude` 来让它续期。运行一次 Claude Code 即可。")
+        case .failed?, .coolingDown?:
+            return L10n.t(
+                "Claude Code's sign-in has run out and did not renew when QuotaBar asked; QuotaBar asks again within half an hour. Running Claude Code once renews it too.",
+                "Claude Code 的登录已过期，QuotaBar 让它续期没有成功，半小时内会再试；运行一次 Claude Code 也能续期。")
+        default:
+            return L10n.t(
+                "Claude Code's sign-in has run out. Running Claude Code once renews it; there is no need to sign in again.",
+                "Claude Code 的登录已过期。运行一次 Claude Code 就会续期，不需要重新登录。")
+        }
     }
 
     static func headers(token: String) -> [String: String] {

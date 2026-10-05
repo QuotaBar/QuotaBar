@@ -168,9 +168,20 @@ public enum LocalCredentials {
 
     private static func probeClaude() -> ClaudeLookup {
         if let cached = memo.cached(ttl: keychainTTL) { return cached }
+        return readClaudeNow()
+    }
+
+    /// A quiet read past the memo, for watching Claude Code renew its item.
+    static func readClaudeNow() -> ClaudeLookup {
         let lookup = readClaudeOAuthToken(interactive: false)
         memo.store(lookup)
         return lookup
+    }
+
+    /// When the card's access token runs out: Claude Code renews it only
+    /// while it runs, eight hours at a time.
+    public static func claudeTokenExpiry() -> Date? {
+        probeClaude().expiresAt
     }
 
     /// Two reads, in order. The direct one goes through this process and so

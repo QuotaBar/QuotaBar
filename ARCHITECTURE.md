@@ -674,6 +674,14 @@ Six ways a provider gets its credential, in order of preference:
    them by name (attributes only, no dialog) and reads them like the default,
    read only — never a refresh, which would spend Claude Code's rotating token.
    Their readings live in `ClaudeSignInsModel`, Mac-side, not in `UsageSnapshot`.
+   The default sign-in's access token lasts eight hours and only Claude Code
+   renews it. Once it has run out, `ClaudeCodeRenewal` has Claude Code renew
+   it (CodexBar's "delegated refresh"): `claude --safe-mode` in a PTY of
+   QuotaBar's, in its own folder (the only one it answers the trust dialog
+   for, and only toward "Yes"), `/status`, then quit when the keychain item
+   holds a new token. At most every half hour, recorded in the defaults
+   (`claudeRenewalLastAttempt`). Claude Code refreshes under its own lock;
+   QuotaBar never sends a refresh token, so no client_id is borrowed here.
 3. **Another app's local session store** — Cursor keeps its signed-in session
    in `state.vscdb`, a plain SQLite file (`SQLiteRead`). Not the cookie jar,
    which only holds the in-app browser's third-party cookies. The cookie

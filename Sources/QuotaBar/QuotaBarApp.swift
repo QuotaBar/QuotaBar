@@ -190,6 +190,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             print(GrokBot.probeKeychain())
             NSApp.terminate(nil)
         }
+        if arguments.contains("--claude-renewal") {
+            Diagnostics.runClaudeRenewal()
+            NSApp.terminate(nil)
+        }
         if arguments.contains("--credentials") {
             Diagnostics.printCredentials()
             NSApp.terminate(nil)

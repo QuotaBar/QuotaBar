@@ -49,14 +49,19 @@ Gatekeeper 可以直接打开。
 <!-- changelog:start -->
 <!-- 由 Scripts/sync_changelog.py 从 CHANGELOG.md 生成，请勿手改。 -->
 
-最新版本 **0.5.22**（2026-10-02） · 开发中 **1** 项改动尚未发布 · [完整更新日志](CHANGELOG.md)
+最新版本 **0.5.22**（2026-10-02） · 开发中 **3** 项改动尚未发布 · [完整更新日志](CHANGELOG.md)
 
 <details open>
-<summary><b>2026-10-05</b> · 未发布 · 新增 1</summary>
+<summary><b>2026-10-05</b> · 未发布 · 新增 2 · 修复 1</summary>
 
 **新增**
 
 - 多个 Claude 组织和账号：Claude Code 每个配置目录对应一个登录，一个登录只对应一个组织，所以同一个邮箱的个人套餐和团队工作区要分别用 `CLAUDE_CONFIG_DIR=<目录> claude` 登录。QuotaBar 现在会自动找到这些登录（不用手动添加），在 Claude 卡片展开后的「组织」一栏里逐个列出，用组织名区分、下面注明邮箱，并显示各自的 5 小时和每周额度及重置时间；卡片本身和菜单栏照常跟随默认登录，标「卡片显示中」。设置 → 服务商 → Claude 里的「其他登录」也会列出它们，并说明怎么添加。QuotaBar 只读取这些登录，从不续期或改写，不会影响对应的 Claude Code；某个登录闲置太久令牌过期时，会提示下次用那个目录运行 Claude Code 即可续期。同一个账号在同一个组织里重复登录的只显示一次。其他组织的额度只在这台 Mac 上显示，不会同步到 iPhone。（[#8](https://github.com/QuotaBar/QuotaBar/issues/8)）
+- Claude Code 的登录 8 小时不用就会过期，过期后 Claude 卡片读不到额度，要等你再运行一次 claude。现在 QuotaBar 发现令牌过期时，会自己让 Claude Code 续期：在后台以安全模式启动一次 Claude Code（不加载钩子、MCP 服务器和插件），打开 /status 让它按自己的方式续期，看到钥匙串里换了新令牌就退出，整个过程十几秒、不弹窗。续期完全由 Claude Code 自己完成，QuotaBar 不碰刷新令牌，不会和它抢着续期导致被登出；最多半小时尝试一次。第一次会让 Claude Code 信任 QuotaBar 自己的空目录（~/Library/Application Support/QuotaBar/claude-renewal），只信任这一个目录。
+
+**修复**
+
+- Claude 的令牌过期时，卡片提示「会话已过期，请重新登录」，其实不需要重新登录。现在会说明运行一次 Claude Code 就能续期；QuotaBar 让它续期没成功时，也会说明半小时内会再试。
 
 </details>
 

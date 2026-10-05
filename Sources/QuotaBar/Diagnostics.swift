@@ -221,6 +221,9 @@ enum Diagnostics {
         for line in LocalCredentials.claudeExtraDescriptions() {
             out += "         \(line)\n"
         }
+        if let renewal = ClaudeCodeRenewal.lastAttempt {
+            out += "         last renewal by Claude Code: \(renewal.outcome), \(Int(-renewal.at.timeIntervalSinceNow / 60)) min ago\n"
+        }
         out += "Codex    \(LocalCredentials.codexAuth() == nil ? "missing" : "available")\n"
         out += "Gemini   \(LocalCredentials.geminiAccessToken() == nil ? "missing" : "available")\n"
         func kimiLine(_ state: String, _ kimi: LocalCredentials.KimiCodeSession) -> String {
@@ -414,6 +417,23 @@ enum Diagnostics {
         if let error = item.2 { out += "  error: \(error)\n" }
         if id == .claude { out += claudeSignInLines() }
         FileHandle.standardOutput.write(Data(out.utf8))
+    }
+
+    /// The launch that has Claude Code renew its sign-in, run once whether or
+    /// not the token needs it: shows it starting, answering and quitting.
+    static func runClaudeRenewal() {
+        final class Box: @unchecked Sendable { var outcome: ClaudeCodeRenewal.Outcome? }
+        let box = Box()
+        let semaphore = DispatchSemaphore(value: 0)
+        let started = Date()
+        Task.detached {
+            box.outcome = await ClaudeCodeRenewal.trial()
+            semaphore.signal()
+        }
+        _ = semaphore.wait(timeout: .now() + 60)
+        let expiry = LocalCredentials.claudeTokenExpiry().map { "\(Int($0.timeIntervalSinceNow / 60)) min left" } ?? "no expiry"
+        let line = "Claude renewal: \(box.outcome.map { "\($0)" } ?? "timed out") in \(String(format: "%.1f", Date().timeIntervalSince(started)))s · token \(expiry)\n"
+        FileHandle.standardOutput.write(Data(line.utf8))
     }
 
     /// Claude Code's other config dirs' sign-ins (#8), as the card's list reads them.
