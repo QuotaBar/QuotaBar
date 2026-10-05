@@ -50,10 +50,10 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.22** (2026-10-02) · **3** changes in development · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.23** (2026-10-05) · [full changelog](CHANGELOG.en.md)
 
 <details open>
-<summary><b>2026-10-05</b> · Unreleased · 2 added · 1 fixed</summary>
+<summary><b>2026-10-05</b> · 0.5.23 · 2 added · 1 fixed</summary>
 
 **Added**
 
