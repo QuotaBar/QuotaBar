@@ -533,7 +533,7 @@ public struct ClaudeProvider: QuotaProvider {
     /// needed — running Claude Code once is.
     static func expiredMessage(_ renewal: ClaudeCodeRenewal.Outcome?) -> String {
         switch renewal {
-        case .noClaudeCode?:
+        case .noCLI?:
             return L10n.t(
                 "Claude Code's sign-in has run out, and QuotaBar could not find `claude` to have it renewed. Run Claude Code once.",
                 "Claude Code 的登录已过期，QuotaBar 找不到 `claude` 来让它续期。运行一次 Claude Code 即可。")

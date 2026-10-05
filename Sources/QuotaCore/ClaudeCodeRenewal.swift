@@ -11,54 +11,14 @@ import Foundation
 /// Claude Code renews under its own lock and writes its own item. QuotaBar
 /// never spends the refresh token, so the two can never race for it.
 public enum ClaudeCodeRenewal {
-    public enum Outcome: Sendable, Equatable {
-        case renewed
-        /// The token is still good.
-        case notNeeded
-        /// Tried within the last half hour.
-        case coolingDown
-        case noClaudeCode
-        case failed(String)
-    }
+    public typealias Outcome = CLIRenewal.Outcome
 
-    /// One launch at a time, at most one every half hour: a renewal that
-    /// does not take (signed out, offline) must not start Claude Code at
-    /// every refresh.
-    static let cooldown: TimeInterval = 30 * 60
-    private static let gate = Gate()
-
-    actor Gate {
-        private var running: Task<Outcome, Never>?
-
-        func run(now: Date, _ attempt: @escaping @Sendable () async -> Outcome) async -> Outcome {
-            if let running { return await running.value }
-            if let last = ClaudeCodeRenewal.lastAttempt, now.timeIntervalSince(last.at) < ClaudeCodeRenewal.cooldown {
-                return .coolingDown
-            }
-            ClaudeCodeRenewal.record(at: now, outcome: "started")
-            let task = Task { await attempt() }
-            running = task
-            let outcome = await task.value
-            running = nil
-            ClaudeCodeRenewal.record(at: now, outcome: "\(outcome)")
-            return outcome
-        }
-    }
-
-    /// The last launch, kept in the app's defaults: the half hour holds
-    /// across a restart, and `defaults read bar.quota.QuotaBar
-    /// claudeRenewalLastAttempt` says how the last one went.
+    /// `defaults read bar.quota.QuotaBar claudeRenewalLastAttempt`
     static let defaultsKey = "claudeRenewalLastAttempt"
+    private static let gate = CLIRenewal.Gate(key: defaultsKey)
 
     public static var lastAttempt: (at: Date, outcome: String)? {
-        guard let entry = UserDefaults.standard.dictionary(forKey: defaultsKey),
-              let at = entry["at"] as? Date, let outcome = entry["outcome"] as? String
-        else { return nil }
-        return (at, outcome)
-    }
-
-    static func record(at date: Date, outcome: String) {
-        UserDefaults.standard.set(["at": date, "outcome": outcome], forKey: defaultsKey)
+        CLIRenewal.lastAttempt(defaultsKey)
     }
 
     /// Renews the card's sign-in when its token has run out (or is about to).
@@ -81,7 +41,7 @@ public enum ClaudeCodeRenewal {
     }
 
     private static func renew(replacing token: String?, force: Bool) async -> Outcome {
-        guard let binary = claudeBinary() else { return .noClaudeCode }
+        guard let binary = claudeBinary() else { return .noCLI }
         return await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
                 continuation.resume(returning: Session(binary: binary).run(replacing: token, force: force))
@@ -107,7 +67,7 @@ public enum ClaudeCodeRenewal {
         {
             candidates.append(versions.appendingPathComponent(newest))
         }
-        return candidates.first { fm.isExecutableFile(atPath: $0.path) }
+        return CLIRenewal.firstExecutable(candidates)
     }
 
     static func supportsSafeMode(_ binary: URL) -> Bool {
@@ -127,8 +87,7 @@ public enum ClaudeCodeRenewal {
     /// QuotaBar's own empty folder: the only one it ever tells Claude Code
     /// to trust.
     static var workingDirectory: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/QuotaBar/claude-renewal", isDirectory: true)
+        CLIRenewal.workingDirectory("claude-renewal")
     }
 
     // MARK: The terminal
@@ -170,7 +129,6 @@ public enum ClaudeCodeRenewal {
 
         func run(replacing token: String?, force: Bool) -> Outcome {
             let directory = ClaudeCodeRenewal.workingDirectory
-            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             defer { stop() }
             do { try start(in: directory) } catch { return .failed(error.localizedDescription) }
 

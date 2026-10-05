@@ -3,6 +3,18 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
+## Unreleased
+
+### 2026-10-05
+
+#### Added
+
+- The grok CLI's sign-in runs out after six hours unused, and the Grok card then said the session had expired until you ran grok again. Now QuotaBar runs `grok models` in the background when the token has run out — it only lists the models and costs nothing — and the CLI renews its sign-in at start-up the way it always does, under its own lock, in a second or two; then the card reads again. The grok CLI does the renewing and QuotaBar never touches the refresh token. It tries at most once every half hour.
+
+#### Fixed
+
+- A grok CLI token that had run out made the Grok card say to sign in again, which was never needed. It now says running grok once renews it, and, when QuotaBar's own request for that did not take, that it asks again within half an hour.
+
 ## 0.5.23 · 2026-10-05
 
 ### 2026-10-05

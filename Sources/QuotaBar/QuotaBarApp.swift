@@ -191,7 +191,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.terminate(nil)
         }
         if arguments.contains("--claude-renewal") {
-            Diagnostics.runClaudeRenewal()
+            Diagnostics.runRenewal("Claude") { await ClaudeCodeRenewal.trial() }
+            NSApp.terminate(nil)
+        }
+        if arguments.contains("--grok-renewal") {
+            Diagnostics.runRenewal("Grok") { await GrokCLIRenewal.trial() }
             NSApp.terminate(nil)
         }
         if arguments.contains("--credentials") {

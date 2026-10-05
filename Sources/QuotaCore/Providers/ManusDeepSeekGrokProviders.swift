@@ -454,7 +454,15 @@ public struct GrokProvider: QuotaProvider {
     }
 
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
-        let local = LocalCredentials.grokAuth()
+        var local = LocalCredentials.grokAuth()
+        // Run out after six hours away from the grok CLI: have it renew.
+        var renewal: CLIRenewal.Outcome?
+        if config.credential(for: .grok) == nil, let expiry = local?.expiresAt,
+           expiry <= Date().addingTimeInterval(60)
+        {
+            renewal = await GrokCLIRenewal.renewIfExpired()
+            if renewal == .renewed { local = LocalCredentials.grokAuth() }
+        }
         let cursorCardShown = config.isEnabled(.cursor) && CursorProvider().isConfigured(config: config)
         let bot = Task { try await GrokBot.readingForGrokCard(cursorCardShown: cursorCardShown) }
         guard let token = config.credential(for: .grok) ?? local?.accessToken else {
@@ -471,6 +479,8 @@ public struct GrokProvider: QuotaProvider {
                 return UsageSnapshot(planName: plan, account: account, windows: [window])
             }
             throw ProviderError.noPlan(message)
+        } catch ProviderError.unauthorized where config.credential(for: .grok) == nil && local != nil {
+            throw ProviderError.sessionExpired(Self.expiredMessage(renewal))
         }
         if snapshot.planName == nil { snapshot.planName = LocalCredentials.grokPlanName() }
         // Beside the credits, Grok Bot is best effort: its sign-in failing
@@ -479,6 +489,25 @@ public struct GrokProvider: QuotaProvider {
             snapshot.windows.append(window)
         }
         return snapshot
+    }
+
+    /// The CLI's sign-in run out and not renewed: said as it is. Running the
+    /// CLI once renews it; signing in again is not needed.
+    static func expiredMessage(_ renewal: CLIRenewal.Outcome?) -> String {
+        switch renewal {
+        case .noCLI?:
+            return L10n.t(
+                "The grok CLI's sign-in has run out, and QuotaBar could not find `grok` to have it renewed. Run grok once.",
+                "grok CLI 的登录已过期，QuotaBar 找不到 `grok` 来让它续期。运行一次 grok 即可。")
+        case .failed?, .coolingDown?:
+            return L10n.t(
+                "The grok CLI's sign-in has run out and did not renew when QuotaBar asked; QuotaBar asks again within half an hour. Running grok once renews it too.",
+                "grok CLI 的登录已过期，QuotaBar 让它续期没有成功，半小时内会再试；运行一次 grok 也能续期。")
+        default:
+            return L10n.t(
+                "The grok CLI's sign-in has run out. Running grok once renews it; there is no need to sign in again.",
+                "grok CLI 的登录已过期。运行一次 grok 就会续期，不需要重新登录。")
+        }
     }
 
     static func botOnly(_ reading: GrokBot.Reading) throws -> UsageSnapshot {

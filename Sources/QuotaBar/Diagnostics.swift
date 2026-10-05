@@ -225,6 +225,18 @@ enum Diagnostics {
             out += "         last renewal by Claude Code: \(renewal.outcome), \(Int(-renewal.at.timeIntervalSinceNow / 60)) min ago\n"
         }
         out += "Codex    \(LocalCredentials.codexAuth() == nil ? "missing" : "available")\n"
+        if let grok = LocalCredentials.grokAuth() {
+            let left = grok.expiresAt.map { date -> String in
+                let minutes = Int(date.timeIntervalSinceNow / 60)
+                return minutes > 0 ? " (\(minutes / 60)h \(minutes % 60)m left)" : " (expired)"
+            } ?? ""
+            out += "Grok     available\(left)\n"
+        } else {
+            out += "Grok     missing\n"
+        }
+        if let renewal = GrokCLIRenewal.lastAttempt {
+            out += "         last renewal by the grok CLI: \(renewal.outcome), \(Int(-renewal.at.timeIntervalSinceNow / 60)) min ago\n"
+        }
         out += "Gemini   \(LocalCredentials.geminiAccessToken() == nil ? "missing" : "available")\n"
         func kimiLine(_ state: String, _ kimi: LocalCredentials.KimiCodeSession) -> String {
             let expiry = kimi.expiresAt.map { date -> String in
@@ -419,20 +431,19 @@ enum Diagnostics {
         FileHandle.standardOutput.write(Data(out.utf8))
     }
 
-    /// The launch that has Claude Code renew its sign-in, run once whether or
-    /// not the token needs it: shows it starting, answering and quitting.
-    static func runClaudeRenewal() {
-        final class Box: @unchecked Sendable { var outcome: ClaudeCodeRenewal.Outcome? }
+    /// The launch that has a CLI renew its sign-in, run once whether or not
+    /// the token needs it: shows it starting, answering and quitting.
+    static func runRenewal(_ name: String, _ trial: @escaping @Sendable () async -> CLIRenewal.Outcome) {
+        final class Box: @unchecked Sendable { var outcome: CLIRenewal.Outcome? }
         let box = Box()
         let semaphore = DispatchSemaphore(value: 0)
         let started = Date()
         Task.detached {
-            box.outcome = await ClaudeCodeRenewal.trial()
+            box.outcome = await trial()
             semaphore.signal()
         }
         _ = semaphore.wait(timeout: .now() + 60)
-        let expiry = LocalCredentials.claudeTokenExpiry().map { "\(Int($0.timeIntervalSinceNow / 60)) min left" } ?? "no expiry"
-        let line = "Claude renewal: \(box.outcome.map { "\($0)" } ?? "timed out") in \(String(format: "%.1f", Date().timeIntervalSince(started)))s · token \(expiry)\n"
+        let line = "\(name) renewal: \(box.outcome.map { "\($0)" } ?? "timed out") in \(String(format: "%.1f", Date().timeIntervalSince(started)))s\n"
         FileHandle.standardOutput.write(Data(line.utf8))
     }
 

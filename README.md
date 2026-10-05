@@ -50,9 +50,22 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.23** (2026-10-05) · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.23** (2026-10-05) · **2** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-10-05</b> · Unreleased · 1 added · 1 fixed</summary>
+
+**Added**
+
+- The grok CLI's sign-in runs out after six hours unused, and the Grok card then said the session had expired until you ran grok again. Now QuotaBar runs `grok models` in the background when the token has run out — it only lists the models and costs nothing — and the CLI renews its sign-in at start-up the way it always does, under its own lock, in a second or two; then the card reads again. The grok CLI does the renewing and QuotaBar never touches the refresh token. It tries at most once every half hour.
+
+**Fixed**
+
+- A grok CLI token that had run out made the Grok card say to sign in again, which was never needed. It now says running grok once renews it, and, when QuotaBar's own request for that did not take, that it asks again within half an hour.
+
+</details>
+
+<details>
 <summary><b>2026-10-05</b> · 0.5.23 · 2 added · 1 fixed</summary>
 
 **Added**
@@ -72,24 +85,6 @@ Latest release **0.5.23** (2026-10-05) · [full changelog](CHANGELOG.en.md)
 **Fixed**
 
 - The folded dock opened while the pointer was still well away from the small handle at the screen edge: nearness was judged by the full width of the open strip. It now opens only when the pointer reaches the handle, with 4 points to spare; once open, leaving the strip folds it as before.
-
-</details>
-
-<details>
-<summary><b>2026-10-02</b> · 0.5.21 · 1 added · 6 fixed</summary>
-
-**Added**
-
-- The Grok card shows Grok Bot's allowance too. Grok Bot paid for with SuperGrok is on the Grok card; paid for with a Cursor plan, it is on the Cursor card, so one allowance is shown once, on the side that pays. When this Mac has no Cursor card (Cursor not installed or not turned on), a Cursor-paid Grok Bot allowance is on the Grok card instead, so it is never shown nowhere. When Grok Bot is signed in to the same Cursor account as the Cursor app, its sign-in is used with no prompt; otherwise QuotaBar opens Grok Bot's own sign-in with the key Grok Bot keeps in the keychain: press "Allow keychain access" under Settings → Providers → Grok or on the Grok card and choose Always Allow. Background refreshes never prompt. With Grok Bot and no grok CLI sign-in, the Grok card shows the Grok Bot row alone.
-
-**Fixed**
-
-- Grok said "Provider response could not be parsed." at the start of a week, before anything was used. xAI's billing reply leaves the usage figure out when it is zero; it now reads as 0% used, with the week's reset as usual. The card's plan now comes from the grok CLI, such as SuperGrok, instead of being blank.
-- z.ai and Zhipu (bigmodel.cn) Coding Plans showed their 5-hour limit as a five-week one: its title, pace and reset alerts all went by five weeks. The endpoint's time-unit code was read wrong (3 is an hour, not a week); it now shows as 5 hours, and the monthly MCP calls (web search, reader) show on their own as "MCP calls".
-- A z.ai or Zhipu key with no Coding Plan usage to read said "Provider response could not be parsed." or showed an empty card; it now says the account has no usage to read, with the endpoint's reason when it gives one.
-- "Allow keychain access" (Claude and Grok Bot) pressed while a background refresh was reading the keychain was refused with no dialog, so the button seemed to do nothing. It now waits for that read and makes sure the dialog can show.
-- Qwen Token Plan Personal and Solo plans have only a monthly allowance, which could not be read and showed as a parse failure; it now shows as a monthly window with its reset, and plans with 5-hour, weekly and monthly allowances show all three.
-- An xAI account with neither a weekly allowance nor any usage said "Provider response could not be parsed." on the Grok card; it now says the account has no plan to read.
 
 </details>
 

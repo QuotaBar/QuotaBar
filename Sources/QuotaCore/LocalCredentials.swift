@@ -1024,6 +1024,8 @@ public enum LocalCredentials {
         public let accessToken: String
         /// The signed-in account, from the same entry as the token.
         public let email: String?
+        /// When the token runs out: six hours after the CLI last renewed it.
+        public var expiresAt: Date? = nil
     }
 
     public static func grokAccessToken() -> String? {
@@ -1065,10 +1067,10 @@ public enum LocalCredentials {
     /// — and the bearer the billing endpoint wants is `key` (verified against
     /// `cli-chat-proxy.grok.com/v1/billing`: 200 with it). Entries whose
     /// `expires_at` has passed are ranked last rather than dropped: an expired
-    /// token gets a 401 and the "sign in again" message, which is the truth,
-    /// where "not configured" would send the user hunting for a file that is
-    /// right there. The CLI refreshes the entry on its next run; the app does
-    /// not touch `refresh_token` — that is the CLI's session to rotate.
+    /// one is renewed by having the CLI run (`GrokCLIRenewal`), or says to run
+    /// it, where "not configured" would send the user hunting for a file that
+    /// is right there. The app never touches `refresh_token` — that is the
+    /// CLI's session to rotate.
     static func grokToken(in root: [String: Any], now: Date = Date()) -> String? {
         grokAuth(in: root, now: now)?.accessToken
     }
@@ -1085,8 +1087,9 @@ public enum LocalCredentials {
             guard let entry = value as? [String: Any],
                   let token = entry["key"] as? String, !token.isEmpty
             else { continue }
-            let auth = GrokAuth(accessToken: token, email: entry["email"] as? String)
-            let expires = Dates.parseISO(entry["expires_at"] as? String) ?? .distantFuture
+            let expiry = Dates.parseISO(entry["expires_at"] as? String)
+            let auth = GrokAuth(accessToken: token, email: entry["email"] as? String, expiresAt: expiry)
+            let expires = expiry ?? .distantFuture
             if expires > now { live.append((expires, auth)) } else { expired.append((expires, auth)) }
         }
         // The one that lives longest, then the one that expired most recently.

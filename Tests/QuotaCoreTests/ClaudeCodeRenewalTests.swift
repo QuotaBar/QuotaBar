@@ -48,7 +48,7 @@ final class ClaudeCodeRenewalTests: XCTestCase {
     func testALaunchIsMadeAtMostEveryHalfHour() async {
         UserDefaults.standard.removeObject(forKey: ClaudeCodeRenewal.defaultsKey)
         defer { UserDefaults.standard.removeObject(forKey: ClaudeCodeRenewal.defaultsKey) }
-        let gate = ClaudeCodeRenewal.Gate()
+        let gate = CLIRenewal.Gate(key: ClaudeCodeRenewal.defaultsKey)
         let now = Date()
         let first = await gate.run(now: now) { .failed("signed out") }
         XCTAssertEqual(first, .failed("signed out"))
@@ -61,7 +61,7 @@ final class ClaudeCodeRenewalTests: XCTestCase {
 
     func testARunOutSignInSaysRunningClaudeCodeIsEnough() {
         XCTAssertTrue(ClaudeProvider.expiredMessage(nil).contains("Claude Code"))
-        XCTAssertNotEqual(ClaudeProvider.expiredMessage(.noClaudeCode), ClaudeProvider.expiredMessage(nil))
+        XCTAssertNotEqual(ClaudeProvider.expiredMessage(.noCLI), ClaudeProvider.expiredMessage(nil))
         XCTAssertEqual(ClaudeProvider.expiredMessage(.coolingDown), ClaudeProvider.expiredMessage(.failed("x")))
     }
 }

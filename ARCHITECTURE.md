@@ -682,6 +682,9 @@ Six ways a provider gets its credential, in order of preference:
    holds a new token. At most every half hour, recorded in the defaults
    (`claudeRenewalLastAttempt`). Claude Code refreshes under its own lock;
    QuotaBar never sends a refresh token, so no client_id is borrowed here.
+   The grok CLI's six-hour token is renewed the same way, more simply:
+   `GrokCLIRenewal` runs `grok models`, whose start-up refreshes an expired
+   token under `~/.grok/auth.json.lock` before the command returns.
 3. **Another app's local session store** — Cursor keeps its signed-in session
    in `state.vscdb`, a plain SQLite file (`SQLiteRead`). Not the cookie jar,
    which only holds the in-app browser's third-party cookies. The cookie
