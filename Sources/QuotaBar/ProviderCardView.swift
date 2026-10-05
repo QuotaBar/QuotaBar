@@ -247,6 +247,9 @@ struct ProviderCardView: View {
             if id == .codex {
                 CodexAccountsSection(store: store, accounts: store.codexAccounts, compact: compact)
             }
+            if id == .claude {
+                ClaudeSignInsSection(store: store, signIns: store.claudeSignIns, compact: compact)
+            }
             if let source = id.costSource {
                 trend(source)
                 spendRows(source)

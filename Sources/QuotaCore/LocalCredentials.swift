@@ -40,6 +40,8 @@ public enum LocalCredentials {
     /// Forces the next Claude lookup to go back to the keychain.
     public static func invalidateClaudeToken() {
         memo.invalidate()
+        extraMemo.invalidate()
+        extraServicesMemo.invalidate()
     }
 
     // MARK: Codex (~/.codex/auth.json)
@@ -93,6 +95,9 @@ public enum LocalCredentials {
         /// "Max 20x", "Pro" — from the same item, so no extra keychain read.
         var plan: String? = nil
         var via: ClaudeLookupRoute = .keychainAPI
+        /// When the access token runs out. Claude Code renews it only while
+        /// it runs with that sign-in's config dir.
+        var expiresAt: Date? = nil
     }
 
     static let claudeService = "Claude Code-credentials"
@@ -143,6 +148,10 @@ public enum LocalCredentials {
     public static func authorizeClaudeAccess() -> Bool {
         let lookup = readClaudeOAuthToken(interactive: true)
         memo.store(lookup)
+        // The other config dirs' sign-ins the quiet reads could not open.
+        for service in claudeExtraServices() where claudeLookup(service: service).state == .needsAuthorization {
+            extraMemo.store(readClaudeOAuthToken(service: service, interactive: true), for: service)
+        }
         return lookup.state == .available
     }
 
@@ -171,23 +180,23 @@ public enum LocalCredentials {
     /// that read would have asked, the `security` tool reads instead, with the
     /// trust Claude Code itself gave it, and nothing asks at all. The dialog
     /// (and its button) is left for the case where both fail.
-    private static func readClaudeOAuthToken(interactive: Bool) -> ClaudeLookup {
-        let direct = readClaudeViaKeychainAPI(interactive: interactive)
+    private static func readClaudeOAuthToken(service: String = claudeService, interactive: Bool) -> ClaudeLookup {
+        let direct = readClaudeViaKeychainAPI(service: service, interactive: interactive)
         if interactive {
             // The user pressed the button: their answer stands, and the tool
             // gets another go on the next quiet read.
             SecurityTool.retry()
             return direct
         }
-        guard direct.state == .needsAuthorization, let viaTool = SecurityTool.readClaude()
+        guard direct.state == .needsAuthorization, let viaTool = SecurityTool.readClaude(service: service)
         else { return direct }
         return viaTool
     }
 
-    private static func readClaudeViaKeychainAPI(interactive: Bool) -> ClaudeLookup {
+    private static func readClaudeViaKeychainAPI(service: String, interactive: Bool) -> ClaudeLookup {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: claudeService,
+            kSecAttrService as String: service,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
@@ -209,22 +218,22 @@ public enum LocalCredentials {
     enum SecurityTool {
         static let path = "/usr/bin/security"
         private static let lock = NSLock()
-        private static var declined = false
+        private static var declined: Set<String> = []
 
         /// The tool has no "stay quiet" switch. Should it ever be refused —
         /// an item some other writer created, which does not trust it — that
-        /// is remembered for the life of the process, so a refresh timer
-        /// cannot turn one dialog into one a minute.
+        /// is remembered for the life of the process, item by item, so a
+        /// refresh timer cannot turn one dialog into one a minute.
         static func retry() {
-            lock.lock(); declined = false; lock.unlock()
+            lock.lock(); declined = []; lock.unlock()
         }
 
-        static func readClaude() -> ClaudeLookup? {
-            lock.lock(); let skip = declined; lock.unlock()
+        static func readClaude(service: String = claudeService) -> ClaudeLookup? {
+            lock.lock(); let skip = declined.contains(service); lock.unlock()
             guard !skip, FileManager.default.isExecutableFile(atPath: path) else { return nil }
             let process = Process()
             process.executableURL = URL(fileURLWithPath: path)
-            process.arguments = ["find-generic-password", "-s", claudeService, "-w"]
+            process.arguments = ["find-generic-password", "-s", service, "-w"]
             let stdout = Pipe()
             process.standardOutput = stdout
             process.standardError = FileHandle.nullDevice
@@ -234,7 +243,7 @@ public enum LocalCredentials {
             process.waitUntilExit()
             let lookup = classifyToolResult(exitCode: process.terminationStatus, output: output)
             if lookup == nil, refusals.contains(process.terminationStatus) {
-                lock.lock(); declined = true; lock.unlock()
+                lock.lock(); declined.insert(service); lock.unlock()
             }
             return lookup
         }
@@ -292,7 +301,8 @@ public enum LocalCredentials {
             return ClaudeLookup(
                 state: state,
                 token: token,
-                plan: root.flatMap(claudePlan))
+                plan: root.flatMap(claudePlan),
+                expiresAt: root.flatMap(claudeExpiry))
         case errSecInteractionNotAllowed, errSecAuthFailed, errSecUserCanceled:
             // -25308 is what the documentation promises for a suppressed
             // dialog; -25293 is what macOS 27 actually returns (measured on
@@ -332,6 +342,95 @@ public enum LocalCredentials {
         else { return false }
         let refresh = (oauth["refreshToken"] as? String) ?? ""
         return refresh.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// `expiresAt`, in milliseconds since 1970.
+    static func claudeExpiry(_ root: [String: Any]) -> Date? {
+        let oauth = root["claudeAiOauth"] as? [String: Any] ?? root
+        guard let millis = (oauth["expiresAt"] as? NSNumber)?.doubleValue, millis > 0 else { return nil }
+        return Date(timeIntervalSince1970: millis / 1000)
+    }
+
+    // MARK: Claude, other config dirs
+
+    /// `CLAUDE_CONFIG_DIR=<dir> claude` signs in to an item of its own,
+    /// `Claude Code-credentials-` and the first 8 hex of the SHA-256 of the
+    /// dir, written with the same `security add-generic-password` as the
+    /// default item — so both reads above open it unchanged (issue #8). Each
+    /// can be another organization of the same email or another account.
+    static let claudeExtraPrefix = "Claude Code-credentials-"
+
+    static func isExtraClaudeService(_ service: String) -> Bool {
+        guard service.hasPrefix(claudeExtraPrefix) else { return false }
+        let suffix = service.dropFirst(claudeExtraPrefix.count)
+        return suffix.count == 8 && suffix.allSatisfy { ("0"..."9").contains($0) || ("a"..."f").contains($0) }
+    }
+
+    private static let extraMemo = TimedMemo<ClaudeLookup>()
+    private static let extraServicesMemo = TimedMemo<[String]>()
+
+    /// Every such item, by name. Attributes only, which macOS hands over
+    /// without asking; memoized like the reads.
+    public static func claudeExtraServices() -> [String] {
+        if let cached = extraServicesMemo.cached("", ttl: keychainTTL) { return cached }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecReturnAttributes as String: true,
+            kSecMatchLimit as String: kSecMatchLimitAll,
+        ]
+        var result: AnyObject?
+        let status = KeychainUI.withoutPrompts { SecItemCopyMatching(query as CFDictionary, &result) }
+        let items = status == errSecSuccess ? (result as? [[String: Any]] ?? []) : []
+        let services = Set(items.compactMap { $0[kSecAttrService as String] as? String }.filter(isExtraClaudeService))
+            .sorted()
+        extraServicesMemo.store(services, for: "")
+        return services
+    }
+
+    /// One of them, read quietly the way the default item is.
+    static func claudeLookup(service: String) -> ClaudeLookup {
+        if let cached = extraMemo.cached(service, ttl: keychainTTL) { return cached }
+        let lookup = readClaudeOAuthToken(service: service, interactive: false)
+        extraMemo.store(lookup, for: service)
+        return lookup
+    }
+
+    /// For `--credentials`: each one's state, never the secret.
+    public static func claudeExtraDescriptions(now: Date = .now) -> [String] {
+        claudeExtraServices().map { service in
+            let lookup = claudeLookup(service: service)
+            var line = "\(service)  \(lookup.state)"
+            if let expiry = lookup.expiresAt {
+                let minutes = Int(expiry.timeIntervalSince(now) / 60)
+                line += minutes > 0 ? " (\(minutes / 60)h \(minutes % 60)m left)" : " (expired)"
+            }
+            if let plan = lookup.plan { line += " · \(plan)" }
+            return line + "  (via \(lookup.via.rawValue))"
+        }
+    }
+
+    /// A quiet read of one of them was refused, and the button would ask.
+    public static func claudeExtrasNeedAuthorization() -> Bool {
+        claudeExtraServices().contains { claudeLookup(service: $0).state == .needsAuthorization }
+    }
+
+    final class TimedMemo<Value>: @unchecked Sendable {
+        private let lock = NSLock()
+        private var entries: [String: (value: Value, at: Date)] = [:]
+
+        func cached(_ key: String, ttl: TimeInterval) -> Value? {
+            lock.lock(); defer { lock.unlock() }
+            guard let entry = entries[key], Date().timeIntervalSince(entry.at) < ttl else { return nil }
+            return entry.value
+        }
+
+        func store(_ value: Value, for key: String) {
+            lock.lock(); entries[key] = (value, Date()); lock.unlock()
+        }
+
+        func invalidate() {
+            lock.lock(); entries = [:]; lock.unlock()
+        }
     }
 
     /// `rateLimitTier` is the precise one — "default_claude_max_20x" carries

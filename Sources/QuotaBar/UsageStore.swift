@@ -46,12 +46,15 @@ final class UsageStore: ObservableObject {
     /// encrypted with a key in Grok Bot's own keychain item — unless Cursor.app
     /// is signed in to the same account, whose session is used instead.
     @Published private(set) var grokBotCredential: GrokBot.SessionState?
+    /// Another config dir's Claude Code sign-in (#8) the quiet reads could
+    /// not open; the same button asks for it.
+    @Published private(set) var claudeOthersNeedAuthorization = false
 
     /// The keychain button is due for this provider: Claude Code's item, or
     /// the key to Grok Bot's sign-in.
     func needsKeychainAuthorization(_ id: ProviderID) -> Bool {
         switch id {
-        case .claude: claudeNeedsAuthorization
+        case .claude: claudeNeedsAuthorization || claudeOthersNeedAuthorization
         case .grok: grokBotCredential == .needsAuthorization
         default: false
         }
@@ -189,6 +192,7 @@ final class UsageStore: ObservableObject {
     let config = ConfigStore.shared
     /// The Codex accounts kept besides the one the CLI is signed in as (issue #6).
     let codexAccounts = CodexAccountsModel()
+    let claudeSignIns = ClaudeSignInsModel()
     /// What the last Codex account switch or save said, for Settings.
     @Published var codexSwitchNotice: String?
     /// Quota Run: the personal records every reading feeds, and the upload
@@ -607,6 +611,8 @@ final class UsageStore: ObservableObject {
         retrying.remove(id)
         // The other kept Codex accounts are read on the same beat.
         if id == .codex { Task { await codexAccounts.readOthers() } }
+        // And Claude Code's other config dirs' sign-ins.
+        if id == .claude { Task { await claudeSignIns.read() } }
         switch result {
         case let .success(reading):
             let snapshot = withBalanceEstimate(id, reading)
@@ -698,7 +704,7 @@ final class UsageStore: ObservableObject {
     /// Re-evaluates which providers have usable credentials.
     func refreshConfigured() {
         Task { [config] in
-            let (ready, local, sources, claude, grokBot) = await Task.detached(priority: .utility) {
+            let (ready, local, sources, claude, claudeOthers, grokBot) = await Task.detached(priority: .utility) {
                 let ready = Set(ProviderID.allCases.filter {
                     ProviderRegistry.make($0).isConfigured(config: config)
                 })
@@ -711,13 +717,15 @@ final class UsageStore: ObservableObject {
                 }
                 // Non-interactive, like every keychain read off a timer.
                 let claude = LocalCredentials.claudeCredentialState()
+                let claudeOthers = LocalCredentials.claudeExtrasNeedAuthorization()
                 let grokBot = GrokBot.sessionState()
-                return (ready, local, sources, claude, grokBot)
+                return (ready, local, sources, claude, claudeOthers, grokBot)
             }.value
             self.configured = ready
             self.signedInLocally = local
             if self.sourceInfo != sources { self.sourceInfo = sources }
             self.claudeCredential = claude
+            self.claudeOthersNeedAuthorization = claudeOthers
             self.grokBotCredential = grokBot
         }
     }

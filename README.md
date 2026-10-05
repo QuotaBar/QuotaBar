@@ -50,9 +50,18 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.22** (2026-10-02) · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.22** (2026-10-02) · **1** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-10-05</b> · Unreleased · 1 added</summary>
+
+**Added**
+
+- Several Claude organizations and accounts. Claude Code keeps one sign-in per config dir and ties each to one organization, so a personal plan and a team workspace on the same email are signed in with `CLAUDE_CONFIG_DIR=<dir> claude` each. QuotaBar now finds those sign-ins by itself and lists them under the Claude card's arrow, in Organizations: each by its organization name with the email beneath, with its own 5-hour and weekly limits and reset times. The card and the menu bar keep following the default sign-in, marked On the card. Settings → Providers → Claude lists them too, under Other sign-ins, with how to add one. QuotaBar only reads these sign-ins and never renews or rewrites them, so the Claude Code that owns each is left alone; one left idle until its token ran out says that running Claude Code with that dir once renews it. The same account in the same organization twice is shown once. Other organizations' figures stay on this Mac and are not synced to iPhone. ([#8](https://github.com/QuotaBar/QuotaBar/issues/8))
+
+</details>
+
+<details>
 <summary><b>2026-10-02</b> · 0.5.22 · 1 fixed</summary>
 
 **Fixed**
@@ -79,23 +88,6 @@ Latest release **0.5.22** (2026-10-02) · [full changelog](CHANGELOG.en.md)
 
 </details>
 
-<details>
-<summary><b>2026-10-01</b> · 0.5.20 · 3 added · 3 changed</summary>
-
-**Added**
-
-- The Claude card shows its limit resets too: how many early resets Anthropic has given the account and when each runs out, in the same Early resets row as Codex under the card's arrow, with what each one resets and its deadline on hover. A new reset, or one with less than a day left unspent, brings a notification that says to use it with /limit-reset in Claude Code. Anthropic lists resets only to a current Claude Code, so QuotaBar asks with the version of Claude Code installed on this Mac; the count is read every 15 minutes, and again straight away when limits refill early because a reset was just used.
-- The Claude card shows credit Anthropic has given the account, such as the Cloud session credit: its name with the amount left at the end, and beneath it how much is used and when it runs out; the one-time Claude Code and Cowork credit is shown the same way. They are counted apart from the plan's limits and are never the figure the menu bar or the island follows on its own.
-- Under Early resets, each reset is listed by name (Claude calls it Full reset) with its deadline; a click switches between a countdown and the time.
-
-**Changed**
-
-- Codex's Pro plans go by ChatGPT's current names: Pro 100 and Pro 200, plus the new Pro 500 (they were shown as Pro 5x and Pro 20x). On Quota Run, runs under the old names join the boards of the new ones, and their links keep working.
-- Codex credits read as a grouped number, "62,500 credits", and sit under the card's arrow with the early resets: the name with the amount at the end, and beneath it how many were given and when they run out ("Given 62,500 credits · expires Jan 1, 2027"); the hover says roughly how many local messages they are worth. Folded, the card shows only the plan's limits.
-- Gemini and Antigravity are one card. Google stopped serving the Gemini CLI to personal accounts (free, Google AI Pro and Ultra) on June 18, 2026 and moved them to Antigravity, so the two cards showed one account twice. The Antigravity card now reads the Antigravity app, with the app closed asks the Antigravity CLI (`agy`, through its `/usage` report, which sends no prompt and spends nothing, at most every 5 minutes), then the sign-in token the app saved, then a Gemini CLI sign-in (Code Assist Standard and Enterprise accounts still use it). `agy` alone, without the app, is enough. The card says when the reading came from the Antigravity CLI or the Gemini CLI. If you had Gemini on, Antigravity is on instead, and pins to the island or the dock move with it.
-
-</details>
-
 <!-- changelog:end -->
 
 ## Activity
@@ -118,7 +110,7 @@ Latest release **0.5.22** (2026-10-02) · [full changelog](CHANGELOG.en.md)
 | Provider | Source | Credential |
 |---|---|---|
 | Codex | `~/.codex/auth.json` OAuth → `chatgpt.com/backend-api/wham/usage` | automatic |
-| Claude | Claude Code keychain item → `api.anthropic.com/api/oauth/usage` | automatic |
+| Claude | Claude Code keychain item, and one per `CLAUDE_CONFIG_DIR` → `api.anthropic.com/api/oauth/usage` | automatic |
 | Grok | `~/.grok/auth.json` → `cli-chat-proxy.grok.com/v1/billing` | automatic / manual |
 | Antigravity | the running app's language server, else `~/.gemini/jetski-standalone-oauth-token`, else the Gemini CLI's `~/.gemini/oauth_creds.json` → `cloudcode-pa.googleapis.com` | automatic |
 | Cursor | Cursor's own `state.vscdb` session → `cursor.com/api/usage-summary` | automatic / manual |
@@ -147,7 +139,9 @@ app's* keychain item. QuotaBar reads it the way Claude Code itself does — thro
 `/usr/bin/security`, which every item that tool writes trusts — so macOS has nothing to
 ask, whatever the build is signed with. Only if that read is refused does the
 **Allow keychain access** button appear, and the dialog is never raised from a background
-refresh — only from that button.
+refresh — only from that button. Sign-ins made with `CLAUDE_CONFIG_DIR=<dir> claude` —
+another organization of the same email, or another account — are found by their keychain
+items' names and read the same way, each listed under the Claude card's arrow.
 
 ## Where the numbers show
 

@@ -165,7 +165,33 @@ enum Snapshot {
                 ])),
                 "acct-old": .init(snapshot: nil, error: CodexAccountError.signInAgain(email: "spare@example.com").localizedDescription),
             ])
+        seedClaudeSignIns(store)
         return store
+    }
+
+    /// Two more Claude Code sign-ins, the way #8 has them: a team
+    /// organization of the same email, and one left idle until it ran out.
+    private static func seedClaudeSignIns(_ store: UsageStore) {
+        let now = Date()
+        store.claudeSignIns.seedForPreview(
+            card: ClaudeProvider.Identity(email: "you@example.com", organization: "you@example.com's Organization"),
+            others: [
+                ClaudeSignIns.Reading(
+                    id: "Claude Code-credentials-1a2b3c4d",
+                    identity: ClaudeProvider.Identity(email: "you@example.com", organization: "Acme Studio"),
+                    plan: "Team",
+                    snapshot: UsageSnapshot(planName: "Team", windows: [
+                        UsageWindow(title: WindowTitle.forSeconds(18_000), usedPercent: 38,
+                                    resetsAt: now.addingTimeInterval(7_400), windowSeconds: 18_000),
+                        UsageWindow(title: WindowTitle.forSeconds(604_800), usedPercent: 61,
+                                    resetsAt: now.addingTimeInterval(300_000), windowSeconds: 604_800),
+                    ])),
+                ClaudeSignIns.Reading(
+                    id: "Claude Code-credentials-9f8e7d6c",
+                    identity: ClaudeProvider.Identity(email: "side@example.com", organization: "Side Project"),
+                    plan: "Pro",
+                    error: ClaudeSignIns.expiredMessage),
+            ])
     }
 
     /// The island, off-screen: the collapsed strip with its glow at rest and
@@ -375,7 +401,7 @@ enum Snapshot {
     /// height when the plan reports few windows.
     /// Codex and Claude as they read in October 2026: Codex credits and a
     /// reset, Claude a Full reset and a Cloud session credit.
-    private static func givenCreditsStore() -> UsageStore {
+    private static func givenCreditsStore(withClaudeSignIns: Bool = false) -> UsageStore {
         let codexJSON = """
         {"email":"you@example.com","plan_type":"pro",
          "rate_limit":{"allowed":true,"limit_reached":false,
@@ -402,7 +428,9 @@ enum Snapshot {
         claude.resetCredits = ResetCredits(available: 1, applicable: 0, totalEarned: 1, credits: [
             ResetCredit(id: "launch", title: "Full reset", expiresAt: Date().addingTimeInterval(21 * 86_400)),
         ])
-        return UsageStore.preview(enabled: [.codex, .claude], states: [.codex: .loaded(codex), .claude: .loaded(claude)])
+        let store = UsageStore.preview(enabled: [.codex, .claude], states: [.codex: .loaded(codex), .claude: .loaded(claude)])
+        if withClaudeSignIns { seedClaudeSignIns(store) }
+        return store
     }
 
     private static func codexReserveStore(logged: Bool = false) -> UsageStore {
@@ -505,6 +533,17 @@ enum Snapshot {
                         backing: Color(white: 0.06))
                 }
             }
+            // Claude Code's other config dirs' sign-ins under the arrow (#8).
+            let organizations = givenCreditsStore(withClaudeSignIns: true)
+            organizations.experience.expandedCards = [ProviderID.claude.rawValue]
+            render(
+                ProviderCardView(store: organizations, id: .claude)
+                    .frame(width: 340)
+                    .padding(12)
+                    .background(Color(white: 0.06))
+                    .environment(\.colorScheme, .dark),
+                to: url, name: "panel-card-claude-organizations-\(suffix)",
+                backing: Color(white: 0.06))
             let callout = ProviderCallout(store: failingStore(), id: .claude)
                 .padding(20)
                 .environment(\.colorScheme, .dark)
@@ -780,7 +819,7 @@ enum Snapshot {
         for language in [L10n.Language.zhHans, .en] {
             L10n.override = language
             let suffix = language == .en ? "en" : "zh"
-            for id in [ProviderID.codex, .cursor] {
+            for id in [ProviderID.codex, .cursor, .claude] {
                 write(
                     ProviderSettingsRow(store: store, id: id, isExpanded: true, onToggle: {})
                         .frame(width: 620)

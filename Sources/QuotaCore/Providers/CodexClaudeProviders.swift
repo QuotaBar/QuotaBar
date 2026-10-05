@@ -517,21 +517,30 @@ public struct ClaudeProvider: QuotaProvider {
         guard let token = LocalCredentials.claudeOAuthToken() else {
             throw Self.credentialError(for: LocalCredentials.claudeCredentialState())
         }
-        let headers = [
+        return try await Self.usage(token: token, plan: LocalCredentials.claudePlanName())
+    }
+
+    static func headers(token: String) -> [String: String] {
+        [
             "Authorization": "Bearer \(token)",
             "Accept": "application/json",
             "anthropic-beta": "oauth-2025-04-20",
             "User-Agent": "claude-code/2.1.0",
         ]
+    }
+
+    /// One sign-in's reading: the card's, or another config dir's (#8).
+    static func usage(token: String, plan: String?) async throws -> UsageSnapshot {
+        let headers = headers(token: token)
         let url = URL(string: "https://api.anthropic.com/api/oauth/usage")!
         let response = try await HTTP.get(url, headers: headers).requireOK()
-        var snapshot = try Self.parse(response.data)
+        var snapshot = try parse(response.data)
         // The usage endpoint does not name the plan; Claude Code's item does.
-        if snapshot.planName == nil { snapshot.planName = LocalCredentials.claudePlanName() }
+        if snapshot.planName == nil { snapshot.planName = plan }
         // Nor the account; /api/oauth/profile does. Memoized per token, so
         // the extra request happens once per sign-in, not once per minute.
-        snapshot.account = await Self.profileEmail(headers: headers, token: token)
-        snapshot.resetCredits = await Self.resetCredits(headers: headers, token: token, windows: snapshot.windows)
+        snapshot.account = await profile(token: token)?.email
+        snapshot.resetCredits = await resetCredits(headers: headers, token: token, windows: snapshot.windows)
         return snapshot
     }
 
@@ -575,11 +584,13 @@ public struct ClaudeProvider: QuotaProvider {
         }
 
         private let lock = NSLock()
-        private var entry: Entry?
+        /// By token: with several sign-ins (#8) read in turn, one slot would
+        /// send every refresh back to the endpoint.
+        private var entries: [String: Entry] = [:]
 
         func reusable(token: String, used: Double, now: Date = .now) -> ResetCredits?? {
             lock.withLock {
-                guard let entry, entry.token == token, now.timeIntervalSince(entry.readAt) < 900,
+                guard let entry = entries[token], now.timeIntervalSince(entry.readAt) < 900,
                       used >= entry.used - 0.5,
                       !(entry.credits?.credits ?? []).contains(where: { ($0.expiresAt ?? .distantFuture) <= now })
                 else { return nil }
@@ -588,11 +599,15 @@ public struct ClaudeProvider: QuotaProvider {
         }
 
         func last(token: String) -> ResetCredits? {
-            lock.withLock { entry?.token == token ? entry?.credits : nil }
+            lock.withLock { entries[token]?.credits }
         }
 
         func store(_ credits: ResetCredits?, token: String, used: Double, now: Date = .now) {
-            lock.withLock { entry = Entry(token: token, credits: credits, used: used, readAt: now) }
+            lock.withLock {
+                // Tokens are renewed every few hours; the stale ones go.
+                entries = entries.filter { now.timeIntervalSince($0.value.readAt) < 86_400 }
+                entries[token] = Entry(token: token, credits: credits, used: used, readAt: now)
+            }
         }
     }
 
@@ -710,41 +725,82 @@ public struct ClaudeProvider: QuotaProvider {
 
     private static let profileMemo = ProfileMemo()
 
+    /// By token, for the same reason as the resets.
     final class ProfileMemo: @unchecked Sendable {
         private let lock = NSLock()
-        private var token: String?
-        private var email: String?
+        private var entries: [String: (profile: Identity, at: Date)] = [:]
 
-        func email(for token: String) -> String? {
-            lock.lock(); defer { lock.unlock() }
-            return self.token == token ? email : nil
+        func profile(for token: String) -> Identity? {
+            lock.withLock { entries[token]?.profile }
         }
 
-        func store(_ email: String, for token: String) {
-            lock.lock(); defer { lock.unlock() }
-            self.token = token
+        func store(_ profile: Identity, for token: String, now: Date = .now) {
+            lock.withLock {
+                entries = entries.filter { now.timeIntervalSince($0.value.at) < 86_400 }
+                entries[token] = (profile, now)
+            }
+        }
+    }
+
+    /// Who a sign-in is: one email can sit in several organizations — a
+    /// personal plan and a team — each with its own limits, so the
+    /// organization is what tells two sign-ins apart (#8).
+    public struct Identity: Sendable, Equatable {
+        public var email: String?
+        public var organization: String?
+        var accountID: String?
+        var organizationID: String?
+
+        public init(email: String? = nil, organization: String? = nil, accountID: String? = nil, organizationID: String? = nil) {
             self.email = email
+            self.organization = organization
+            self.accountID = accountID
+            self.organizationID = organizationID
         }
     }
 
     struct Profile: Decodable {
-        struct Account: Decodable { let email: String? }
+        struct Account: Decodable {
+            let uuid: String?
+            let email: String?
+        }
+        struct Organization: Decodable {
+            let uuid: String?
+            let name: String?
+        }
         let account: Account?
+        let organization: Organization?
+
+        var identity: Identity {
+            func text(_ value: String?) -> String? {
+                let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                return trimmed.isEmpty ? nil : trimmed
+            }
+            return Identity(
+                email: text(account?.email),
+                organization: text(organization?.name),
+                accountID: account?.uuid,
+                organizationID: organization?.uuid)
+        }
+    }
+
+    static func cachedProfile(token: String) -> Identity? {
+        profileMemo.profile(for: token)
     }
 
     /// Best effort: a failure here leaves the card without an account line,
     /// never without its numbers. Only a hit is cached, so a transient
     /// failure is retried on the next refresh.
-    static func profileEmail(headers: [String: String], token: String) async -> String? {
-        if let cached = profileMemo.email(for: token) { return cached }
+    static func profile(token: String) async -> Identity? {
+        if let cached = profileMemo.profile(for: token) { return cached }
         let url = URL(string: "https://api.anthropic.com/api/oauth/profile")!
-        guard let response = try? await HTTP.get(url, headers: headers),
+        guard let response = try? await HTTP.get(url, headers: headers(token: token)),
               response.status == 200,
-              let email = (try? response.json(Profile.self))?.account?.email,
-              !email.isEmpty
+              let identity = (try? response.json(Profile.self))?.identity,
+              identity.email != nil || identity.organization != nil
         else { return nil }
-        profileMemo.store(email, for: token)
-        return email
+        profileMemo.store(identity, for: token)
+        return identity
     }
 
     // MARK: Response shape

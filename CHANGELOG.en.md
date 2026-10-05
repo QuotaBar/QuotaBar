@@ -3,6 +3,14 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
+## Unreleased
+
+### 2026-10-05
+
+#### Added
+
+- Several Claude organizations and accounts. Claude Code keeps one sign-in per config dir and ties each to one organization, so a personal plan and a team workspace on the same email are signed in with `CLAUDE_CONFIG_DIR=<dir> claude` each. QuotaBar now finds those sign-ins by itself and lists them under the Claude card's arrow, in Organizations: each by its organization name with the email beneath, with its own 5-hour and weekly limits and reset times. The card and the menu bar keep following the default sign-in, marked On the card. Settings → Providers → Claude lists them too, under Other sign-ins, with how to add one. QuotaBar only reads these sign-ins and never renews or rewrites them, so the Claude Code that owns each is left alone; one left idle until its token ran out says that running Claude Code with that dir once renews it. The same account in the same organization twice is shown once. Other organizations' figures stay on this Mac and are not synced to iPhone. (#8)
+
 ## 0.5.22 · 2026-10-02
 
 ### 2026-10-02

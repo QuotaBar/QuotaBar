@@ -668,7 +668,12 @@ Six ways a provider gets its credential, in order of preference:
    where Kimi Code has never run; renewed here, see below. A file whose access
    and refresh tokens have both run out is no session, and `UsageStore` reads
    Kimi again when Kimi Code rewrites the file), read in the clear.
-2. **Another app's keychain item** — Claude Code.
+2. **Another app's keychain item** — Claude Code. Each `CLAUDE_CONFIG_DIR` gets
+   an item of its own, `Claude Code-credentials-<first 8 hex of sha256(dir)>`,
+   written by the same `security add-generic-password`; `ClaudeSignIns` finds
+   them by name (attributes only, no dialog) and reads them like the default,
+   read only — never a refresh, which would spend Claude Code's rotating token.
+   Their readings live in `ClaudeSignInsModel`, Mac-side, not in `UsageSnapshot`.
 3. **Another app's local session store** — Cursor keeps its signed-in session
    in `state.vscdb`, a plain SQLite file (`SQLiteRead`). Not the cookie jar,
    which only holds the in-app browser's third-party cookies. The cookie

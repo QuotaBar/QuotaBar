@@ -218,6 +218,9 @@ enum Diagnostics {
         let route = LocalCredentials.claudeCredentialRoute().rawValue
         let plan = LocalCredentials.claudePlanName().map { " · \($0)" } ?? ""
         out += "Claude   \(claude)\(plan)  (via \(route))\n"
+        for line in LocalCredentials.claudeExtraDescriptions() {
+            out += "         \(line)\n"
+        }
         out += "Codex    \(LocalCredentials.codexAuth() == nil ? "missing" : "available")\n"
         out += "Gemini   \(LocalCredentials.geminiAccessToken() == nil ? "missing" : "available")\n"
         func kimiLine(_ state: String, _ kimi: LocalCredentials.KimiCodeSession) -> String {
@@ -409,7 +412,31 @@ enum Diagnostics {
             }
         }
         if let error = item.2 { out += "  error: \(error)\n" }
+        if id == .claude { out += claudeSignInLines() }
         FileHandle.standardOutput.write(Data(out.utf8))
+    }
+
+    /// Claude Code's other config dirs' sign-ins (#8), as the card's list reads them.
+    private static func claudeSignInLines() -> String {
+        final class Box: @unchecked Sendable { var readings: [ClaudeSignIns.Reading] = [] }
+        let box = Box()
+        let semaphore = DispatchSemaphore(value: 0)
+        Task.detached {
+            box.readings = await ClaudeSignIns.readOthers()
+            semaphore.signal()
+        }
+        _ = semaphore.wait(timeout: .now() + 45)
+        var out = ""
+        for reading in box.readings {
+            let who = [reading.identity?.organization, reading.identity?.email].compactMap { $0 }.joined(separator: " · ")
+            out += "  other sign-in \(reading.id): \(who.isEmpty ? "—" : who)\(reading.plan.map { " · \($0)" } ?? "")\n"
+            for window in reading.snapshot?.windows ?? [] {
+                let used = window.usedPercent.map { QuotaFormat.percent($0) + " used" } ?? "—"
+                out += "    \(window.title): \(used)\(window.resetsAt.map { " · " + QuotaFormat.resetLabel(to: $0) } ?? "")\n"
+            }
+            if let error = reading.error { out += "    error: \(error)\n" }
+        }
+        return out
     }
 
     static func printCost() {

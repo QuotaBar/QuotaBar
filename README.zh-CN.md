@@ -49,9 +49,18 @@ Gatekeeper 可以直接打开。
 <!-- changelog:start -->
 <!-- 由 Scripts/sync_changelog.py 从 CHANGELOG.md 生成，请勿手改。 -->
 
-最新版本 **0.5.22**（2026-10-02） · [完整更新日志](CHANGELOG.md)
+最新版本 **0.5.22**（2026-10-02） · 开发中 **1** 项改动尚未发布 · [完整更新日志](CHANGELOG.md)
 
 <details open>
+<summary><b>2026-10-05</b> · 未发布 · 新增 1</summary>
+
+**新增**
+
+- 多个 Claude 组织和账号：Claude Code 每个配置目录对应一个登录，一个登录只对应一个组织，所以同一个邮箱的个人套餐和团队工作区要分别用 `CLAUDE_CONFIG_DIR=<目录> claude` 登录。QuotaBar 现在会自动找到这些登录（不用手动添加），在 Claude 卡片展开后的「组织」一栏里逐个列出，用组织名区分、下面注明邮箱，并显示各自的 5 小时和每周额度及重置时间；卡片本身和菜单栏照常跟随默认登录，标「卡片显示中」。设置 → 服务商 → Claude 里的「其他登录」也会列出它们，并说明怎么添加。QuotaBar 只读取这些登录，从不续期或改写，不会影响对应的 Claude Code；某个登录闲置太久令牌过期时，会提示下次用那个目录运行 Claude Code 即可续期。同一个账号在同一个组织里重复登录的只显示一次。其他组织的额度只在这台 Mac 上显示，不会同步到 iPhone。（[#8](https://github.com/QuotaBar/QuotaBar/issues/8)）
+
+</details>
+
+<details>
 <summary><b>2026-10-02</b> · 0.5.22 · 修复 1</summary>
 
 **修复**
@@ -78,23 +87,6 @@ Gatekeeper 可以直接打开。
 
 </details>
 
-<details>
-<summary><b>2026-10-01</b> · 0.5.20 · 新增 3 · 调整 3</summary>
-
-**新增**
-
-- Claude 卡片现在也显示限额重置次数：Anthropic 送的「提前重置用量限制」有几次可用、什么时候到期，和 Codex 的一样放在卡片展开后的「限额重置次数」一行，悬停能看到每一次重置的内容和到期时间。收到新的重置、或者某次重置还剩不到一天就要过期时会发通知，提示在 Claude Code 里用 /limit-reset 兑换。这份清单只会回给新版 Claude Code，所以 QuotaBar 会读取这台 Mac 上装的 Claude Code 版本号来询问；每 15 分钟读一次，刚用掉一次重置、额度提前回满时会立刻重读。
-- Claude 卡片显示 Anthropic 赠送的额度，例如 Cloud session credit：名称后面是剩余金额，下一行是已用多少和到期时间；一次性的 Claude Code and Cowork credit 也一样显示。它们和套餐限额分开计算，不会被当成菜单栏、刘海岛显示的那个主额度。
-- 限额重置次数下面逐条列出每一次重置的名称（Claude 的叫 Full reset）和到期时间，点一下在倒计时和具体时间之间切换。
-
-**调整**
-
-- Codex 的 Pro 套餐改用 ChatGPT 现在的叫法：Pro 100、Pro 200，并新增 Pro 500（原来显示为 Pro 5x、Pro 20x）。Quota Run 排行榜里旧名的成绩自动并入新名的榜，链接不变。
-- Codex 的额度点数（credits）显示为「62,500 点」这样带千分位的数字，放在卡片展开后，和限额重置次数一起：名称后面是数量，下一行是其中赠送了多少和到期时间（例如「赠送 62,500 点 · 2027年1月1日到期」），悬停说明大约够在本地发多少条消息。卡片收起时只显示套餐额度。
-- Gemini 和 Antigravity 合成一张卡。Google 已在 2026 年 6 月 18 日停止为个人用户（免费、Google AI Pro、Ultra）提供 Gemini CLI，这些账号改用 Antigravity，原来两张卡显示的是同一个账号。现在 Antigravity 卡先读 Antigravity 应用；应用没开时改问 Antigravity CLI（`agy`，用它的 `/usage` 报告，不发提问、不耗额度，每 5 分钟最多问一次），然后读它保存的登录令牌，最后读 Gemini CLI 的登录（仍可用 Gemini CLI 的企业版 Code Assist 账号）。只装了 `agy`、没装应用也能用。卡片上会标出读数来自 Antigravity CLI 还是 Gemini CLI。之前启用了 Gemini 的，会自动改为启用 Antigravity，钉到刘海岛、停靠条的设置也跟着过去。
-
-</details>
-
 <!-- changelog:end -->
 
 ## 项目动态
@@ -117,7 +109,7 @@ Gatekeeper 可以直接打开。
 | 服务商 | 数据来源 | 凭据 |
 |---|---|---|
 | Codex | `~/.codex/auth.json` OAuth → `chatgpt.com/backend-api/wham/usage` | 自动 |
-| Claude | Claude Code 钥匙串项 → `api.anthropic.com/api/oauth/usage` | 自动 |
+| Claude | Claude Code 钥匙串项，以及每个 `CLAUDE_CONFIG_DIR` 各自的一项 → `api.anthropic.com/api/oauth/usage` | 自动 |
 | Grok | `~/.grok/auth.json` → `cli-chat-proxy.grok.com/v1/billing` | 自动 / 手动 |
 | Antigravity | 正在运行的应用的语言服务，其次 `~/.gemini/jetski-standalone-oauth-token`，再次 Gemini CLI 的 `~/.gemini/oauth_creds.json` → `cloudcode-pa.googleapis.com` | 自动 |
 | Cursor | Cursor 自己的 `state.vscdb` 会话 → `cursor.com/api/usage-summary` | 自动 / 手动 |
@@ -145,6 +137,8 @@ Gatekeeper 可以直接打开。
 QuotaBar 和 Claude Code 自己一样，通过 `/usr/bin/security` 读取；该工具写入的每个钥匙串项都信任它，
 所以无论安装包用什么签名，macOS 都不需要询问。只有这次读取被拒绝时，才会出现
 **允许访问钥匙串** 按钮；后台刷新从不弹出系统对话框，只有点这个按钮时才会。
+用 `CLAUDE_CONFIG_DIR=<目录> claude` 登录的其他组织或账号，会按钥匙串项的名称自动找到，用同样的方式读取，
+逐个列在 Claude 卡片展开后的列表里。
 
 ## 在哪里看额度
 

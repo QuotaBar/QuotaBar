@@ -393,6 +393,12 @@ private struct CredentialEditor: View {
                 }
             }
 
+            if id == .claude {
+                SettingRow(L10n.t("Other sign-ins", "其他登录")) {
+                    ClaudeSignInsSettings(store: store, signIns: store.claudeSignIns)
+                }
+            }
+
             SettingRow(L10n.t("How to sign in", "如何登录")) {
                 VStack(alignment: .leading, spacing: Design.space2) {
                     Text(id.credentialHint ?? id.setupHint)
