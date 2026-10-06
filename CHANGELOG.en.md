@@ -3,6 +3,18 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
+## 0.5.27 · 2026-10-06
+
+### 2026-10-06
+
+#### Added
+
+- The Kimi Code card names the plan — Moderato, Allegretto, Allegro or Vivace — beside the edition, as "ALLEGRO · GLOBAL". The Global edition's quota reply carries no plan, so the card showed the edition alone; when the quota names none, the plan is now read from the profile Kimi Code's own account panel reads, at most once an hour. For the sign-in on this Mac and a pasted API key alike.
+
+#### Fixed
+
+- The plan chip broke onto two lines in the dock's cards. It now stays on one line: plan and edition where they fit, the plan alone where they do not, with the whole of it in the tooltip. The same in the menu-bar panel and the island.
+
 ## 0.5.26 · 2026-10-06
 
 ### 2026-10-06

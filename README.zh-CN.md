@@ -49,9 +49,22 @@ Gatekeeper 可以直接打开。
 <!-- changelog:start -->
 <!-- 由 Scripts/sync_changelog.py 从 CHANGELOG.md 生成，请勿手改。 -->
 
-最新版本 **0.5.26**（2026-10-06） · [完整更新日志](CHANGELOG.md)
+最新版本 **0.5.27**（2026-10-06） · [完整更新日志](CHANGELOG.md)
 
 <details open>
+<summary><b>2026-10-06</b> · 0.5.27 · 新增 1 · 修复 1</summary>
+
+**新增**
+
+- Kimi Code 卡片显示套餐名（Moderato、Allegretto、Allegro、Vivace），和版本并排，比如「ALLEGRO · 国际版」。国际版的额度接口不带套餐，以前只显示「国际版」；现在额度里没有套餐名时，改从 Kimi Code 自己账号页用的资料接口读取，一小时内不重复请求。本机登录和粘贴的 API Key 都适用。
+
+**修复**
+
+- 套餐标签在侧边停靠条的卡片里会折成两行。现在标签始终单行：放得下就显示套餐和版本，放不下只显示套餐，完整内容在鼠标悬停提示里。菜单栏面板和刘海岛同样处理。
+
+</details>
+
+<details>
 <summary><b>2026-10-06</b> · 0.5.26 · 新增 1 · 修复 2</summary>
 
 **新增**
@@ -75,19 +88,6 @@ Gatekeeper 可以直接打开。
 **修复**
 
 - 在侧边停靠条里展开 Claude 或 Codex 卡片时，看不到「组织」和「账号」两栏，只有菜单栏面板里的卡片有。现在停靠条的卡片里也有。（[#8](https://github.com/QuotaBar/QuotaBar/issues/8)）
-
-</details>
-
-<details>
-<summary><b>2026-10-05</b> · 0.5.24 · 新增 1 · 修复 1</summary>
-
-**新增**
-
-- grok CLI 的登录 6 小时不用就会过期，过期后 Grok 卡片提示会话已过期，要等你再运行一次 grok。现在 QuotaBar 发现令牌过期时，会在后台运行一次 `grok models`（只列出模型，不消耗额度），grok CLI 启动时会按自己的方式、在自己的锁里续期，一两秒就好，然后重新读额度。续期完全由 grok CLI 自己完成，QuotaBar 不碰刷新令牌；最多半小时尝试一次。
-
-**修复**
-
-- grok CLI 的令牌过期时，Grok 卡片以前提示重新登录，其实不需要。现在会说明运行一次 grok 就能续期；QuotaBar 让它续期没成功时，也会说明半小时内会再试。
 
 </details>
 
