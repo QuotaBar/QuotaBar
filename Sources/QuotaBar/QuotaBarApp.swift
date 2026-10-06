@@ -198,6 +198,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Diagnostics.runRenewal("Grok") { await GrokCLIRenewal.trial() }
             NSApp.terminate(nil)
         }
+        if let index = arguments.firstIndex(of: "--profile-switch-trial"), index + 1 < arguments.count {
+            // Runs on the main actor with the store, then quits; the app
+            // itself never starts.
+            Diagnostics.runProfileSwitchTrial(work: arguments[index + 1])
+            return
+        }
         if arguments.contains("--credentials") {
             Diagnostics.printCredentials()
             NSApp.terminate(nil)

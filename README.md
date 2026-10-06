@@ -61,7 +61,7 @@ Latest release **0.5.25** (2026-10-06) · **3** changes in development · [full 
 
 **Fixed**
 
-- Switching profiles back and forth quickly got the Claude card rate-limited by Anthropic, with no figures left to show: a switch cleared the card before reading it again, and read the other sign-ins under the arrow again too. A switch now shows that account's last figures at once and asks nothing if they are under two minutes old; the list under the arrow trades places without being read; and a read refused for the rate leaves the last figures standing. ([#8](https://github.com/QuotaBar/QuotaBar/issues/8))
+- Switching profiles back and forth quickly got the Claude card rate-limited by Anthropic, with no figures left to show: a switch cleared the card before reading it again, and read the other sign-ins under the arrow again too. A switch now shows that account's last figures at once and asks nothing while they are no older than the refresh interval — no older than a card shows between two refreshes; the list under the arrow trades places without being read; and a read refused for the rate leaves the last figures standing. ([#8](https://github.com/QuotaBar/QuotaBar/issues/8))
 - Switching to a profile whose account had more early resets could announce a reset that was never given: the reading was compared with the other account's. ([#8](https://github.com/QuotaBar/QuotaBar/issues/8))
 
 </details>

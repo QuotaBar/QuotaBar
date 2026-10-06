@@ -431,6 +431,62 @@ enum Diagnostics {
         FileHandle.standardOutput.write(Data(out.utf8))
     }
 
+    /// Switching profiles (#8) the way a person does, quickly and back and
+    /// forth, with the store's own code: a Personal profile on the default
+    /// Claude sign-in, a Work one on `work` (a `Claude Code-credentials-…`
+    /// item). With `QUOTABAR_HTTP_LOG` set, says how many requests the
+    /// switches cost. Only with `CFFIXED_USER_HOME` pointing at a folder of
+    /// its own, so the trial's profiles never reach the real preferences.
+    @MainActor
+    static func runProfileSwitchTrial(work service: String) {
+        func say(_ line: String) { FileHandle.standardOutput.write(Data((line + "\n").utf8)) }
+        guard ProcessInfo.processInfo.environment["CFFIXED_USER_HOME"] != nil else {
+            say("Refusing: run with CFFIXED_USER_HOME=<an empty folder>, so the trial's profiles stay out of the real preferences.")
+            NSApp.terminate(nil)
+            return
+        }
+        let log = ProcessInfo.processInfo.environment["QUOTABAR_HTTP_LOG"]
+        func requests() -> Int {
+            guard let log, let text = try? String(contentsOfFile: log, encoding: .utf8) else { return 0 }
+            return text.split(separator: "\n").count
+        }
+        func summary(_ store: UsageStore) -> String {
+            switch store.states[.claude] {
+            case let .loaded(snapshot)?:
+                return "loaded \(snapshot.headlinePercent.map { QuotaFormat.percent($0) } ?? "—"), read \(Int(-snapshot.fetchedAt.timeIntervalSinceNow))s ago"
+            case let .stale(snapshot, error)?:
+                return "stale \(snapshot.headlinePercent.map { QuotaFormat.percent($0) } ?? "—") (\(error))"
+            case let .failed(message)?: return "failed (\(message))"
+            case .loading?: return "loading"
+            case nil: return "empty"
+            }
+        }
+        Task { @MainActor in
+            let store = UsageStore.preview(enabled: [.claude], states: [:])
+            store.updateProfiles({
+                $0 = [AccountProfile(id: "personal", name: "Personal"),
+                      AccountProfile(id: "work", name: "Work", claudeService: service)]
+            }, activating: "personal")
+            store.refresh(.claude)
+            for _ in 0..<200 where store.states[.claude]?.snapshot == nil {
+                if case .failed = store.states[.claude] { break }
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            await store.readClaudeSignIns(force: true)
+            say("before:   \(summary(store)) · under the arrow: \(store.claudeSignIns.others.map(\.id))")
+            let before = requests()
+            for turn in 1...6 {
+                let target = turn % 2 == 1 ? "work" : "personal"
+                store.setActiveProfile(target)
+                try? await Task.sleep(for: .milliseconds(1500))
+                say("switch \(turn) → \(target): \(summary(store)) · requests so far \(requests() - before)")
+            }
+            try? await Task.sleep(for: .seconds(3))
+            say("requests for 6 switches: \(requests() - before)\(log == nil ? " (set QUOTABAR_HTTP_LOG to count)" : "")")
+            NSApp.terminate(nil)
+        }
+    }
+
     /// The launch that has a CLI renew its sign-in, run once whether or not
     /// the token needs it: shows it starting, answering and quitting.
     static func runRenewal(_ name: String, _ trial: @escaping @Sendable () async -> CLIRenewal.Outcome) {

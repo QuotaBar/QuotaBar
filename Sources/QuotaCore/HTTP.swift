@@ -69,6 +69,24 @@ public enum HTTP {
         }
     }
 
+    /// `QUOTABAR_HTTP_LOG=<file>`: one line per request answered — time,
+    /// method, host, path and status. Never the query, a header or a body,
+    /// so never a credential. For counting what a feature asks of a server.
+    private static let requestLog = ProcessInfo.processInfo.environment["QUOTABAR_HTTP_LOG"]
+    private static let requestLogLock = NSLock()
+
+    private static func logRequest(_ method: String, _ url: URL, status: Int) {
+        guard let path = requestLog else { return }
+        let line = "\(String(format: "%.3f", Date().timeIntervalSince1970)) \(method) \(url.host ?? "") \(url.path) \(status)\n"
+        requestLogLock.withLock {
+            if !FileManager.default.fileExists(atPath: path) { FileManager.default.createFile(atPath: path, contents: nil) }
+            guard let handle = FileHandle(forWritingAtPath: path) else { return }
+            handle.seekToEndOfFile()
+            handle.write(Data(line.utf8))
+            try? handle.close()
+        }
+    }
+
     /// `timeout` is the request's own, which takes the place of the
     /// session's 20 seconds.
     public static func send(
@@ -90,6 +108,7 @@ public enum HTTP {
             guard let http = response as? HTTPURLResponse else {
                 throw ProviderError.badResponse
             }
+            logRequest(method, url, status: http.statusCode)
             return HTTPResponse(status: http.statusCode, data: data, url: http.url)
         } catch let error as ProviderError {
             throw error

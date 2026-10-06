@@ -758,9 +758,10 @@ final class UsageStore: ObservableObject {
 
     /// A profile switch (#8): the card reads another account now. That
     /// account's own last figures are shown at once and read again only once
-    /// older than two minutes — switching back and forth asks the provider
-    /// nothing, and a read refused for the rate (Anthropic's 429) leaves them
-    /// standing, as any refresh does. A read of the old account still on its
+    /// older than the refresh interval — no older than what a card shows
+    /// between two refreshes anyway — so switching back and forth asks the
+    /// provider nothing, and a read refused for the rate (Anthropic's 429)
+    /// leaves them standing, as any refresh does. A read of the old account still on its
     /// way is dropped, and nothing compares the new account with the old one:
     /// a reset count read against another account's would announce resets
     /// that were never given.
@@ -770,7 +771,7 @@ final class UsageStore: ObservableObject {
         reported[id] = last
         if let last {
             states[id] = .loaded(shown(last, for: id))
-            if Date().timeIntervalSince(last.fetchedAt) < 120 { return }
+            if Date().timeIntervalSince(last.fetchedAt) < TimeInterval(refreshMinutes * 60) { return }
         } else {
             states[id] = nil
         }
