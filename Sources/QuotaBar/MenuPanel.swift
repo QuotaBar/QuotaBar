@@ -347,7 +347,6 @@ struct MenuPanelView: View {
                         WelcomeCard(store: store)
                     }
                     UpdateBanner(store: store)
-                    ProfileSwitcher(store: store)
                     if store.experience.showSpendCard {
                         SpendCardView(store: store)
                     }

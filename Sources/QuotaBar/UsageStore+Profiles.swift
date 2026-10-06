@@ -19,6 +19,32 @@ extension UsageStore {
         if let name = activeProfile?.name { flashNotice(L10n.t("Showing \(name)", "已切换到「\(name)」")) }
     }
 
+    /// The card's arrow: show another Claude sign-in. One that no profile
+    /// reads yet gets a profile named for it, so the arrow and the profile
+    /// switcher stay one mechanism; the Codex account stays as it is.
+    func useClaudeSignIn(_ service: String) {
+        guard service != claudeCardService else { return }
+        if let existing = accountProfiles.first(where: { $0.claudeItem == service }) {
+            setActiveProfile(existing.id)
+            return
+        }
+        let codex = activeProfile?.codexAccountID
+        func name(for item: String) -> String {
+            let identity = claudeSignIns.identities[item]
+            return identity?.email ?? identity?.organization ?? L10n.t("Sign-in \(item.suffix(8))", "登录 \(item.suffix(8))")
+        }
+        let created = AccountProfile(
+            name: name(for: service), claudeService: service == LocalCredentials.claudeService ? nil : service, codexAccountID: codex)
+        updateProfiles({ list in
+            // Two are needed before any is "in use": the one the card reads now first.
+            if list.isEmpty {
+                list.append(AccountProfile(name: name(for: LocalCredentials.claudeService), codexAccountID: codex))
+            }
+            list.append(created)
+        }, activating: created.id)
+        flashNotice(L10n.t("Showing \(created.name)", "已切换到「\(created.name)」"))
+    }
+
     /// Edits the profiles; a change to what the cards read reads them again.
     func updateProfiles(_ body: (inout [AccountProfile]) -> Void, activating id: String? = nil) {
         let before = activeProfile

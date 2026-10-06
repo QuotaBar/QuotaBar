@@ -75,6 +75,15 @@ final class ClaudeSignInsModel: ObservableObject {
             : L10n.t("Sign-in \(service.suffix(8))", "登录 \(service.suffix(8))")
     }
 
+    /// The arrow's choices: the email alone, the organization only when two
+    /// sign-ins share one, else which item it is.
+    func pickerLabel(_ service: String, masked: Bool) -> String {
+        guard !masked, let email = identities[service]?.email else { return choiceLabel(service, masked: masked) }
+        let shared = services.filter { identities[$0]?.email == email }.count > 1
+        guard shared, let organization = identities[service]?.organization else { return email }
+        return "\(email) · \(organization)"
+    }
+
     /// The organization, which is what tells two sign-ins of one email
     /// apart; else the email; numbered when neither is to be shown.
     func label(_ identity: ClaudeProvider.Identity?, number: Int, masked: Bool) -> String {

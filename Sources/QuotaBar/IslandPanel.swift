@@ -517,7 +517,7 @@ private struct IslandFailureRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
             HStack(spacing: 6) {
-                ProviderGlyph(id: id, size: 12, tint: .white)
+                IslandGlyph(id: id, size: 12, tint: .white)
                     .frame(width: 14)
                 Text(id.displayName)
                     .font(.system(size: 12, weight: .semibold))
@@ -625,7 +625,7 @@ private struct IslandProviderBlock: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                ProviderGlyph(id: id, size: 14, tint: .white)
+                IslandGlyph(id: id, size: 14, tint: .white)
                 Text(id.displayName)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)

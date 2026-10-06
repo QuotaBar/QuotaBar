@@ -9,10 +9,18 @@ Server moves, the website, and build or release scripts don't change the app its
 
 #### Added
 
+- Codex card: with two or more kept accounts, the address gets the same arrow after it to pick the account; with one, the "Accounts" list under the card no longer repeats the address already shown above it. The Claude card's arrow lists the email alone.
+- Claude works without Claude Code: when no Claude Code sign-in is on this Mac (or it is signed out), the card reads the Claude desktop app's sign-in instead, so switching account in the app switches the card. macOS asks once to let QuotaBar read the app's sign-in (Always Allow); the session is used in memory only. A Claude Code sign-in, when there is one, still comes first.
+- With two or more Claude sign-ins on this Mac, the account line on the Claude card gets a small arrow: pick which sign-in the card, menu bar, island and dock show. A sign-in with no profile yet gets one made for it. With a single sign-in there is no arrow. Claude's desktop app keeps its own sign-in, which QuotaBar cannot read; a second sign-in for QuotaBar comes from `CLAUDE_CONFIG_DIR`.
 - The Kimi Code card names the plan — Moderato, Allegretto, Allegro or Vivace — beside the edition, as "ALLEGRO · GLOBAL". The Global edition's quota reply carries no plan, so the card showed the edition alone; when the quota names none, the plan is now read from the profile Kimi Code's own account panel reads, at most once an hour. For the sign-in on this Mac and a pasted API key alike.
 
 #### Fixed
 
+- On a display with no notch the opened island has the same notch-wide gap between its two columns as the closed strip, and Codex's row carries the same OpenAI knot, taken from theSVG.
+- On the island, Codex is drawn as OpenAI's knot in Codex's blue instead of the gradient cloud, like codex-island. The other places Codex's mark appears are unchanged.
+- On a display with no notch the island is no longer a separate pill: it is the same strip as on a notched Mac — a figure either side, with a notch's worth of black between them — at the same width and with the same rounded corners.
+- The Claude card's list under its arrow, now headed "Accounts", is one line per account — the email, the plan and which one is on the card — with the others' limits on a single line below, instead of four.
+- The menu-bar panel no longer has the profile switch bar across its top; the arrow after the account on the Claude and Codex cards does the choosing.
 - The plan chip broke onto two lines in the dock's cards. It now stays on one line: plan and edition where they fit, the plan alone where they do not, with the whole of it in the tooltip. The same in the menu-bar panel and the island.
 
 ## 0.5.26 · 2026-10-06

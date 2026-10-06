@@ -517,7 +517,16 @@ public struct ClaudeProvider: QuotaProvider {
     public init() {}
 
     public func isConfigured(config: ConfigStore) -> Bool {
-        LocalCredentials.claudeOAuthToken() != nil
+        LocalCredentials.claudeOAuthToken() != nil || Self.usesDesktopApp
+    }
+
+    /// No Claude Code sign-in on this Mac (never made, or signed out), but the
+    /// Claude desktop app is signed in: its session answers instead.
+    static var usesDesktopApp: Bool {
+        switch LocalCredentials.claudeCredentialState() {
+        case .missing, .signedOut: return ClaudeDesktopSession.exists
+        case .available, .needsAuthorization: return false
+        }
     }
 
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
@@ -525,6 +534,7 @@ public struct ClaudeProvider: QuotaProvider {
         if let service = config.experience.activeProfile?.claudeService, service != LocalCredentials.claudeService {
             return try await Self.fetchSignIn(service: service)
         }
+        if Self.usesDesktopApp { return try await ClaudeDesktopSession.fetch() }
         // Run out after eight hours away from Claude Code: have it renew.
         var renewal: ClaudeCodeRenewal.Outcome?
         if let expiry = LocalCredentials.claudeTokenExpiry(), expiry <= Date().addingTimeInterval(60) {

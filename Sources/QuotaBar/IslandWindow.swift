@@ -4,7 +4,7 @@ import QuotaCore
 
 /// Notch-island presentation: a borderless floating panel pinned to the top
 /// centre of the screen, over the notch on notched Macs. At rest it is a
-/// strip of figures either side of the notch (a pill on other displays);
+/// strip of figures either side of the notch (a virtual one on other displays);
 /// hover and it grows downward into the full panel, after codex-island.
 /// The menu-bar item stays as the settings entry point.
 @MainActor
@@ -342,18 +342,17 @@ final class IslandCoordinator {
 
     static func size(expanded: Bool, store: UsageStore) -> NSSize {
         let slots = store.islandSlots
-        let notch = notchMetrics()
+        // A screen with no notch is laid out around the virtual one.
+        let notch = stripMetrics()
         if expanded {
             // Rows per column: the left column is the fuller one.
             let rows = min(slots, max(1, store.islandProviders.count))
             return NSSize(
-                width: IslandPanelLayout.width(notchWidth: notch?.notchWidth),
-                height: IslandPanelLayout.height(rows: rows, notch: notch?.height ?? 0))
+                width: IslandPanelLayout.width(notchWidth: notch.notchWidth),
+                height: IslandPanelLayout.height(rows: rows, notch: notch.height))
         }
-        if let notch {
-            return NSSize(width: notch.totalWidth(slots: slots), height: notch.height)
-        }
-        return NSSize(width: 220, height: 40)
+        let strip = stripMetrics()
+        return NSSize(width: strip.totalWidth(slots: slots), height: strip.height)
     }
 
     /// The strip with the reset banner hanging under it.
@@ -381,6 +380,13 @@ final class IslandCoordinator {
 
         func totalWidth(slots: Int) -> CGFloat { notchWidth + sideWidth(slots: slots) * 2 }
     }
+
+    /// A screen with no notch gets the same strip around a notch's worth of
+    /// black, so the island is the one shape on every display.
+    static let virtualNotch = NotchMetrics(notchWidth: 110, height: 32)
+
+    /// The hardware notch where there is one, else the virtual one.
+    static func stripMetrics() -> NotchMetrics { notchMetrics() ?? virtualNotch }
 
     /// nil on a screen with no notch, which is most external displays. The
     /// caller falls back to the pill; a strip built around a zero-width notch
@@ -458,24 +464,16 @@ struct IslandView: View {
                 // still small.
                 Color.clear
                     .overlay(alignment: .top) {
-                        IslandPanel(store: store, notch: notchMetrics, bridge: bridge)
+                        IslandPanel(store: store, notch: IslandCoordinator.stripMetrics(), bridge: bridge)
                             .opacity(contentVisible ? 1 : 0)
                             .offset(y: contentVisible ? 0 : -8)
                             .allowsHitTesting(contentVisible)
                     }
                     .clipShape(silhouette)
                     .transition(.opacity)
-            } else if let notch = notchMetrics {
-                VStack(spacing: 0) {
-                    NotchStrip(store: store, metrics: notch, slots: store.islandSlots)
-                    if let banner = bridge.banner {
-                        ResetBannerRow(banner: banner).id(banner.id)
-                    }
-                }
-                .transition(.opacity)
             } else {
                 VStack(spacing: 0) {
-                    compactPill
+                    NotchStrip(store: store, metrics: IslandCoordinator.stripMetrics(), slots: store.islandSlots)
                     if let banner = bridge.banner {
                         ResetBannerRow(banner: banner).id(banner.id)
                     }
@@ -626,45 +624,6 @@ struct IslandView: View {
             topTrailingRadius: 0,
             style: .continuous)
     }
-
-    // MARK: Compact pill (no notch)
-
-    private var compactPill: some View {
-        HStack(spacing: Design.space2 + 2) {
-            ZStack {
-                Circle().fill(Design.accent)
-                Text("Q")
-                    .font(.system(size: 13, weight: .heavy))
-                    .foregroundStyle(Design.ink)
-            }
-            .frame(width: 20, height: 20)
-
-            ForEach(store.islandShown) { id in
-                if let used = store.headlinePercent(for: id, on: .island) {
-                    // Same glanceable role as the menu-bar glyph, so it follows
-                    // the same remaining/used preference.
-                    let shown = store.meterMode.shownPercent(fromUsed: used)
-                    HStack(spacing: Design.space1) {
-                        ProviderGlyph(id: id, size: 13, tint: .white)
-                        Text("\(Int(shown.rounded()))%")
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    }
-                    .foregroundStyle(.white)
-                } else if let balance = store.balanceFigure(for: id) {
-                    HStack(spacing: Design.space1) {
-                        ProviderGlyph(id: id, size: 13, tint: .white)
-                        Text(balance)
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    }
-                    .foregroundStyle(.white)
-                }
-            }
-            Spacer(minLength: 0)
-            LiveDot(level: severity, warn: store.islandShown.contains { store.failingProviders.contains($0) })
-        }
-        .padding(.horizontal, Design.space3)
-        .frame(height: 40)
-    }
 }
 
 /// The glow's room round the silhouette, as a value SwiftUI can animate:
@@ -708,7 +667,7 @@ struct ResetBannerRow: View {
         HStack(spacing: Design.space3) {
             ZStack {
                 RefillRing(color: banner.provider.accent, from: banner.leftBefore / 100, to: banner.leftNow / 100, lineWidth: 3, delay: 0.5, settled: settled)
-                ProviderGlyph(id: banner.provider, size: 17, tint: .white)
+                IslandGlyph(id: banner.provider, size: 17, tint: .white)
             }
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 1) {
@@ -816,7 +775,7 @@ struct NotchMiniSlot: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            ProviderGlyph(id: id, size: 13, tint: Color(hex: id.accentHex))
+            IslandGlyph(id: id, size: 13, tint: Color(hex: id.accentHex))
             if let used = store.headlinePercent(for: id, on: .island) {
                 let shown = store.meterMode.shownPercent(fromUsed: used)
                 Text("\(Int(shown.rounded()))%")
@@ -870,7 +829,7 @@ struct NotchSlot: View {
             // each side of the notch reads as one thing in one colour. `tint`
             // only reaches the monochrome marks: Claude stays terracotta and
             // Gemini four-colour either way; Codex turns from white to blue.
-            ProviderGlyph(id: id, size: 14, tint: Color(hex: id.accentHex))
+            IslandGlyph(id: id, size: 14, tint: Color(hex: id.accentHex))
         }
     }
 
@@ -1030,5 +989,28 @@ final class IslandHostingView<Content: View>: NSHostingView<Content> {
 extension IslandCoordinator {
     func turnPage(_ step: Int) {
         bridge.turnPage(step, store: store)
+    }
+}
+
+
+/// A provider's mark on the island. Codex is drawn as OpenAI's knot in the
+/// provider's colour (whatever tint the surface asks for), as codex-island does; every other mark is the one the
+/// rest of the app uses.
+struct IslandGlyph: View {
+    let id: ProviderID
+    var size: CGFloat
+    var tint: Color
+
+    var body: some View {
+        if id == .codex, let url = ProviderGlyph.markURL(named: "codex-knot"), let image = NSImage(contentsOf: url) {
+            Image(nsImage: image)
+                .resizable()
+                .renderingMode(.template)
+                .scaledToFit()
+                .frame(width: size, height: size)
+                .foregroundStyle(Color(hex: id.accentHex))
+        } else {
+            ProviderGlyph(id: id, size: size, tint: tint)
+        }
     }
 }

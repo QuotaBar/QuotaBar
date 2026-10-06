@@ -952,7 +952,7 @@ final class UsageStore: ObservableObject {
     /// for. `islandProviders` is everything allowed on it, which with one
     /// slot a side is mostly providers it has no room to draw.
     var islandShown: [ProviderID] {
-        IslandRoom.shown(islandProviders, slots: islandSlots, pill: IslandCoordinator.notchMetrics() == nil)
+        IslandRoom.shown(islandProviders, slots: islandSlots, pill: false)
     }
 
     /// The worst line a provider on the island is past. The glow's colour

@@ -16,7 +16,7 @@ struct ClaudeSignInsSection: View {
     var body: some View {
         if !signIns.others.isEmpty {
             VStack(alignment: .leading, spacing: compact ? 6 : 8) {
-                Text(L10n.t("Organizations", "组织"))
+                Text(L10n.t("Accounts", "账号"))
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.white)
                 cardRow
@@ -31,20 +31,18 @@ struct ClaudeSignInsSection: View {
         let snapshot = store.states[.claude]?.snapshot
         let identity = signIns.card ?? snapshot.map { ClaudeProvider.Identity(email: $0.account) }
         return VStack(alignment: .leading, spacing: 2) {
-            header(identity, plan: snapshot?.planName, number: 1, onCard: true)
-            caption(identity)
+            header(identity, service: store.claudeCardService, plan: snapshot?.planName, number: 1, onCard: true)
         }
         .help(L10n.t("Claude Code's default sign-in, which the card shows.", "Claude Code 的默认登录，也就是卡片上显示的这个。"))
     }
 
     private func otherRow(_ reading: ClaudeSignIns.Reading, number: Int) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            header(reading.identity, plan: reading.snapshot?.planName ?? reading.plan, number: number, onCard: false)
-            caption(reading.identity)
+            header(reading.identity, service: reading.id, plan: reading.snapshot?.planName ?? reading.plan, number: number, onCard: false)
             Group {
                 let windows = limits(reading.snapshot)
                 if !windows.isEmpty {
-                    ForEach(windows) { window in Text(figure(window)) }
+                    Text(windows.map(figure).joined(separator: "  ·  "))
                 }
                 if let error = reading.error {
                     Text(error).foregroundStyle(Palette.amber)
@@ -60,12 +58,12 @@ struct ClaudeSignInsSection: View {
         .help(reading.id)
     }
 
-    private func header(_ identity: ClaudeProvider.Identity?, plan: String?, number: Int, onCard: Bool) -> some View {
+    private func header(_ identity: ClaudeProvider.Identity?, service: String, plan: String?, number: Int, onCard: Bool) -> some View {
         HStack(spacing: 6) {
             Circle()
                 .fill(onCard ? accent : .white.opacity(0.2))
                 .frame(width: 6, height: 6)
-            Text(signIns.label(identity, number: number, masked: store.isPrivacyMasked))
+            Text(identity?.email == nil ? signIns.label(identity, number: number, masked: store.isPrivacyMasked) : signIns.pickerLabel(service, masked: store.isPrivacyMasked))
                 .font(.system(size: 11))
                 .foregroundStyle(.white.opacity(onCard ? 0.9 : 0.7))
                 .lineLimit(1)
@@ -81,18 +79,6 @@ struct ClaudeSignInsSection: View {
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(accent)
             }
-        }
-    }
-
-    @ViewBuilder
-    private func caption(_ identity: ClaudeProvider.Identity?) -> some View {
-        if let email = signIns.detail(identity, masked: store.isPrivacyMasked) {
-            Text(email)
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.45))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .padding(.leading, 12)
         }
     }
 
@@ -114,8 +100,51 @@ struct ClaudeSignInsSection: View {
                 ? L10n.t("\(QuotaFormat.percent(shown)) used", "已用 \(QuotaFormat.percent(shown))")
                 : L10n.t("\(QuotaFormat.percent(shown)) left", "剩余 \(QuotaFormat.percent(shown))"),
         ]
-        if let reset = window.resetsAt { parts.append(store.resetText(reset)) }
-        return parts.joined(separator: " · ")
+        return parts.joined(separator: " ")
+    }
+}
+
+// MARK: - The arrow after the card's account
+
+/// The account line of the Claude card with a menu on it: every sign-in on
+/// this Mac, the one in use ticked. Only while there are two or more; with
+/// one there is nothing to choose and the line stays plain text.
+struct ClaudeAccountPicker: View {
+    @ObservedObject var store: UsageStore
+    @ObservedObject var signIns: ClaudeSignInsModel
+    let account: String
+
+    var body: some View {
+        if signIns.services.count > 1 { menu } else { plain }
+    }
+
+    private var plain: some View {
+        Text(account)
+            .font(.system(size: 10, design: .monospaced))
+            .foregroundStyle(.white.opacity(0.4))
+            .lineLimit(1)
+            .truncationMode(.middle)
+    }
+
+    private var menu: some View {
+        Menu {
+            ForEach(signIns.services, id: \.self) { service in
+                Toggle(signIns.pickerLabel(service, masked: store.isPrivacyMasked), isOn: Binding(
+                    get: { store.claudeCardService == service },
+                    set: { on in if on { store.useClaudeSignIn(service) } }))
+            }
+        } label: {
+            // One run of text, so the arrow cannot land before the address.
+            (Text(account) + Text(" ") + Text(Image(systemName: "chevron.down")).font(.system(size: 8, weight: .semibold)))
+                .font(.system(size: 10, design: .monospaced))
+                .lineLimit(1)
+                .truncationMode(.middle)
+            .foregroundStyle(.white.opacity(0.4))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(L10n.t("Switch Claude sign-in", "切换 Claude 登录"))
     }
 }
 

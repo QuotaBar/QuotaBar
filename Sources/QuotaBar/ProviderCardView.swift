@@ -104,6 +104,10 @@ struct ProviderCardView: View {
             if let account = snapshot?.account, !account.isEmpty, !store.isPrivacyMasked {
                 if forExport && store.experience.shareMasksAccount {
                     AccountMosaic()
+                } else if id == .claude, !forExport {
+                    ClaudeAccountPicker(store: store, signIns: store.claudeSignIns, account: account)
+                } else if id == .codex, !forExport {
+                    CodexAccountPicker(store: store, accounts: store.codexAccounts, account: account)
                 } else {
                     Text(account)
                         .font(.system(size: 10, design: .monospaced))

@@ -12,7 +12,8 @@ struct CodexAccountsSection: View {
     var compact = false
 
     var body: some View {
-        if !accounts.saved.isEmpty {
+        // One account is already the address under the card's name.
+        if accounts.saved.count > 1 {
             VStack(alignment: .leading, spacing: compact ? 6 : 8) {
                 Text(L10n.t("Accounts", "账号"))
                     .font(.system(size: 11, weight: .medium))
@@ -107,6 +108,45 @@ struct CodexAccountsSection: View {
         ]
         if let reset = window.resetsAt { parts.append(store.resetText(reset)) }
         return parts.joined(separator: " · ")
+    }
+}
+
+// MARK: - The arrow after the card's account
+
+/// The Codex card's address with a menu on it, while two or more accounts
+/// are kept; the arrow sits after the address, like the Claude card's.
+struct CodexAccountPicker: View {
+    @ObservedObject var store: UsageStore
+    @ObservedObject var accounts: CodexAccountsModel
+    let account: String
+
+    var body: some View {
+        if accounts.saved.count > 1 {
+            Menu {
+                ForEach(accounts.saved) { saved in
+                    Toggle(accounts.label(saved, masked: store.isPrivacyMasked), isOn: Binding(
+                        get: { accounts.activeID == saved.id },
+                        set: { on in if on { store.switchCodexAccount(saved.id) } }))
+                        .disabled(accounts.working)
+                }
+            } label: {
+                (Text(account) + Text(" ") + Text(Image(systemName: "chevron.down")).font(.system(size: 8, weight: .semibold)))
+                    .font(.system(size: 10, design: .monospaced))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundStyle(.white.opacity(0.4))
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help(L10n.t("Switch Codex account", "切换 Codex 账号"))
+        } else {
+            Text(account)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.4))
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
     }
 }
 
