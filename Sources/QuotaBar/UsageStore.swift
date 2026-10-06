@@ -215,6 +215,9 @@ final class UsageStore: ObservableObject {
     /// cleared: a read that started before belongs to the credential that
     /// was, and is dropped when it lands.
     private var credentialGeneration: [ProviderID: Int] = [:]
+    /// The last reading of each account a profile (#8) can put on a card,
+    /// by `profileAccountKey`: what a switch shows while it reads again.
+    var accountReadings: [String: UsageSnapshot] = [:]
 
     /// Builds a store wired to the real config but with no timers, network
     /// calls or notification prompts — used by `--snapshot` and previews.
@@ -630,6 +633,7 @@ final class UsageStore: ObservableObject {
             }
             let previousReading = reported[id]
             reported[id] = snapshot
+            if Self.profileProviders.contains(id) { accountReadings[profileAccountKey(id)] = snapshot }
             noteResetCredits(id, previous: previousReading, current: snapshot.resetCredits)
             if snapshot.balance != nil || previousReading?.balance != nil { evaluateBalanceNotices() }
             let visible = shown(snapshot, for: id)
@@ -747,7 +751,30 @@ final class UsageStore: ObservableObject {
             _ = await LocalCredentials.authorizeClaudeAccessAsync()
             refresh(.claude)
             refreshConfigured()
+            // The other sign-ins the quiet reads could not open, now open.
+            await readClaudeSignIns(force: true)
         }
+    }
+
+    /// A profile switch (#8): the card reads another account now. That
+    /// account's own last figures are shown at once and read again only once
+    /// older than two minutes — switching back and forth asks the provider
+    /// nothing, and a read refused for the rate (Anthropic's 429) leaves them
+    /// standing, as any refresh does. A read of the old account still on its
+    /// way is dropped, and nothing compares the new account with the old one:
+    /// a reset count read against another account's would announce resets
+    /// that were never given.
+    func switchAccount(_ id: ProviderID, showing last: UsageSnapshot?) {
+        credentialGeneration[id, default: 0] &+= 1
+        retrying.remove(id)
+        reported[id] = last
+        if let last {
+            states[id] = .loaded(shown(last, for: id))
+            if Date().timeIntervalSince(last.fetchedAt) < 120 { return }
+        } else {
+            states[id] = nil
+        }
+        refresh([id])
     }
 
     /// The same, for whichever item `needsKeychainAuthorization(id)` is about.

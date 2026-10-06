@@ -99,3 +99,29 @@ final class ClaudeSignInsTests: XCTestCase {
         XCTAssertNil(memo.profile(for: "other"))
     }
 }
+
+/// Switching profiles (#8) moves sign-ins between the card and the list
+/// under its arrow without reading either again.
+final class ClaudeProfileSwitchTests: XCTestCase {
+    private func identity(_ org: String, _ name: String) -> ClaudeProvider.Identity {
+        ClaudeProvider.Identity(email: "you@example.com", organization: name, accountID: "you", organizationID: org)
+    }
+
+    func testTheCardAndTheListTradePlaces() {
+        let personal = identity("org-personal", "Personal")
+        let work = identity("org-work", "Acme Studio")
+        let workReading = ClaudeSignIns.Reading(
+            id: "Claude Code-credentials-1a2b3c4d", identity: work,
+            snapshot: UsageSnapshot(windows: [UsageWindow(title: "5h", usedPercent: 40)]))
+        let outgoing = ClaudeSignIns.Reading(
+            id: LocalCredentials.claudeService, identity: personal,
+            snapshot: UsageSnapshot(windows: [UsageWindow(title: "5h", usedPercent: 10)]))
+        let list = ClaudeSignIns.afterSwitch([workReading], to: workReading.id, from: outgoing, card: work)
+        XCTAssertEqual(list.map(\.id), [LocalCredentials.claudeService])
+        // What the default sign-in last read goes with it, so the list is not empty-handed.
+        XCTAssertEqual(list.first?.snapshot?.windows.first?.usedPercent, 10)
+        // And back again.
+        let back = ClaudeSignIns.afterSwitch(list, to: LocalCredentials.claudeService, from: workReading, card: personal)
+        XCTAssertEqual(back.map(\.id), [workReading.id])
+    }
+}

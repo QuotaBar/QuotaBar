@@ -30,8 +30,49 @@ extension UsageStore {
             }
         }
         let after = activeProfile
-        if before?.claudeItem != after?.claudeItem { readAgain(.claude) }
-        if before?.codexAccountID != after?.codexAccountID { readAgain(.codex) }
+        if before?.claudeItem != after?.claudeItem {
+            switchClaude(from: before?.claudeItem ?? LocalCredentials.claudeService)
+        }
+        if before?.codexAccountID != after?.codexAccountID, isEnabled(.codex) {
+            switchAccount(.codex, showing: lastReading(.codex))
+        }
+    }
+
+    /// Which account a card is reading, for `accountReadings`: the Claude
+    /// item, or the Codex account (the CLI's own when the profile leaves it).
+    func profileAccountKey(_ id: ProviderID) -> String {
+        switch id {
+        case .claude: return "claude|\(claudeCardService)"
+        case .codex: return "codex|\(activeProfile?.codexAccountID ?? codexAccounts.activeID ?? "cli")"
+        default: return id.rawValue
+        }
+    }
+
+    /// The newest figures already in hand for the account a card now reads:
+    /// from its own last turn on the card, or from the list under the arrow,
+    /// which reads the other accounts on every refresh.
+    func lastReading(_ id: ProviderID) -> UsageSnapshot? {
+        var candidates = [accountReadings[profileAccountKey(id)]]
+        switch id {
+        case .claude:
+            candidates.append(claudeSignIns.others.first { $0.id == claudeCardService }?.snapshot)
+        case .codex:
+            if let account = activeProfile?.codexAccountID ?? codexAccounts.activeID {
+                candidates.append(codexAccounts.readings[account]?.snapshot)
+            }
+        default:
+            break
+        }
+        return candidates.compactMap { $0 }.max { $0.fetchedAt < $1.fetchedAt }
+    }
+
+    /// The card and the list under its arrow trade places, with what each
+    /// last read; the list is not read again for it.
+    private func switchClaude(from previous: String) {
+        guard isEnabled(.claude) else { return }
+        let last = lastReading(.claude)
+        claudeSignIns.moveCard(to: claudeCardService, from: previous, previousSnapshot: reported[.claude])
+        switchAccount(.claude, showing: last)
     }
 
     /// A profile named for where it sits: Personal, then Work, then numbered.
@@ -42,14 +83,7 @@ extension UsageStore {
         updateProfiles { $0.append(AccountProfile(name: name)) }
     }
 
-    func readClaudeSignIns() async {
-        await claudeSignIns.read(cardService: claudeCardService)
-    }
-
-    private func readAgain(_ id: ProviderID) {
-        guard isEnabled(id) else { return }
-        states[id] = nil
-        refresh(id)
-        if id == .claude { Task { await readClaudeSignIns() } }
+    func readClaudeSignIns(force: Bool = false) async {
+        await claudeSignIns.read(cardService: claudeCardService, force: force)
     }
 }

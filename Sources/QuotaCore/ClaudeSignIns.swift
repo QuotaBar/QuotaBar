@@ -64,7 +64,7 @@ public enum ClaudeSignIns {
     /// is the default one by another name, or one signed in like another —
     /// is shown once, and not at all when it is the card's. Then by name,
     /// and the ones not read yet last.
-    static func arranged(_ readings: [Reading], card: ClaudeProvider.Identity?) -> [Reading] {
+    public static func arranged(_ readings: [Reading], card: ClaudeProvider.Identity?) -> [Reading] {
         func key(_ identity: ClaudeProvider.Identity?) -> String? {
             guard let account = identity?.accountID, let organization = identity?.organizationID else { return nil }
             return "\(account)/\(organization)"
@@ -78,6 +78,17 @@ public enum ClaudeSignIns {
             kept.append(reading)
         }
         return kept.sorted { sortKey($0) < sortKey($1) }
+    }
+
+    /// A profile switch (#8): the list under the arrow once `service` is on
+    /// the card and `previous` — with what it last read — is not. Nothing is
+    /// asked of the server for it.
+    public static func afterSwitch(
+        _ others: [Reading], to service: String, from previous: Reading, card: ClaudeProvider.Identity?) -> [Reading]
+    {
+        var rest = others.filter { $0.id != service }
+        if !rest.contains(where: { $0.id == previous.id }) { rest.append(previous) }
+        return arranged(rest, card: card)
     }
 
     private static func sortKey(_ reading: Reading) -> String {

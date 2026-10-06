@@ -3,6 +3,19 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
+## Unreleased
+
+### 2026-10-06
+
+#### Added
+
+- Settings → Providers → Profiles opens with three steps: sign in to each account once and keep it, add a profile for each, and where to switch. Once Codex accounts are kept, Codex's list no longer offers following the Codex CLI's sign-in — it is always one of them — except before any is kept, or while that profile still follows it. (#8)
+
+#### Fixed
+
+- Switching profiles back and forth quickly got the Claude card rate-limited by Anthropic, with no figures left to show: a switch cleared the card before reading it again, and read the other sign-ins under the arrow again too. A switch now shows that account's last figures at once and asks nothing if they are under two minutes old; the list under the arrow trades places without being read; and a read refused for the rate leaves the last figures standing. (#8)
+- Switching to a profile whose account had more early resets could announce a reset that was never given: the reading was compared with the other account's. (#8)
+
 ## 0.5.25 · 2026-10-06
 
 ### 2026-10-06

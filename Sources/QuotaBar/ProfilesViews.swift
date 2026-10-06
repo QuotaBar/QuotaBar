@@ -55,10 +55,12 @@ struct ProfilesSettingsCard: View {
                     "A profile is one Claude sign-in and one Codex account — Personal and Work, say. The profile in use decides which accounts the Claude and Codex cards read, and the menu bar, the island and the dock follow. Switch at the top of the menu-bar panel, from its ⋯ menu, or from a card in the dock. It never changes what the CLIs are signed in as.",
                     "一个账号组就是一个 Claude 登录加一个 Codex 账号，比如「个人」和「工作」。当前账号组决定 Claude 和 Codex 卡片读取哪些账号，菜单栏、刘海岛和停靠条都跟着变。在菜单栏面板顶部、面板的 ⋯ 菜单或停靠条的卡片里切换。切换不会改变 CLI 当前登录的账号。"))
                 {
+                    steps
                     ForEach(store.accountProfiles) { profile in
-                        row(profile)
                         Divider().opacity(0.4)
+                        row(profile)
                     }
+                    Divider().opacity(0.4)
                     HStack(spacing: Design.space2) {
                         Button(L10n.t("Add Profile", "添加账号组")) { store.addProfile() }
                             .glassAction(prominent: store.accountProfiles.count < 2)
@@ -80,6 +82,24 @@ struct ProfilesSettingsCard: View {
             await store.readClaudeSignIns()
             await accounts.reload()
         }
+    }
+
+    /// What it takes, in order — the reporter of #8 found it on the third go.
+    private var steps: some View {
+        VStack(alignment: .leading, spacing: Design.space1) {
+            Text(L10n.t(
+                "1. Sign in to each account once. Codex: `codex login`, then Save Current Account in the Codex row above. Claude: `CLAUDE_CONFIG_DIR=<dir> claude`, then /login, for each organization beside the default one.",
+                "1. 每个账号先登录一次。Codex：运行 `codex login`，再到上面 Codex 那一行点「保存当前账号」。Claude：默认登录之外的每个组织，用 `CLAUDE_CONFIG_DIR=<目录> claude` 启动并 /login。"))
+            Text(L10n.t(
+                "2. Add a profile for each — Personal, Work — and pick its Claude sign-in and Codex account.",
+                "2. 为每组账号添加一个账号组，比如「个人」「工作」，选好它的 Claude 登录和 Codex 账号。"))
+            Text(L10n.t(
+                "3. Switch at the top of the menu-bar panel, from its ⋯ menu, or from a card in the dock.",
+                "3. 在菜单栏面板顶部、面板的 ⋯ 菜单，或停靠条的卡片里切换。"))
+        }
+        .font(.system(size: 11))
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func row(_ profile: AccountProfile) -> some View {
@@ -149,11 +169,14 @@ struct ProfilesSettingsCard: View {
         return services.map { (value: $0, label: signIns.choiceLabel($0, masked: store.isPrivacyMasked)) }
     }
 
-    /// The account the CLI is signed in as, then every kept one.
+    /// Every kept account. Following the CLI's sign-in is offered only
+    /// before any is kept, or while this profile still does: once both
+    /// accounts are kept it is always one of them again (#8).
     private func codexChoices(including picked: String?) -> [(value: String, label: String)] {
-        var choices: [(value: String, label: String)] = [
-            (value: "", label: L10n.t("The Codex CLI's sign-in", "Codex CLI 当前登录的账号")),
-        ]
+        var choices: [(value: String, label: String)] = []
+        if accounts.saved.isEmpty || picked == nil {
+            choices.append((value: "", label: L10n.t("Follow the Codex CLI's sign-in", "跟随 Codex CLI 当前登录的账号")))
+        }
         for account in accounts.saved {
             var label = accounts.label(account, masked: store.isPrivacyMasked)
             if let plan = CodexProvider.planName(account.plan) { label += " · \(plan)" }

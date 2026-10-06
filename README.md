@@ -50,9 +50,23 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.25** (2026-10-06) · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.25** (2026-10-06) · **3** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-10-06</b> · Unreleased · 1 added · 2 fixed</summary>
+
+**Added**
+
+- Settings → Providers → Profiles opens with three steps: sign in to each account once and keep it, add a profile for each, and where to switch. Once Codex accounts are kept, Codex's list no longer offers following the Codex CLI's sign-in — it is always one of them — except before any is kept, or while that profile still follows it. ([#8](https://github.com/QuotaBar/QuotaBar/issues/8))
+
+**Fixed**
+
+- Switching profiles back and forth quickly got the Claude card rate-limited by Anthropic, with no figures left to show: a switch cleared the card before reading it again, and read the other sign-ins under the arrow again too. A switch now shows that account's last figures at once and asks nothing if they are under two minutes old; the list under the arrow trades places without being read; and a read refused for the rate leaves the last figures standing. ([#8](https://github.com/QuotaBar/QuotaBar/issues/8))
+- Switching to a profile whose account had more early resets could announce a reset that was never given: the reading was compared with the other account's. ([#8](https://github.com/QuotaBar/QuotaBar/issues/8))
+
+</details>
+
+<details>
 <summary><b>2026-10-06</b> · 0.5.25 · 1 added · 1 fixed</summary>
 
 **Added**
@@ -75,20 +89,6 @@ Latest release **0.5.25** (2026-10-06) · [full changelog](CHANGELOG.en.md)
 **Fixed**
 
 - A grok CLI token that had run out made the Grok card say to sign in again, which was never needed. It now says running grok once renews it, and, when QuotaBar's own request for that did not take, that it asks again within half an hour.
-
-</details>
-
-<details>
-<summary><b>2026-10-05</b> · 0.5.23 · 2 added · 1 fixed</summary>
-
-**Added**
-
-- Several Claude organizations and accounts. Claude Code keeps one sign-in per config dir and ties each to one organization, so a personal plan and a team workspace on the same email are signed in with `CLAUDE_CONFIG_DIR=<dir> claude` each. QuotaBar now finds those sign-ins by itself and lists them under the Claude card's arrow, in Organizations: each by its organization name with the email beneath, with its own 5-hour and weekly limits and reset times. The card and the menu bar keep following the default sign-in, marked On the card. Settings → Providers → Claude lists them too, under Other sign-ins, with how to add one. QuotaBar only reads these sign-ins and never renews or rewrites them, so the Claude Code that owns each is left alone; one left idle until its token ran out says that running Claude Code with that dir once renews it. The same account in the same organization twice is shown once. Other organizations' figures stay on this Mac and are not synced to iPhone. ([#8](https://github.com/QuotaBar/QuotaBar/issues/8))
-- Claude Code's sign-in runs out after eight hours unused, and the Claude card then read nothing until you ran claude again. Now QuotaBar has Claude Code renew it when the token has run out: it starts Claude Code once in the background in safe mode (no hooks, MCP servers or plugins), opens /status so it renews the way it always does, and quits as soon as the keychain holds the new token — a dozen seconds or so, with no dialog. Claude Code does the renewing; QuotaBar never touches the refresh token, so the two can never race for it and sign you out. It tries at most once every half hour. The first time, Claude Code is told to trust QuotaBar's own empty folder (~/Library/Application Support/QuotaBar/claude-renewal), and only that folder.
-
-**Fixed**
-
-- A Claude token that had run out made the card say the session had expired and to sign in again, which was never needed. It now says running Claude Code once renews it, and, when QuotaBar's own request for that did not take, that it asks again within half an hour.
 
 </details>
 

@@ -16,11 +16,15 @@ final class ClaudeSignInsModel: ObservableObject {
     /// Who each of them is, as far as read.
     @Published private(set) var identities: [String: ClaudeProvider.Identity] = [:]
     private var reading = false
+    private var readAt = Date.distantPast
 
-    /// A failure keeps the last good figures beside the reason.
-    func read(cardService: String = LocalCredentials.claudeService) async {
-        guard !reading else { return }
+    /// A failure keeps the last good figures beside the reason. At most once
+    /// every 90 seconds unless `force`: the card's own refresh asks for it
+    /// each time, and Anthropic answers too many reads with a 429.
+    func read(cardService: String = LocalCredentials.claudeService, force: Bool = false) async {
+        guard !reading, force || Date().timeIntervalSince(readAt) >= 90 else { return }
         reading = true
+        readAt = Date()
         defer { reading = false }
         card = await ClaudeSignIns.cardIdentity(service: cardService)
         let fresh = await ClaudeSignIns.readOthers(card: cardService)
@@ -34,6 +38,18 @@ final class ClaudeSignInsModel: ObservableObject {
             if reading.identity == nil { reading.identity = last[reading.id]?.identity }
             return reading
         }
+    }
+
+    /// A profile switch (#8): the card's sign-in and one under the arrow
+    /// trade places, each with what it last read. Nothing is asked of the
+    /// server; the next refresh reads them as usual.
+    func moveCard(to service: String, from previous: String, previousSnapshot: UsageSnapshot?) {
+        guard service != previous, !services.isEmpty else { return }
+        let outgoing = ClaudeSignIns.Reading(
+            id: previous, identity: card ?? identities[previous],
+            plan: previousSnapshot?.planName, snapshot: previousSnapshot)
+        card = identities[service]
+        others = ClaudeSignIns.afterSwitch(others, to: service, from: outgoing, card: card)
     }
 
     /// Off-screen renders (`--snapshot`): sign-ins to draw, without the keychain.
