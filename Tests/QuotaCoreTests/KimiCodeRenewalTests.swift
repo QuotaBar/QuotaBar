@@ -1212,6 +1212,31 @@ final class KimiAPIKeyTests: XCTestCase {
         XCTAssertEqual(snapshot.edition, "china")
     }
 
+    /// The Global edition's `/usages` names no plan: `/me` does, asked once
+    /// and remembered for the next refresh.
+    func testThePlanComesFromTheProfileWhenUsagesNamesNone() async throws {
+        let key = "sk-kimi-\(UUID().uuidString)"
+        config.setCredential(key, for: .kimi)
+        let network = ScriptedNetwork { request in
+            guard request.url.host == "api.kimi.ai" else { return ScriptedNetwork.json(401, "{}") }
+            return request.url.lastPathComponent == "me"
+                ? ScriptedNetwork.json(200, #"{"user_level":27,"user_level_name":"Allegro","goods_version":1}"#)
+                : ScriptedNetwork.json(200, #"{"usages":{"limit_5h":{"used_ratio":0,"reset_time":"2026-10-06T20:34:12Z"}}}"#)
+        }
+        let kimi = provider(network)
+        let snapshot = try await kimi.fetch(config: config)
+        XCTAssertEqual(network.gets.last?.url.absoluteString, "https://api.kimi.ai/coding/v1/me")
+        XCTAssertEqual(network.gets.last?.headers["Authorization"], "Bearer \(key)")
+        XCTAssertEqual(snapshot.chipLabel, "Allegro · \(KimiEdition.global.label)")
+        // A narrow header falls back to the plan alone.
+        XCTAssertEqual(snapshot.chipLabels, ["Allegro · \(KimiEdition.global.label)", "Allegro"])
+        XCTAssertEqual(UsageSnapshot(windows: [], edition: "china").chipLabels, [KimiEdition.china.label])
+
+        let again = try await kimi.fetch(config: config)
+        XCTAssertEqual(network.gets.filter { $0.url.lastPathComponent == "me" }.count, 1)
+        XCTAssertEqual(again.planName, "Allegro")
+    }
+
     func testAKeyBothEditionsRefuseSaysSo() async throws {
         config.setCredential("sk-kimi-\(UUID().uuidString)", for: .kimi)
         let network = ScriptedNetwork { _ in ScriptedNetwork.json(401, "{}") }

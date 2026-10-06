@@ -897,6 +897,16 @@ public struct UsageSnapshot: Sendable {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
+    /// The chip's wordings, longest first: plan and edition, then the plan
+    /// alone for a header too narrow for both. Empty when there is no chip.
+    public var chipLabels: [String] {
+        guard let full = chipLabel else { return [] }
+        guard let plan = planName?.trimmingCharacters(in: .whitespacesAndNewlines), !plan.isEmpty, plan != full else {
+            return [full]
+        }
+        return [full, plan]
+    }
+
     /// `ForEach` needs stable unique ids; two providers legitimately report two
     /// windows with the same title (e.g. per-model weekly limits).
     private static func uniquingIDs(_ windows: [UsageWindow]) -> [UsageWindow] {

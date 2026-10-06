@@ -352,6 +352,7 @@ public struct KimiProvider: QuotaProvider {
                 snapshot.edition = edition.rawValue
                 snapshot.source = KimiSource.apiKey.rawValue
                 pastedEditions.remember(edition, for: key)
+                if snapshot.planName == nil { snapshot.planName = await profilePlanName(edition.apiBase, token: key, env) }
                 return snapshot
             }
         }
@@ -470,9 +471,63 @@ public struct KimiProvider: QuotaProvider {
             var snapshot = try parseCodeUsage(response.requireOK().data)
             snapshot.edition = session.edition.rawValue
             snapshot.source = (session.isLegacy ? KimiSource.legacySignIn : .signIn).rawValue
+            if snapshot.planName == nil { snapshot.planName = await profilePlanName(session.baseURL, token: token, env) }
             return snapshot
         }
     }
+
+    /// The plan's name from `<base>/me`, the profile Kimi Code's own account
+    /// panel reads: `{"user_level_name": "Allegro", "goods_version": 1, …}`.
+    /// Only asked when `/usages` names no plan, which the Global edition's
+    /// never does. Best effort: no answer, or one without a name, leaves the
+    /// chip at the edition and the reading stands.
+    static func profilePlanName(_ base: URL, token: String, _ env: KimiCodeEnvironment) async -> String? {
+        let now = env.now()
+        if let known = profilePlans.lookup(token, now: now) { return known.name }
+        var name: String?
+        if let response = try? await env.send("GET", base.appendingPathComponent("me"), [
+            "Authorization": "Bearer \(token)",
+            "Accept": "application/json",
+            "User-Agent": "QuotaBar",
+        ], nil, 10), response.status == 200,
+            let profile = try? JSONSerialization.jsonObject(with: response.data) as? [String: Any],
+            let level = (profile["user_level_name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !level.isEmpty
+        {
+            name = level
+        }
+        profilePlans.remember(name, for: token, now: now)
+        return name
+    }
+
+    /// What `/me` said, by token fingerprint, for an hour: a plan changes
+    /// rarely, and a sign-in's token is renewed every 15 minutes anyway. A
+    /// failed ask is remembered too, so a refresh does not repeat it.
+    final class ProfilePlanMemo: @unchecked Sendable {
+        struct Entry {
+            let name: String?
+            let at: Date
+        }
+
+        static let maxAge: TimeInterval = 3_600
+        private let lock = NSLock()
+        private var entries: [String: Entry] = [:]
+
+        func lookup(_ token: String, now: Date) -> Entry? {
+            lock.withLock {
+                entries[KimiPastedCredential.fingerprint(token)].flatMap { now.timeIntervalSince($0.at) < Self.maxAge ? $0 : nil }
+            }
+        }
+
+        func remember(_ name: String?, for token: String, now: Date) {
+            lock.withLock {
+                entries = entries.filter { now.timeIntervalSince($0.value.at) < Self.maxAge }
+                entries[KimiPastedCredential.fingerprint(token)] = Entry(name: name, at: now)
+            }
+        }
+    }
+
+    static let profilePlans = ProfilePlanMemo()
 
     private static func usages(_ url: URL, token: String, _ env: KimiCodeEnvironment) async throws -> HTTPResponse {
         try await env.send("GET", url, [

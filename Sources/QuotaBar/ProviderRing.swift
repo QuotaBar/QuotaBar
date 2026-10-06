@@ -178,14 +178,25 @@ struct ProviderCallout: View {
                 Text(id.displayName)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
-                if let plan = planChip {
-                    Text(plan)
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .tracking(0.6)
-                        .foregroundStyle(.white.opacity(0.78))
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                // One line always: "ALLEGRO · 国际版" where it fits, the
+                // plan alone where it does not.
+                if !planChips.isEmpty {
+                    ViewThatFits(in: .horizontal) {
+                        ForEach(planChips, id: \.self) { plan in
+                            Text(plan)
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .tracking(0.6)
+                                .foregroundStyle(.white.opacity(0.78))
+                                .lineLimit(1)
+                                .fixedSize()
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        }
+                    }
+                    .help(phase?.snapshot?.chipLabel ?? "")
                 }
                 Spacer(minLength: Design.space2)
                 if refreshing {
@@ -362,9 +373,8 @@ struct ProviderCallout: View {
 
     /// "Pro_plus" → "PRO PLUS", "pro" → "PRO". Providers spell their tiers
     /// every way; the chip spells them one way. The edition rides along.
-    private var planChip: String? {
-        guard let raw = phase?.snapshot?.chipLabel else { return nil }
-        return raw.replacingOccurrences(of: "_", with: " ").uppercased()
+    private var planChips: [String] {
+        (phase?.snapshot?.chipLabels ?? []).map { $0.replacingOccurrences(of: "_", with: " ").uppercased() }
     }
 
     // MARK: Back: usage

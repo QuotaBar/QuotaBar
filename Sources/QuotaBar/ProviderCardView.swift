@@ -43,20 +43,29 @@ struct ProviderCardView: View {
                 Text(id.displayName)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
-                if let plan = planChip {
-                    Text(plan)
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .tracking(0.6)
-                        .foregroundStyle(.white.opacity(0.78))
-                        .lineLimit(1)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-                        // Where the reading came from, for providers with
-                        // more than one way in.
-                        .help(snapshot?.sourceLabel.map { source in
-                            [source, snapshot?.editionLabel].compactMap { $0 }.joined(separator: " · ")
-                        } ?? "")
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                // One line always: plan and edition where they fit, the
+                // plan alone where they do not.
+                if !planChips.isEmpty {
+                    ViewThatFits(in: .horizontal) {
+                        ForEach(planChips, id: \.self) { plan in
+                            Text(plan)
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .tracking(0.6)
+                                .foregroundStyle(.white.opacity(0.78))
+                                .lineLimit(1)
+                                .fixedSize()
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        }
+                    }
+                    // Where the reading came from, for providers with
+                    // more than one way in.
+                    .help(snapshot?.sourceLabel.map { source in
+                        [source, snapshot?.editionLabel].compactMap { $0 }.joined(separator: " · ")
+                    } ?? "")
                 }
                 Spacer(minLength: 6)
                 if let status = store.serviceStatus[id] {
@@ -106,9 +115,8 @@ struct ProviderCardView: View {
         }
     }
 
-    private var planChip: String? {
-        guard let raw = snapshot?.chipLabel else { return nil }
-        return raw.replacingOccurrences(of: "_", with: " ").uppercased()
+    private var planChips: [String] {
+        (snapshot?.chipLabels ?? []).map { $0.replacingOccurrences(of: "_", with: " ").uppercased() }
     }
 
     // MARK: Body

@@ -630,14 +630,24 @@ private struct IslandProviderBlock: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
-                if let plan = snapshot?.chipLabel {
-                    Text(plan.replacingOccurrences(of: "_", with: " ").uppercased())
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .tracking(0.8)
-                        .foregroundStyle(.white.opacity(0.6))
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(RoundedRectangle(cornerRadius: 3).fill(.white.opacity(0.06)))
+                    .layoutPriority(1)
+                // One line always: plan and edition where they fit, the
+                // plan alone where they do not.
+                if let chips = snapshot?.chipLabels, !chips.isEmpty {
+                    ViewThatFits(in: .horizontal) {
+                        ForEach(chips, id: \.self) { plan in
+                            Text(plan.replacingOccurrences(of: "_", with: " ").uppercased())
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .tracking(0.8)
+                                .foregroundStyle(.white.opacity(0.6))
+                                .lineLimit(1)
+                                .fixedSize()
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(RoundedRectangle(cornerRadius: 3).fill(.white.opacity(0.06)))
+                        }
+                    }
+                    .help(snapshot?.chipLabel ?? "")
                 }
                 if let status = store.serviceStatus[id] {
                     // Not updating takes the words; a page that says all is
