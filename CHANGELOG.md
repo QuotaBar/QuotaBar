@@ -10,7 +10,7 @@
 #### 新增
 
 - Codex 卡片：保存了两个以上账号时，邮箱后面同样有一个小箭头可以选账号；只有一个账号时，卡片下面不再重复显示一遍「账号」列表（上面已经有邮箱）。Claude 卡片的箭头下拉里也只显示邮箱。
-- 没有安装 Claude Code 也能用：这台 Mac 上没有 Claude Code 登录（或已退出）时，卡片改读 Claude 桌面应用的登录，在桌面应用里换号，卡片跟着换。macOS 会询问一次是否允许 QuotaBar 读取桌面应用的登录（选「始终允许」），会话只在内存里使用。有 Claude Code 登录时，仍然优先用它。
+- 没有安装 Claude Code 也能用：这台 Mac 上没有 Claude Code 登录（或已退出）时，卡片改读 claude.ai 的网页登录——先是 Claude 桌面应用，再是 Chrome、Edge、Brave、Arc、Vivaldi、Chromium、Firefox、Safari——在桌面应用或浏览器里换号，卡片跟着换。设置 → 服务商 → Claude 新增「数据来源」：自动（先 Claude Code，再网页）、仅 Claude Code、仅网页登录，并显示找到了哪些网页登录。macOS 会询问一次是否允许 QuotaBar 读取加密 Cookie 的密钥（选「始终允许」）；Safari 的文件需要「完全磁盘访问」。会话只在内存里使用。
 - 这台 Mac 上有两个以上 Claude 登录时，Claude 卡片的账号行后面多了一个小箭头，可以直接选卡片、菜单栏、刘海岛和停靠条显示哪个登录；还没有对应账号组的登录会自动建一个。只有一个登录时不显示箭头。Claude 桌面应用的登录是单独存的，QuotaBar 读不到；要给 QuotaBar 添加第二个登录，用 `CLAUDE_CONFIG_DIR`。
 
 #### 修复

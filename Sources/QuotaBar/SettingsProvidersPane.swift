@@ -265,6 +265,7 @@ struct ProviderSettingsRow: View {
         // it. This button asks the source, not the memo.
         ConfigStore.shared.invalidateCredentialCache()
         LocalCredentials.invalidateClaudeToken()
+        ClaudeWebSession.invalidate()
         let provider = ProviderRegistry.make(id)
         Task {
             do {
@@ -325,6 +326,17 @@ private struct CredentialEditor: View {
     }
 
     private var isManual: Bool { id.credentialHint != nil }
+
+    /// What Automatic would fall back to, said as found.
+    private var claudeSourceCaption: String {
+        let names = ClaudeWebSession.detectedNames
+        let found = names.isEmpty
+            ? L10n.t("No web sign-in found.", "没有找到网页登录。")
+            : L10n.t("Web sign-ins found: \(names.joined(separator: ", ")).", "找到的网页登录：\(names.joined(separator: "、"))。")
+        return L10n.t(
+            "Automatic reads Claude Code's sign-in, else the Claude app's or a browser's. \(found)",
+            "自动：先读 Claude Code 的登录，没有就读 Claude 桌面应用或浏览器里的登录。\(found)")
+    }
     /// Saving, clearing, authorising, signing in — what is left for a line of
     /// its own once the test and the console moved into the header.
     private var hasActions: Bool {
@@ -396,6 +408,15 @@ private struct CredentialEditor: View {
             }
 
             if id == .claude {
+                SettingRow(L10n.t("Source", "数据来源"), caption: claudeSourceCaption) {
+                    GlassSegmented(
+                        options: ClaudeSource.allCases.map { (value: $0, label: $0.displayName) },
+                        selection: store.experience.claudeSource,
+                        onSelect: { value in
+                            store.updateExperience { $0.claudeSource = value }
+                            store.refresh(.claude)
+                        })
+                }
                 SettingRow(L10n.t("Other sign-ins", "其他登录")) {
                     ClaudeSignInsSettings(store: store, signIns: store.claudeSignIns)
                 }

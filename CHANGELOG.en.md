@@ -10,7 +10,7 @@ Server moves, the website, and build or release scripts don't change the app its
 #### Added
 
 - Codex card: with two or more kept accounts, the address gets the same arrow after it to pick the account; with one, the "Accounts" list under the card no longer repeats the address already shown above it. The Claude card's arrow lists the email alone.
-- Claude works without Claude Code: when no Claude Code sign-in is on this Mac (or it is signed out), the card reads the Claude desktop app's sign-in instead, so switching account in the app switches the card. macOS asks once to let QuotaBar read the app's sign-in (Always Allow); the session is used in memory only. A Claude Code sign-in, when there is one, still comes first.
+- Claude works without Claude Code: with no Claude Code sign-in on this Mac (or a signed-out one), the card reads a claude.ai web sign-in instead — the Claude desktop app's, then Chrome's, Edge's, Brave's, Arc's, Vivaldi's, Chromium's, Firefox's or Safari's — so switching account in the app or the browser switches the card. Settings → Providers → Claude has a Source choice: Automatic (Claude Code first, then the web), Claude Code only, or Web sign-in only, and says which web sign-ins it found. macOS asks once to let QuotaBar read a sealed cookie key (Always Allow); Safari's file needs Full Disk Access. Sessions are used in memory only.
 - With two or more Claude sign-ins on this Mac, the account line on the Claude card gets a small arrow: pick which sign-in the card, menu bar, island and dock show. A sign-in with no profile yet gets one made for it. With a single sign-in there is no arrow. Claude's desktop app keeps its own sign-in, which QuotaBar cannot read; a second sign-in for QuotaBar comes from `CLAUDE_CONFIG_DIR`.
 
 #### Fixed

@@ -149,7 +149,7 @@ public enum LocalCredentials {
         let lookup = readClaudeOAuthToken(interactive: true)
         memo.store(lookup)
         // The Claude app's sign-in, when that is what answers.
-        if lookup.state != .available, ClaudeDesktopSession.exists, ClaudeDesktopSession.authorize() { return true }
+        if lookup.state != .available, ClaudeWebSession.exists, ClaudeWebSession.authorize() { return true }
         // The other config dirs' sign-ins the quiet reads could not open.
         for service in claudeExtraServices() where claudeLookup(service: service).state == .needsAuthorization {
             extraMemo.store(readClaudeOAuthToken(service: service, interactive: true), for: service)

@@ -13,10 +13,12 @@ enum SQLiteRead {
 
     /// Runs a query and returns every row as an array of column strings.
     /// Numeric columns come back as their text form; callers parse.
-    static func rows(inFile path: String, query: String) -> [[String?]] {
+    /// `immutable: false` reads a copy that has its `-wal` beside it, which the
+    /// immutable URI would not look at.
+    static func rows(inFile path: String, query: String, immutable: Bool = true) -> [[String?]] {
         guard FileManager.default.fileExists(atPath: path) else { return [] }
         var db: OpaquePointer?
-        let uri = "file:\(path)?immutable=1"
+        let uri = immutable ? "file:\(path)?immutable=1" : "file:\(path)?mode=ro"
         guard sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK
         else {
             sqlite3_close(db)

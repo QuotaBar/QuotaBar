@@ -73,6 +73,25 @@ public enum TokenCounting: String, Codable, CaseIterable, Identifiable, Sendable
     }
 }
 
+/// Where the Claude card reads its figures from. Auto asks Claude Code's own
+/// sign-in first and falls back to a web sign-in — the Claude app's, then a
+/// browser's — when there is none; the others pin one way.
+public enum ClaudeSource: String, Codable, CaseIterable, Identifiable, Sendable {
+    case auto
+    case oauth
+    case web
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .auto: L10n.t("Automatic", "自动")
+        case .oauth: L10n.t("Claude Code only", "仅 Claude Code")
+        case .web: L10n.t("Web sign-in only", "仅网页登录")
+        }
+    }
+}
+
 /// Row spacing in the menu panel.
 public enum PanelDensity: String, Codable, CaseIterable, Identifiable, Sendable {
     case regular
@@ -332,6 +351,7 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
     /// reads, and the one in use. Empty: the CLIs' own sign-ins.
     public var accountProfiles: [AccountProfile] = []
     public var activeProfileID: String?
+    public var claudeSource: ClaudeSource = .auto
 
     // Sharing
     public var shareSignature: String = ""
@@ -353,7 +373,7 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
         case placeWindows, placeWindowsSeeded
         case spendBudget, budgetNotified, balanceFloor, balanceFloorNotified, balanceChart, weeklyDigest, weeklyDigestSent
         case shareSignature, shareShowsSignature, shareMasksAccount
-        case accountProfiles, activeProfileID
+        case accountProfiles, activeProfileID, claudeSource
     }
 
     public init(from decoder: Decoder) throws {
@@ -418,6 +438,7 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
         shareMasksAccount = value(.shareMasksAccount, d.shareMasksAccount)
         accountProfiles = value(.accountProfiles, d.accountProfiles)
         activeProfileID = try? c.decodeIfPresent(String.self, forKey: .activeProfileID)
+        claudeSource = choice(.claudeSource, d.claudeSource)
     }
 }
 
