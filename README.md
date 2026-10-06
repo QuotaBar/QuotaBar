@@ -50,9 +50,28 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.27** (2026-10-06) · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.28** (2026-10-06) · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-10-06</b> · 0.5.28 · 3 added · 5 fixed</summary>
+
+**Added**
+
+- Codex card: with two or more kept accounts, the address gets the same arrow after it to pick the account; with one, the "Accounts" list under the card no longer repeats the address already shown above it. The Claude card's arrow lists the email alone.
+- Claude works without Claude Code: when no Claude Code sign-in is on this Mac (or it is signed out), the card reads the Claude desktop app's sign-in instead, so switching account in the app switches the card. macOS asks once to let QuotaBar read the app's sign-in (Always Allow); the session is used in memory only. A Claude Code sign-in, when there is one, still comes first.
+- With two or more Claude sign-ins on this Mac, the account line on the Claude card gets a small arrow: pick which sign-in the card, menu bar, island and dock show. A sign-in with no profile yet gets one made for it. With a single sign-in there is no arrow. Claude's desktop app keeps its own sign-in, which QuotaBar cannot read; a second sign-in for QuotaBar comes from `CLAUDE_CONFIG_DIR`.
+
+**Fixed**
+
+- On a display with no notch the opened island has the same notch-wide gap between its two columns as the closed strip, and Codex's row carries the same OpenAI knot, taken from theSVG.
+- On the island, Codex is drawn as OpenAI's knot in Codex's blue instead of the gradient cloud, like codex-island. The other places Codex's mark appears are unchanged.
+- On a display with no notch the island is no longer a separate pill: it is the same strip as on a notched Mac — a figure either side, with a notch's worth of black between them — at the same width and with the same rounded corners.
+- The Claude card's list under its arrow, now headed "Accounts", is one line per account — the email, the plan and which one is on the card — with the others' limits on a single line below, instead of four.
+- The menu-bar panel no longer has the profile switch bar across its top; the arrow after the account on the Claude and Codex cards does the choosing.
+
+</details>
+
+<details>
 <summary><b>2026-10-06</b> · 0.5.27 · 1 added · 1 fixed</summary>
 
 **Added**
@@ -76,19 +95,6 @@ Latest release **0.5.27** (2026-10-06) · [full changelog](CHANGELOG.en.md)
 
 - Switching profiles back and forth quickly got the Claude card rate-limited by Anthropic, with no figures left to show: a switch cleared the card before reading it again, and read the other sign-ins under the arrow again too. A switch now shows that account's last figures at once and asks nothing while they are no older than the refresh interval — no older than a card shows between two refreshes; the list under the arrow trades places without being read; and a read refused for the rate leaves the last figures standing. ([#8](https://github.com/QuotaBar/QuotaBar/issues/8))
 - Switching to a profile whose account had more early resets could announce a reset that was never given: the reading was compared with the other account's. ([#8](https://github.com/QuotaBar/QuotaBar/issues/8))
-
-</details>
-
-<details>
-<summary><b>2026-10-06</b> · 0.5.25 · 1 added · 1 fixed</summary>
-
-**Added**
-
-- Profiles: a Claude sign-in and a Codex account kept together — Personal and Work, say — and switched in one press. Add them in Settings → Providers → Profiles, and pick for each its Claude sign-in (the default one, or another organization signed in with `CLAUDE_CONFIG_DIR`) and its Codex account (the Codex CLI's sign-in, or one QuotaBar keeps). With two profiles, a switch appears at the top of the menu-bar panel, and in its ⋯ menu and the Claude and Codex cards in the dock; the Claude and Codex cards read again at once, and the menu bar, the island, the dock and the desktop cards follow. Switching changes which accounts QuotaBar reads, never what the CLIs are signed in as. The section shows once this Mac has a second Claude sign-in or a second kept Codex account. ([#8](https://github.com/QuotaBar/QuotaBar/issues/8))
-
-**Fixed**
-
-- Opening the Claude or Codex card in the side dock showed no Organizations or Accounts section; only the menu-bar panel's cards had them. The dock's cards have them now. ([#8](https://github.com/QuotaBar/QuotaBar/issues/8))
 
 </details>
 

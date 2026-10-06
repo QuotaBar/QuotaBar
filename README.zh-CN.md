@@ -49,9 +49,28 @@ Gatekeeper 可以直接打开。
 <!-- changelog:start -->
 <!-- 由 Scripts/sync_changelog.py 从 CHANGELOG.md 生成，请勿手改。 -->
 
-最新版本 **0.5.27**（2026-10-06） · [完整更新日志](CHANGELOG.md)
+最新版本 **0.5.28**（2026-10-06） · [完整更新日志](CHANGELOG.md)
 
 <details open>
+<summary><b>2026-10-06</b> · 0.5.28 · 新增 3 · 修复 5</summary>
+
+**新增**
+
+- Codex 卡片：保存了两个以上账号时，邮箱后面同样有一个小箭头可以选账号；只有一个账号时，卡片下面不再重复显示一遍「账号」列表（上面已经有邮箱）。Claude 卡片的箭头下拉里也只显示邮箱。
+- 没有安装 Claude Code 也能用：这台 Mac 上没有 Claude Code 登录（或已退出）时，卡片改读 Claude 桌面应用的登录，在桌面应用里换号，卡片跟着换。macOS 会询问一次是否允许 QuotaBar 读取桌面应用的登录（选「始终允许」），会话只在内存里使用。有 Claude Code 登录时，仍然优先用它。
+- 这台 Mac 上有两个以上 Claude 登录时，Claude 卡片的账号行后面多了一个小箭头，可以直接选卡片、菜单栏、刘海岛和停靠条显示哪个登录；还没有对应账号组的登录会自动建一个。只有一个登录时不显示箭头。Claude 桌面应用的登录是单独存的，QuotaBar 读不到；要给 QuotaBar 添加第二个登录，用 `CLAUDE_CONFIG_DIR`。
+
+**修复**
+
+- 没有刘海的屏幕上，展开后的刘海岛两列之间留出和收起时一样宽的刘海位，Codex 一行也用同样的 OpenAI 结形标志（取自 theSVG）。
+- 刘海岛上的 Codex 图标改为 OpenAI 的结形标志，着 Codex 的蓝色，不再用渐变云朵，和 codex-island 一致。其他地方的 Codex 图标不变。
+- 没有刘海的屏幕上，刘海岛不再是单独的一颗「药丸」：和刘海屏一样，中间留出一段刘海宽度的黑色，两侧各放读数，宽度和圆角都和刘海屏一致。
+- Claude 卡片展开后的列表改称「账号」，每个账号一行：邮箱、套餐、是否在卡片显示；其他账号的额度压成一行，不再占四行。
+- 菜单栏面板顶部不再有账号组切换条；选账号用 Claude、Codex 卡片上邮箱后面的箭头。
+
+</details>
+
+<details>
 <summary><b>2026-10-06</b> · 0.5.27 · 新增 1 · 修复 1</summary>
 
 **新增**
@@ -75,19 +94,6 @@ Gatekeeper 可以直接打开。
 
 - 快速来回切换账号组时，Claude 卡片会被 Anthropic 限流，显示请求过于频繁，而且没有数字可看：切换时先清空卡片再重读，每次还把「组织」列表里的其他登录重读一遍。现在切换时直接显示这个账号上次的读数，只要不比平时两次刷新之间显示的更旧（刷新间隔内读过），就不再请求；「组织」列表在本地调换位置，不重新读取；即使被限流，也会保留上次的数字。（[#8](https://github.com/QuotaBar/QuotaBar/issues/8)）
 - 切换到重置次数更多的账号组时，可能误发「收到新的限额重置」通知：之前拿另一个账号的读数做了比较。（[#8](https://github.com/QuotaBar/QuotaBar/issues/8)）
-
-</details>
-
-<details>
-<summary><b>2026-10-06</b> · 0.5.25 · 新增 1 · 修复 1</summary>
-
-**新增**
-
-- 账号组：把一个 Claude 登录和一个 Codex 账号编成一组，比如「个人」和「工作」，一键切换。在 设置 → 服务商 → 账号组 里添加账号组，给每组选好 Claude 登录（默认登录，或用 `CLAUDE_CONFIG_DIR` 登录的其他组织）和 Codex 账号（Codex CLI 当前登录的，或已保存的账号）。有两个账号组后，菜单栏面板顶部会出现切换条，面板的 ⋯ 菜单和停靠条里的 Claude、Codex 卡片也能切换；切换后 Claude 和 Codex 卡片立刻重新读取，菜单栏、刘海岛、停靠条和桌面卡片一起跟着变。切换只改变 QuotaBar 读取哪个账号，不会改变 CLI 当前登录的账号。只有一台 Mac 上有第二个 Claude 登录或第二个已保存的 Codex 账号时，设置里才会出现这一栏。（[#8](https://github.com/QuotaBar/QuotaBar/issues/8)）
-
-**修复**
-
-- 在侧边停靠条里展开 Claude 或 Codex 卡片时，看不到「组织」和「账号」两栏，只有菜单栏面板里的卡片有。现在停靠条的卡片里也有。（[#8](https://github.com/QuotaBar/QuotaBar/issues/8)）
 
 </details>
 
