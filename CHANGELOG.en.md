@@ -3,7 +3,7 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
-## 0.5.28 · 2026-10-06
+## 0.5.29 · 2026-10-07
 
 ### 2026-10-06
 
