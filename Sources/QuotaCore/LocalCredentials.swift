@@ -400,6 +400,36 @@ public enum LocalCredentials {
         return services
     }
 
+    /// Who a config dir's sign-in is, from the `.claude.json` Claude Code keeps
+    /// in it — for when the token has run out and the server cannot be asked.
+    /// The item's name ends in the first 8 hex of the SHA-256 of the dir's
+    /// path, so the dir is found by hashing the likely ones.
+    static func claudeConfigIdentity(service: String, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> ClaudeProvider.Identity? {
+        guard isExtraClaudeService(service) else { return nil }
+        let suffix = String(service.dropFirst(claudeExtraPrefix.count))
+        let fm = FileManager.default
+        var candidates = ((try? fm.contentsOfDirectory(atPath: home.path)) ?? [])
+            .filter { $0.hasPrefix(".claude") }.map { home.appendingPathComponent($0).path }
+        let config = home.appendingPathComponent(".config")
+        candidates += ((try? fm.contentsOfDirectory(atPath: config.path)) ?? [])
+            .filter { $0.hasPrefix("claude") }.map { config.appendingPathComponent($0).path }
+        for dir in candidates {
+            let hash = SHA256.hash(data: Data(dir.utf8)).map { String(format: "%02x", $0) }.joined().prefix(8)
+            guard hash == suffix,
+                  let data = fm.contents(atPath: dir + "/.claude.json"),
+                  let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let account = root["oauthAccount"] as? [String: Any]
+            else { continue }
+            let email = (account["emailAddress"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            let organization = (account["organizationName"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            guard email != nil || organization != nil else { return nil }
+            return ClaudeProvider.Identity(
+                email: email, organization: organization,
+                accountID: account["accountUuid"] as? String, organizationID: account["organizationUuid"] as? String)
+        }
+        return nil
+    }
+
     /// One of them, read quietly the way the default item is.
     static func claudeLookup(service: String) -> ClaudeLookup {
         if let cached = extraMemo.cached(service, ttl: keychainTTL) { return cached }

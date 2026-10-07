@@ -1,3 +1,4 @@
+import CryptoKit
 import XCTest
 @testable import QuotaCore
 import QuotaModel
@@ -70,5 +71,21 @@ final class ClaudeWebSessionTests: XCTestCase {
         let snapshot = try await ClaudeWebSession.fetch()
         print("LIVE account=\(snapshot.account ?? "-") plan=\(snapshot.planName ?? "-") windows=\(snapshot.windows.map { "\($0.title) \($0.usedPercent ?? -1)" })")
         XCTAssertFalse(snapshot.windows.isEmpty)
+    }
+
+    /// A config dir is found from its keychain item's name, and its address
+    /// read from the `.claude.json` inside.
+    func testConfigDirIdentityFromItsHash() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("qb-home-\(UUID().uuidString)")
+        let dir = home.appendingPathComponent(".claude-second")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let json = #"{"oauthAccount":{"emailAddress":"second@example.com","organizationName":"Second Org","accountUuid":"a1","organizationUuid":"o1"}}"#
+        try Data(json.utf8).write(to: dir.appendingPathComponent(".claude.json"))
+        let hash = SHA256.hash(data: Data(dir.path.utf8)).map { String(format: "%02x", $0) }.joined().prefix(8)
+        let identity = LocalCredentials.claudeConfigIdentity(service: "Claude Code-credentials-\(hash)", home: home)
+        XCTAssertEqual(identity?.email, "second@example.com")
+        XCTAssertEqual(identity?.organization, "Second Org")
+        XCTAssertNil(LocalCredentials.claudeConfigIdentity(service: "Claude Code-credentials-00000000", home: home))
     }
 }

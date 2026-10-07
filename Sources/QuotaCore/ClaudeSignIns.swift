@@ -122,6 +122,7 @@ public enum ClaudeSignIns {
         guard let token = lookup.token else { return reading }
         // Whoever it was the last time the token was good.
         reading.identity = ClaudeProvider.cachedProfile(token: token)
+            ?? LocalCredentials.claudeConfigIdentity(service: service)
         if let expiry = lookup.expiresAt, expiry <= now {
             reading.error = expiredMessage
             return reading

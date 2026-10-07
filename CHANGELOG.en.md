@@ -15,6 +15,7 @@ Server moves, the website, and build or release scripts don't change the app its
 
 #### Fixed
 
+- The list under the Claude card's arrow names a sign-in whose token has run out by its address, read from the `.claude.json` of its config dir, instead of "Organization 2".
 - On a display with no notch the opened island has the same notch-wide gap between its two columns as the closed strip, and Codex's row carries the same OpenAI knot, taken from theSVG.
 - On the island, Codex is drawn as OpenAI's knot in Codex's blue instead of the gradient cloud, like codex-island. The other places Codex's mark appears are unchanged.
 - On a display with no notch the island is no longer a separate pill: it is the same strip as on a notched Mac — a figure either side, with a notch's worth of black between them — at the same width and with the same rounded corners.
