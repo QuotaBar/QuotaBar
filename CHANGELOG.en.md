@@ -3,6 +3,14 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
+## Unreleased
+
+### 2026-10-07
+
+#### Added
+
+- Another config dir's Claude sign-in that has run out is renewed on its own, the way the default one is: QuotaBar starts Claude Code with that `CLAUDE_CONFIG_DIR`, at most every half hour per sign-in, so a second account no longer shows as expired after eight hours. The same for a profile that reads it.
+
 ## 0.5.29 · 2026-10-07
 
 ### 2026-10-06

@@ -400,11 +400,10 @@ public enum LocalCredentials {
         return services
     }
 
-    /// Who a config dir's sign-in is, from the `.claude.json` Claude Code keeps
-    /// in it — for when the token has run out and the server cannot be asked.
-    /// The item's name ends in the first 8 hex of the SHA-256 of the dir's
-    /// path, so the dir is found by hashing the likely ones.
-    static func claudeConfigIdentity(service: String, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> ClaudeProvider.Identity? {
+    /// The config dir behind an extra sign-in. The item's name ends in the
+    /// first 8 hex of the SHA-256 of the dir's path, so the dir is found by
+    /// hashing the likely ones: `~/.claude*` and `~/.config/claude*`.
+    static func claudeConfigDir(service: String, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL? {
         guard isExtraClaudeService(service) else { return nil }
         let suffix = String(service.dropFirst(claudeExtraPrefix.count))
         let fm = FileManager.default
@@ -413,21 +412,34 @@ public enum LocalCredentials {
         let config = home.appendingPathComponent(".config")
         candidates += ((try? fm.contentsOfDirectory(atPath: config.path)) ?? [])
             .filter { $0.hasPrefix("claude") }.map { config.appendingPathComponent($0).path }
-        for dir in candidates {
-            let hash = SHA256.hash(data: Data(dir.utf8)).map { String(format: "%02x", $0) }.joined().prefix(8)
-            guard hash == suffix,
-                  let data = fm.contents(atPath: dir + "/.claude.json"),
-                  let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let account = root["oauthAccount"] as? [String: Any]
-            else { continue }
-            let email = (account["emailAddress"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-            let organization = (account["organizationName"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-            guard email != nil || organization != nil else { return nil }
-            return ClaudeProvider.Identity(
-                email: email, organization: organization,
-                accountID: account["accountUuid"] as? String, organizationID: account["organizationUuid"] as? String)
-        }
-        return nil
+        return candidates.first {
+            SHA256.hash(data: Data($0.utf8)).map { String(format: "%02x", $0) }.joined().prefix(8) == suffix
+        }.map { URL(fileURLWithPath: $0, isDirectory: true) }
+    }
+
+    /// Who a config dir's sign-in is, from the `.claude.json` Claude Code keeps
+    /// in it — for when the token has run out and the server cannot be asked.
+    static func claudeConfigIdentity(service: String, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> ClaudeProvider.Identity? {
+        guard let dir = claudeConfigDir(service: service, home: home),
+              let data = FileManager.default.contents(atPath: dir.path + "/.claude.json"),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let account = root["oauthAccount"] as? [String: Any]
+        else { return nil }
+        let email = (account["emailAddress"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let organization = (account["organizationName"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        guard email != nil || organization != nil else { return nil }
+        return ClaudeProvider.Identity(
+            email: email, organization: organization,
+            accountID: account["accountUuid"] as? String, organizationID: account["organizationUuid"] as? String)
+    }
+
+    /// A quiet read of one sign-in past the memo, for watching Claude Code
+    /// renew its item.
+    static func readClaudeNow(service: String) -> ClaudeLookup {
+        if service == claudeService { return readClaudeNow() }
+        let lookup = readClaudeOAuthToken(service: service, interactive: false)
+        extraMemo.store(lookup, for: service)
+        return lookup
     }
 
     /// One of them, read quietly the way the default item is.

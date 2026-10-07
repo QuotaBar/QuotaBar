@@ -576,12 +576,20 @@ public struct ClaudeProvider: QuotaProvider {
         case .available:
             break
         }
-        guard let token = lookup.token else { throw ProviderError.notConfigured(hint: ProviderID.claude.setupHint) }
-        if let expiry = lookup.expiresAt, expiry <= Date() {
-            throw ProviderError.sessionExpired(ClaudeSignIns.expiredMessage)
+        guard var token = lookup.token else { throw ProviderError.notConfigured(hint: ProviderID.claude.setupHint) }
+        var plan = lookup.plan
+        if let expiry = lookup.expiresAt, expiry <= Date().addingTimeInterval(60) {
+            // Run out: have Claude Code renew it, with this sign-in's own config dir.
+            guard await ClaudeCodeRenewal.renewIfExpired(service: service) == .renewed else {
+                throw ProviderError.sessionExpired(ClaudeSignIns.expiredMessage)
+            }
+            let renewed = LocalCredentials.readClaudeNow(service: service)
+            guard let fresh = renewed.token else { throw ProviderError.sessionExpired(ClaudeSignIns.expiredMessage) }
+            token = fresh
+            plan = renewed.plan
         }
         do {
-            return try await usage(token: token, plan: lookup.plan)
+            return try await usage(token: token, plan: plan)
         } catch ProviderError.unauthorized {
             throw ProviderError.sessionExpired(ClaudeSignIns.expiredMessage)
         }

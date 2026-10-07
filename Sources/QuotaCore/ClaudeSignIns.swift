@@ -99,11 +99,12 @@ public enum ClaudeSignIns {
 
     static func read(service: String, now: Date) async -> Reading {
         var lookup = LocalCredentials.claudeLookup(service: service)
-        // Off the card, the default sign-in is still Claude Code's to renew.
-        if service == LocalCredentials.claudeService, let expiry = lookup.expiresAt, expiry <= now.addingTimeInterval(60),
-           await ClaudeCodeRenewal.renewIfExpired() == .renewed
+        // Off the card, a sign-in is still Claude Code's to renew: it is
+        // started for it, with the sign-in's own config dir.
+        if let expiry = lookup.expiresAt, expiry <= now.addingTimeInterval(60),
+           await ClaudeCodeRenewal.renewIfExpired(service: service) == .renewed
         {
-            lookup = LocalCredentials.readClaudeNow()
+            lookup = LocalCredentials.readClaudeNow(service: service)
         }
         var reading = Reading(id: service, plan: lookup.plan)
         switch lookup.state {
@@ -156,7 +157,7 @@ public enum ClaudeSignIns {
 
     public static var expiredMessage: String {
         L10n.t(
-            "This sign-in has run out. Claude Code renews it the next time it runs with this CLAUDE_CONFIG_DIR.",
-            "这个登录已过期。下次用这个 CLAUDE_CONFIG_DIR 运行 Claude Code 时，它会自己续期。")
+            "This sign-in has run out. QuotaBar asks Claude Code to renew it, at most every half hour; running Claude Code with this CLAUDE_CONFIG_DIR renews it too.",
+            "这个登录已过期。QuotaBar 会让 Claude Code 续期（半小时内最多一次）；用这个 CLAUDE_CONFIG_DIR 运行一次 Claude Code 也能续期。")
     }
 }

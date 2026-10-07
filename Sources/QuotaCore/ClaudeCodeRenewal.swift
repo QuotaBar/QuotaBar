@@ -15,21 +15,44 @@ public enum ClaudeCodeRenewal {
 
     /// `defaults read bar.quota.QuotaBar claudeRenewalLastAttempt`
     static let defaultsKey = "claudeRenewalLastAttempt"
-    private static let gate = CLIRenewal.Gate(key: defaultsKey)
+    private static let gates = GateBook()
+
+    /// One gate per sign-in: the half hour between launches is each one's own.
+    final class GateBook: @unchecked Sendable {
+        private let lock = NSLock()
+        private var gates: [String: CLIRenewal.Gate] = [:]
+        func gate(for service: String) -> CLIRenewal.Gate {
+            lock.withLock {
+                if let gate = gates[service] { return gate }
+                let key = service == LocalCredentials.claudeService
+                    ? ClaudeCodeRenewal.defaultsKey
+                    : "\(ClaudeCodeRenewal.defaultsKey)-\(service.suffix(8))"
+                let gate = CLIRenewal.Gate(key: key)
+                gates[service] = gate
+                return gate
+            }
+        }
+    }
 
     public static var lastAttempt: (at: Date, outcome: String)? {
         CLIRenewal.lastAttempt(defaultsKey)
     }
 
-    /// Renews the card's sign-in when its token has run out (or is about to).
-    public static func renewIfExpired(now: Date = .now) async -> Outcome {
-        let lookup = LocalCredentials.readClaudeNow()
+    /// Renews a sign-in when its token has run out (or is about to): the
+    /// default one, or another config dir's, which Claude Code is started
+    /// with by `CLAUDE_CONFIG_DIR`.
+    public static func renewIfExpired(service: String = LocalCredentials.claudeService, now: Date = .now) async -> Outcome {
+        let lookup = LocalCredentials.readClaudeNow(service: service)
         guard lookup.state == .available, let expiry = lookup.expiresAt, expiry <= now.addingTimeInterval(60) else {
             return .notNeeded
         }
+        let configDir = service == LocalCredentials.claudeService ? nil : LocalCredentials.claudeConfigDir(service: service)
+        if service != LocalCredentials.claudeService, configDir == nil {
+            return .failed("The config dir of this sign-in was not found.")
+        }
         let expired = lookup.token
-        return await gate.run(now: now) {
-            await renew(replacing: expired, force: false)
+        return await gates.gate(for: service).run(now: now) {
+            await renew(replacing: expired, force: false, service: service, configDir: configDir)
         }
     }
 
@@ -40,11 +63,14 @@ public enum ClaudeCodeRenewal {
         await renew(replacing: LocalCredentials.readClaudeNow().token, force: true)
     }
 
-    private static func renew(replacing token: String?, force: Bool) async -> Outcome {
+    private static func renew(
+        replacing token: String?, force: Bool, service: String = LocalCredentials.claudeService, configDir: URL? = nil) async -> Outcome
+    {
         guard let binary = claudeBinary() else { return .noCLI }
         return await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
-                continuation.resume(returning: Session(binary: binary).run(replacing: token, force: force))
+                continuation.resume(
+                    returning: Session(binary: binary, service: service, configDir: configDir).run(replacing: token, force: force))
             }
         }
     }
@@ -119,12 +145,16 @@ public enum ClaudeCodeRenewal {
     /// One launch, start to finish, on a thread of its own.
     final class Session {
         let binary: URL
+        let service: String
+        let configDir: URL?
         private var primary: Int32 = -1
         private var process: Process?
         private var screen = ""
 
-        init(binary: URL) {
+        init(binary: URL, service: String = LocalCredentials.claudeService, configDir: URL? = nil) {
             self.binary = binary
+            self.service = service
+            self.configDir = configDir
         }
 
         func run(replacing token: String?, force: Bool) -> Outcome {
@@ -176,7 +206,7 @@ public enum ClaudeCodeRenewal {
         }
 
         private func renewed(from token: String?) -> Bool {
-            let now = LocalCredentials.readClaudeNow()
+            let now = LocalCredentials.readClaudeNow(service: service)
             guard now.state == .available, let fresh = now.token, fresh != token else { return false }
             return (now.expiresAt ?? .distantFuture) > Date()
         }
@@ -207,6 +237,8 @@ public enum ClaudeCodeRenewal {
             var environment = ProcessInfo.processInfo.environment.filter { key, _ in
                 !key.hasPrefix("CLAUDE") && !key.hasPrefix("ANTHROPIC_")
             }
+            // Another sign-in is a config dir's: Claude Code finds it by this.
+            if let configDir { environment["CLAUDE_CONFIG_DIR"] = configDir.path }
             environment["TERM"] = "xterm-256color"
             environment["PWD"] = directory.path
             environment["PATH"] = (environment["PATH"].map { $0 + ":" } ?? "") + "/usr/bin:/bin:/usr/sbin:/sbin"

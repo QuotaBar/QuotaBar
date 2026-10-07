@@ -86,6 +86,8 @@ final class ClaudeWebSessionTests: XCTestCase {
         let identity = LocalCredentials.claudeConfigIdentity(service: "Claude Code-credentials-\(hash)", home: home)
         XCTAssertEqual(identity?.email, "second@example.com")
         XCTAssertEqual(identity?.organization, "Second Org")
+        XCTAssertEqual(LocalCredentials.claudeConfigDir(service: "Claude Code-credentials-\(hash)", home: home)?.path, dir.path)
         XCTAssertNil(LocalCredentials.claudeConfigIdentity(service: "Claude Code-credentials-00000000", home: home))
+        XCTAssertNil(LocalCredentials.claudeConfigDir(service: "Claude Code-credentials", home: home))
     }
 }

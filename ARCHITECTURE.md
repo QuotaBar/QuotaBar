@@ -673,6 +673,10 @@ Six ways a provider gets its credential, in order of preference:
    written by the same `security add-generic-password`; `ClaudeSignIns` finds
    them by name (attributes only, no dialog) and reads them like the default,
    read only — never a refresh, which would spend Claude Code's rotating token.
+   A config dir's sign-in that has run out is renewed the way the default one
+   is: the dir is found by hashing the likely paths against the item's suffix,
+   and `claude` is started with `CLAUDE_CONFIG_DIR` pointing at it (a gate and a
+   half-hour cooldown per item).
    Their readings live in `ClaudeSignInsModel`, Mac-side, not in `UsageSnapshot`.
    Profiles (`AccountProfile`, in `ExperiencePrefs`) pair one Claude item with
    one kept Codex account; with two or more, the active one decides what
