@@ -50,9 +50,18 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.29** (2026-10-07) · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.29** (2026-10-07) · **1** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-10-07</b> · Unreleased · 1 added</summary>
+
+**Added**
+
+- Another config dir's Claude sign-in that has run out is renewed on its own, the way the default one is: QuotaBar starts Claude Code with that `CLAUDE_CONFIG_DIR`, at most every half hour per sign-in, so a second account no longer shows as expired after eight hours. The same for a profile that reads it.
+
+</details>
+
+<details>
 <summary><b>2026-10-06</b> · 0.5.29 · 3 added · 6 fixed</summary>
 
 **Added**
@@ -82,20 +91,6 @@ Latest release **0.5.29** (2026-10-07) · [full changelog](CHANGELOG.en.md)
 **Fixed**
 
 - The plan chip broke onto two lines in the dock's cards. It now stays on one line: plan and edition where they fit, the plan alone where they do not, with the whole of it in the tooltip. The same in the menu-bar panel and the island.
-
-</details>
-
-<details>
-<summary><b>2026-10-06</b> · 0.5.26 · 1 added · 2 fixed</summary>
-
-**Added**
-
-- Settings → Providers → Profiles opens with three steps: sign in to each account once and keep it, add a profile for each, and where to switch. Once Codex accounts are kept, Codex's list no longer offers following the Codex CLI's sign-in — it is always one of them — except before any is kept, or while that profile still follows it. ([#8](https://github.com/QuotaBar/QuotaBar/issues/8))
-
-**Fixed**
-
-- Switching profiles back and forth quickly got the Claude card rate-limited by Anthropic, with no figures left to show: a switch cleared the card before reading it again, and read the other sign-ins under the arrow again too. A switch now shows that account's last figures at once and asks nothing while they are no older than the refresh interval — no older than a card shows between two refreshes; the list under the arrow trades places without being read; and a read refused for the rate leaves the last figures standing. ([#8](https://github.com/QuotaBar/QuotaBar/issues/8))
-- Switching to a profile whose account had more early resets could announce a reset that was never given: the reading was compared with the other account's. ([#8](https://github.com/QuotaBar/QuotaBar/issues/8))
 
 </details>
 
