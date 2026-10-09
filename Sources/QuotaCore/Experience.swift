@@ -352,6 +352,12 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
     public var accountProfiles: [AccountProfile] = []
     public var activeProfileID: String?
     public var claudeSource: ClaudeSource = .auto
+    /// What the arrow after each card's address chose, when no profile is in
+    /// use: a Claude Code keychain item (nil is the default sign-in), and a
+    /// kept Codex account (nil follows the CLI). One for each card, so
+    /// choosing a Claude account never touches Codex.
+    public var claudeSignInChoice: String?
+    public var codexAccountChoice: String?
 
     // Sharing
     public var shareSignature: String = ""
@@ -373,7 +379,7 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
         case placeWindows, placeWindowsSeeded
         case spendBudget, budgetNotified, balanceFloor, balanceFloorNotified, balanceChart, weeklyDigest, weeklyDigestSent
         case shareSignature, shareShowsSignature, shareMasksAccount
-        case accountProfiles, activeProfileID, claudeSource
+        case accountProfiles, activeProfileID, claudeSource, claudeSignInChoice, codexAccountChoice
     }
 
     public init(from decoder: Decoder) throws {
@@ -439,10 +445,26 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
         accountProfiles = value(.accountProfiles, d.accountProfiles)
         activeProfileID = try? c.decodeIfPresent(String.self, forKey: .activeProfileID)
         claudeSource = choice(.claudeSource, d.claudeSource)
+        claudeSignInChoice = try? c.decodeIfPresent(String.self, forKey: .claudeSignInChoice)
+        codexAccountChoice = try? c.decodeIfPresent(String.self, forKey: .codexAccountChoice)
+        migrateArrowProfiles()
     }
 }
 
 extension ExperiencePrefs {
+    /// 0.5.30-beta.1 made a profile named after the address of each Claude
+    /// sign-in picked on the card's arrow, which put Claude's addresses on the
+    /// Codex card too. Those are dropped — only ones named by an address and
+    /// pinning no Codex account, which no one types by hand — and the sign-in
+    /// in use stays as the arrow's own choice.
+    mutating func migrateArrowProfiles() {
+        guard !accountProfiles.isEmpty, accountProfiles.allSatisfy({ $0.name.contains("@") && $0.codexAccountID == nil })
+        else { return }
+        claudeSignInChoice = activeProfile?.claudeService
+        accountProfiles = []
+        activeProfileID = nil
+    }
+
     public func isHidden(_ id: ProviderID, on surface: DisplaySurface) -> Bool {
         hiddenProviders[surface.rawValue]?.contains(id.rawValue) ?? false
     }

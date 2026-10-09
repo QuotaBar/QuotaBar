@@ -13,7 +13,8 @@ Server moves, the website, and build or release scripts don't change the app its
 
 #### Fixed
 
-- The dock's Claude and Codex cards no longer carry the profile switch bar, which showed the Claude addresses a profile was named after on the Codex card. The address on them now has the same arrow after it as on the panel's cards, and the profile steps in Settings say so.
+- The hint over the menu-bar icon could stay up on the desktop, on any display: the system's tooltip is dismissed by a mouse-exit that never arrives when the icon resizes under the pointer or the pointer crosses to another display. It is now drawn by QuotaBar and goes when the pointer is anywhere but over the icon, on a click, when the displays change, or after eight seconds.
+- Choosing an account on the arrow or the bar of the Claude card no longer touches the Codex card, and the other way round: each card keeps its own choice, and the arrow no longer makes a profile named after a Claude address (which showed Claude's addresses on the Codex card). The Codex arrow now shows which account the card reads, not only the CLI's, and picking one no longer signs the CLI in as it. Profiles the beta made that way are removed on launch, keeping the sign-in in use. The dock's cards show a bar of their own provider's accounts when there are two or more.
 
 ## 0.5.29 · 2026-10-07
 

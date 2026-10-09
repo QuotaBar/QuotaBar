@@ -34,3 +34,17 @@ extension ExperiencePrefs {
         return accountProfiles.first { $0.id == activeProfileID } ?? accountProfiles.first
     }
 }
+
+extension ExperiencePrefs {
+    /// The Claude Code item the card reads: the profile in use, else what the
+    /// arrow chose, else the default sign-in.
+    public var claudeItem: String {
+        if let profile = activeProfile { return profile.claudeItem }
+        return claudeSignInChoice ?? LocalCredentials.claudeService
+    }
+
+    /// The kept Codex account the card reads; nil follows the CLI.
+    public var codexAccountPin: String? {
+        activeProfile != nil ? activeProfile?.codexAccountID : codexAccountChoice
+    }
+}

@@ -232,19 +232,11 @@ struct ProviderCallout: View {
             if account != nil || status != nil || stale != nil {
                 HStack(spacing: Design.space2) {
                     if let account {
-                        // The arrow after the address, as on the panel's card.
-                        switch id {
-                        case .claude:
-                            ClaudeAccountPicker(store: store, signIns: store.claudeSignIns, account: account)
-                        case .codex:
-                            CodexAccountPicker(store: store, accounts: store.codexAccounts, account: account)
-                        default:
-                            Text(account)
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundStyle(.white.opacity(0.40))
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
+                        Text(account)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.40))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
                     }
                     Spacer(minLength: 0)
                     if let status {
@@ -312,7 +304,10 @@ struct ProviderCallout: View {
             ResetCreditsRow(store: store, credits: credits, accent: Color(hex: id.accentHex))
             ResetCreditDeadlines(store: store, credits: credits, accent: Color(hex: id.accentHex))
         }
-        // The accounts beside the card's, as under the panel card's arrow.
+        // Which account the card reads — its own provider's accounts only —
+        // and the others beside it, as under the panel card's arrow.
+        if id == .claude { ClaudeAccountBar(store: store, signIns: store.claudeSignIns) }
+        if id == .codex { CodexAccountBar(store: store, accounts: store.codexAccounts) }
         if id == .codex {
             CodexAccountsSection(store: store, accounts: store.codexAccounts, compact: true)
         }

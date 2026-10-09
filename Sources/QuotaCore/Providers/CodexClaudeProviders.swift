@@ -13,7 +13,7 @@ public struct CodexProvider: QuotaProvider {
 
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
         // A profile (#8) reading a kept account other than the CLI's.
-        if let kept = config.experience.activeProfile?.codexAccountID,
+        if let kept = config.experience.codexAccountPin,
            await CodexAccountVault.shared.live()?.accountID != kept
         {
             let file = try await CodexAccountVault.shared.credentials(for: kept)
@@ -541,7 +541,8 @@ public struct ClaudeProvider: QuotaProvider {
 
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
         // A profile (#8) reading another config dir's sign-in.
-        if let service = config.experience.activeProfile?.claudeService, service != LocalCredentials.claudeService {
+        let service = config.experience.claudeItem
+        if service != LocalCredentials.claudeService {
             return try await Self.fetchSignIn(service: service)
         }
         if Self.usesWeb(config) { return try await ClaudeWebSession.fetch() }

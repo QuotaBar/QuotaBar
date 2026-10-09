@@ -54,7 +54,7 @@ struct CodexAccountsSection: View {
                         .foregroundStyle(.white.opacity(0.6))
                 }
                 Spacer(minLength: 6)
-                if !active, store.activeProfile?.codexAccountID == account.id {
+                if !active, store.experience.codexAccountPin == account.id {
                     // A profile (#8) has the card read this one, not the CLI's.
                     Text(L10n.t("On the card", "卡片显示中"))
                         .font(.system(size: 10, weight: .semibold))
@@ -125,9 +125,8 @@ struct CodexAccountPicker: View {
             Menu {
                 ForEach(accounts.saved) { saved in
                     Toggle(accounts.label(saved, masked: store.isPrivacyMasked), isOn: Binding(
-                        get: { accounts.activeID == saved.id },
-                        set: { on in if on { store.switchCodexAccount(saved.id) } }))
-                        .disabled(accounts.working)
+                        get: { store.codexCardAccount == saved.id },
+                        set: { on in if on { store.useCodexAccount(saved.id) } }))
                 }
             } label: {
                 (Text(account) + Text(" ") + Text(Image(systemName: "chevron.down")).font(.system(size: 8, weight: .semibold)))

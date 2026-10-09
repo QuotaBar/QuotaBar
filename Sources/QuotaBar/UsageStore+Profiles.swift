@@ -11,7 +11,10 @@ extension UsageStore {
     var activeProfile: AccountProfile? { experience.activeProfile }
 
     /// The Claude item the card reads.
-    var claudeCardService: String { activeProfile?.claudeItem ?? LocalCredentials.claudeService }
+    var claudeCardService: String { experience.claudeItem }
+    /// The Codex account the card reads: the one a profile or the arrow
+    /// chose, else whichever the CLI is signed in as.
+    var codexCardAccount: String? { experience.codexAccountPin ?? codexAccounts.activeID }
 
     func setActiveProfile(_ id: String) {
         guard activeProfile?.id != id else { return }
@@ -19,57 +22,77 @@ extension UsageStore {
         if let name = activeProfile?.name { flashNotice(L10n.t("Showing \(name)", "已切换到「\(name)」")) }
     }
 
-    /// The card's arrow: show another Claude sign-in. One that no profile
-    /// reads yet gets a profile named for it, so the arrow and the profile
-    /// switcher stay one mechanism; the Codex account stays as it is.
+    /// The arrow on the Claude card: read another Claude sign-in. Nothing of
+    /// Codex's changes; with a profile in use the profile's own sign-in is
+    /// what is edited, else the choice is kept on its own.
     func useClaudeSignIn(_ service: String) {
         guard service != claudeCardService else { return }
-        if let existing = accountProfiles.first(where: { $0.claudeItem == service }) {
-            setActiveProfile(existing.id)
-            return
-        }
-        let codex = activeProfile?.codexAccountID
-        func name(for item: String) -> String {
-            let identity = claudeSignIns.identities[item]
-            return identity?.email ?? identity?.organization ?? L10n.t("Sign-in \(item.suffix(8))", "登录 \(item.suffix(8))")
-        }
-        let created = AccountProfile(
-            name: name(for: service), claudeService: service == LocalCredentials.claudeService ? nil : service, codexAccountID: codex)
-        updateProfiles({ list in
-            // Two are needed before any is "in use": the one the card reads now first.
-            if list.isEmpty {
-                list.append(AccountProfile(name: name(for: LocalCredentials.claudeService), codexAccountID: codex))
+        let item: String? = service == LocalCredentials.claudeService ? nil : service
+        changeAccounts {
+            if let id = activeProfile?.id {
+                updateProfiles { list in
+                    if let index = list.firstIndex(where: { $0.id == id }) { list[index].claudeService = item }
+                }
+            } else {
+                updateExperience { $0.claudeSignInChoice = item }
             }
-            list.append(created)
-        }, activating: created.id)
-        flashNotice(L10n.t("Showing \(created.name)", "已切换到「\(created.name)」"))
+        }
+        flashNotice(L10n.t("Claude is showing \(claudeSignIns.pickerLabel(service, masked: isPrivacyMasked))",
+                           "Claude 已切换到 \(claudeSignIns.pickerLabel(service, masked: isPrivacyMasked))"))
     }
 
-    /// Edits the profiles; a change to what the cards read reads them again.
-    func updateProfiles(_ body: (inout [AccountProfile]) -> Void, activating id: String? = nil) {
-        let before = activeProfile
-        updateExperience { prefs in
-            body(&prefs.accountProfiles)
-            if let id { prefs.activeProfileID = id }
-            if !prefs.accountProfiles.contains(where: { $0.id == prefs.activeProfileID }) {
-                prefs.activeProfileID = prefs.accountProfiles.first?.id
+    /// The arrow on the Codex card: read another kept Codex account, without
+    /// signing the CLI in as it. Claude is left alone.
+    func useCodexAccount(_ id: String) {
+        guard id != codexCardAccount else { return }
+        // The account the CLI is on is "follow the CLI", not a pin to it.
+        let pin: String? = id == codexAccounts.activeID ? nil : id
+        changeAccounts {
+            if let profile = activeProfile?.id {
+                updateProfiles { list in
+                    if let index = list.firstIndex(where: { $0.id == profile }) { list[index].codexAccountID = pin }
+                }
+            } else {
+                updateExperience { $0.codexAccountChoice = pin }
             }
         }
-        let after = activeProfile
-        if before?.claudeItem != after?.claudeItem {
-            switchClaude(from: before?.claudeItem ?? LocalCredentials.claudeService)
+        if let account = codexAccounts.saved.first(where: { $0.id == id }) {
+            flashNotice(L10n.t("Codex is showing \(codexAccounts.label(account, masked: isPrivacyMasked))",
+                               "Codex 已切换到 \(codexAccounts.label(account, masked: isPrivacyMasked))"))
         }
-        if before?.codexAccountID != after?.codexAccountID, isEnabled(.codex) {
+    }
+
+    /// Runs a change to what the cards read, then reads whichever card's
+    /// account moved, each from nothing.
+    private func changeAccounts(_ change: () -> Void) {
+        let claudeBefore = claudeCardService
+        let codexBefore = codexCardAccount
+        change()
+        if claudeBefore != claudeCardService { switchClaude(from: claudeBefore) }
+        if codexBefore != codexCardAccount, isEnabled(.codex) {
             switchAccount(.codex, showing: lastReading(.codex))
         }
     }
 
+    /// Edits the profiles; a change to what the cards read reads them again.
+    func updateProfiles(_ body: (inout [AccountProfile]) -> Void, activating id: String? = nil) {
+        changeAccounts {
+            updateExperience { prefs in
+                body(&prefs.accountProfiles)
+                if let id { prefs.activeProfileID = id }
+                if !prefs.accountProfiles.contains(where: { $0.id == prefs.activeProfileID }) {
+                    prefs.activeProfileID = prefs.accountProfiles.first?.id
+                }
+            }
+        }
+    }
+
     /// Which account a card is reading, for `accountReadings`: the Claude
-    /// item, or the Codex account (the CLI's own when the profile leaves it).
+    /// item, or the Codex account (the CLI's own when nothing picked one).
     func profileAccountKey(_ id: ProviderID) -> String {
         switch id {
         case .claude: return "claude|\(claudeCardService)"
-        case .codex: return "codex|\(activeProfile?.codexAccountID ?? codexAccounts.activeID ?? "cli")"
+        case .codex: return "codex|\(codexCardAccount ?? "cli")"
         default: return id.rawValue
         }
     }
@@ -83,7 +106,7 @@ extension UsageStore {
         case .claude:
             candidates.append(claudeSignIns.others.first { $0.id == claudeCardService }?.snapshot)
         case .codex:
-            if let account = activeProfile?.codexAccountID ?? codexAccounts.activeID {
+            if let account = codexCardAccount {
                 candidates.append(codexAccounts.readings[account]?.snapshot)
             }
         default:

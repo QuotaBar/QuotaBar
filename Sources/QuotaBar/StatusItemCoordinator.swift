@@ -14,6 +14,7 @@ final class StatusItemCoordinator: NSObject {
     private weak var store: UsageStore?
     private var subscriptions = Set<AnyCancellable>()
     private var lastImageKey = ""
+    private let tip = StatusItemTip()
     /// True while the glyph plays a reset; the store's renders wait.
     private var celebrating = false
 
@@ -45,7 +46,10 @@ final class StatusItemCoordinator: NSObject {
             button.target = self
             button.action = #selector(clicked)
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-            button.toolTip = L10n.t("QuotaBar — click for usage, right-click for the menu", "QuotaBar — 点击查看用量，右键打开菜单")
+            // Not `toolTip`: the system's is dismissed by a mouse-exit that
+            // never comes when the item resizes under it or the pointer
+            // crosses to another display, and it stayed up on the desktop.
+            tip.attach(to: button)
         }
         self.item = item
         render()
@@ -224,6 +228,7 @@ final class StatusItemCoordinator: NSObject {
     }
 
     @objc private func clicked() {
+        tip.hide()
         let event = NSApp.currentEvent
         let secondary = event?.type == .rightMouseUp
             || event?.modifierFlags.contains(.control) == true
@@ -404,4 +409,102 @@ final class StatusItemCoordinator: NSObject {
     }
 
     @objc private func quit() { NSApp.terminate(nil) }
+}
+
+
+/// The hint over the menu-bar icon, drawn by QuotaBar. The system's tooltip is
+/// dismissed by a mouse-exit that never arrives when the item resizes under
+/// the pointer (its width follows the figures) or the pointer crosses to
+/// another display, and then it stays on the desktop. This one is shown
+/// after a short hover and hidden by whichever comes first: the pointer
+/// being anywhere but over the icon — checked on a timer, not on an event —
+/// a click, a change of displays, or eight seconds.
+@MainActor
+final class StatusItemTip: NSObject {
+    private weak var button: NSStatusBarButton?
+    private var panel: NSPanel?
+    private var showTask: Task<Void, Never>?
+    private var watch: Timer?
+    private var shownAt = Date.distantPast
+
+    private static let delay: Duration = .milliseconds(800)
+    private static let lifetime: TimeInterval = 8
+
+    func attach(to button: NSStatusBarButton) {
+        self.button = button
+        button.addTrackingArea(NSTrackingArea(
+            rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(hideNotification), name: NSApplication.didChangeScreenParametersNotification, object: nil)
+    }
+
+    @objc private func hideNotification() { hide() }
+
+    @objc func mouseEntered(with event: NSEvent) {
+        showTask?.cancel()
+        showTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.delay)
+            guard !Task.isCancelled else { return }
+            self?.show()
+        }
+    }
+
+    @objc func mouseExited(with event: NSEvent) { hide() }
+
+    func hide() {
+        showTask?.cancel()
+        showTask = nil
+        watch?.invalidate()
+        watch = nil
+        panel?.orderOut(nil)
+        panel = nil
+    }
+
+    private var pointerOverIcon: Bool {
+        guard let frame = button?.window?.frame else { return false }
+        return frame.insetBy(dx: -2, dy: -2).contains(NSEvent.mouseLocation)
+    }
+
+    private func show() {
+        guard panel == nil, pointerOverIcon, let window = button?.window, !MenuPanelController.shared.isOpen else { return }
+        let label = NSTextField(labelWithString: L10n.t(
+            "QuotaBar — click for usage, right-click for the menu", "QuotaBar — 点击查看用量，右键打开菜单"))
+        label.font = .systemFont(ofSize: 12)
+        label.textColor = .labelColor
+        label.sizeToFit()
+        let size = NSSize(width: label.frame.width + 16, height: label.frame.height + 8)
+        label.frame.origin = NSPoint(x: 8, y: 4)
+
+        let content = NSVisualEffectView(frame: NSRect(origin: .zero, size: size))
+        content.material = .toolTip
+        content.state = .active
+        content.wantsLayer = true
+        content.layer?.cornerRadius = 6
+        content.addSubview(label)
+
+        let screen = window.screen ?? NSScreen.main
+        var origin = NSPoint(x: window.frame.midX - size.width / 2, y: window.frame.minY - size.height - 4)
+        if let visible = screen?.visibleFrame {
+            origin.x = min(max(origin.x, visible.minX + 4), visible.maxX - size.width - 4)
+            origin.y = max(origin.y, visible.minY + 4)
+        }
+        let panel = NSPanel(contentRect: NSRect(origin: origin, size: size), styleMask: [.borderless, .nonactivatingPanel],
+                            backing: .buffered, defer: false)
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.level = .popUpMenu
+        panel.ignoresMouseEvents = true
+        panel.collectionBehavior = [.canJoinAllSpaces, .transient, .ignoresCycle]
+        panel.contentView = content
+        panel.orderFrontRegardless()
+        self.panel = panel
+        shownAt = Date()
+        watch = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if !self.pointerOverIcon || Date().timeIntervalSince(self.shownAt) > Self.lifetime { self.hide() }
+            }
+        }
+    }
 }

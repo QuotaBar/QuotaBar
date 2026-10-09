@@ -114,10 +114,26 @@ final class CodexAccountsModel: ObservableObject {
 // MARK: - Store actions
 
 extension UsageStore {
+    /// The CLI is signed in as the account now: the card reads it too, whatever
+    /// the arrow or a profile had pinned it to.
+    func followCodexCLI() {
+        if let profile = activeProfile?.id {
+            updateProfiles { list in
+                if let index = list.firstIndex(where: { $0.id == profile }) { list[index].codexAccountID = nil }
+            }
+        } else {
+            updateExperience { $0.codexAccountChoice = nil }
+        }
+    }
+}
+
+
+extension UsageStore {
     func switchCodexAccount(_ id: String) {
         Task {
             do {
                 try await codexAccounts.switchTo(id)
+                followCodexCLI()
                 refresh(.codex)
                 let name = codexAccounts.saved.first { $0.id == id }.map { codexAccounts.label($0, masked: isPrivacyMasked) } ?? "Codex"
                 flashNotice(L10n.t("Switched to \(name)", "已切换到 \(name)"))

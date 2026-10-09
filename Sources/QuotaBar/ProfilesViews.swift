@@ -1,6 +1,74 @@
 import SwiftUI
 import QuotaCore
 
+// MARK: - Switching
+
+/// One provider's accounts as a bar: the Claude card's sign-ins, or the
+/// Codex card's kept accounts, the one in use lit. Nothing while there are
+/// fewer than two. Each card's bar lists its own accounts only — choosing
+/// one never moves the other card.
+struct AccountChoiceBar: View {
+    struct Choice: Identifiable {
+        let id: String
+        let label: String
+    }
+
+    let choices: [Choice]
+    let selected: String?
+    let help: String
+    let onSelect: (String) -> Void
+
+    var body: some View {
+        if choices.count > 1 {
+            HStack(spacing: 4) {
+                ForEach(choices) { choice in
+                    let on = selected == choice.id
+                    Pressable(action: { onSelect(choice.id) }) {
+                        Text(choice.label)
+                            .font(.system(size: 11, weight: on ? .semibold : .medium))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .foregroundStyle(on ? Color.black : Color.white.opacity(0.75))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 5)
+                            .background(Capsule().fill(on ? Color.white : Color.clear))
+                            .contentShape(Capsule())
+                    }
+                }
+            }
+            .padding(3)
+            .background(Capsule().fill(Color.white.opacity(0.08)))
+            .help(help)
+        }
+    }
+}
+
+struct ClaudeAccountBar: View {
+    @ObservedObject var store: UsageStore
+    @ObservedObject var signIns: ClaudeSignInsModel
+
+    var body: some View {
+        AccountChoiceBar(
+            choices: signIns.services.map { .init(id: $0, label: signIns.pickerLabel($0, masked: store.isPrivacyMasked)) },
+            selected: store.claudeCardService,
+            help: L10n.t("Which Claude sign-in this card reads.", "这张卡片读取哪个 Claude 登录。"),
+            onSelect: { store.useClaudeSignIn($0) })
+    }
+}
+
+struct CodexAccountBar: View {
+    @ObservedObject var store: UsageStore
+    @ObservedObject var accounts: CodexAccountsModel
+
+    var body: some View {
+        AccountChoiceBar(
+            choices: accounts.saved.map { .init(id: $0.id, label: accounts.label($0, masked: store.isPrivacyMasked)) },
+            selected: store.codexCardAccount,
+            help: L10n.t("Which Codex account this card reads.", "这张卡片读取哪个 Codex 账号。"),
+            onSelect: { store.useCodexAccount($0) })
+    }
+}
+
 // MARK: - In Settings
 
 /// Settings › Providers: the profiles, and the Claude sign-in and Codex
@@ -18,8 +86,8 @@ struct ProfilesSettingsCard: View {
         Group {
             if shown {
                 SettingsCard(L10n.t("Profiles", "账号组"), help: L10n.t(
-                    "A profile is one Claude sign-in and one Codex account — Personal and Work, say. The profile in use decides which accounts the Claude and Codex cards read, and the menu bar, the island and the dock follow. Switch with the arrow after the address on the Claude or Codex card, or from the panel's ⋯ menu. It never changes what the CLIs are signed in as.",
-                    "一个账号组就是一个 Claude 登录加一个 Codex 账号，比如「个人」和「工作」。当前账号组决定 Claude 和 Codex 卡片读取哪些账号，菜单栏、刘海岛和停靠条都跟着变。用 Claude、Codex 卡片上邮箱后面的箭头切换，或在面板的 ⋯ 菜单里切换。切换不会改变 CLI 当前登录的账号。"))
+                    "A profile is one Claude sign-in and one Codex account — Personal and Work, say. The profile in use decides which accounts the Claude and Codex cards read, and the menu bar, the island and the dock follow. Switch from the panel's ⋯ menu. The arrow after a card's address changes only that card's account, in the profile in use. It never changes what the CLIs are signed in as.",
+                    "一个账号组就是一个 Claude 登录加一个 Codex 账号，比如「个人」和「工作」。当前账号组决定 Claude 和 Codex 卡片读取哪些账号，菜单栏、刘海岛和停靠条都跟着变。在面板的 ⋯ 菜单里切换。卡片邮箱后面的箭头只改那一张卡片的账号，改在当前账号组里。切换不会改变 CLI 当前登录的账号。"))
                 {
                     steps
                     ForEach(store.accountProfiles) { profile in
@@ -60,8 +128,8 @@ struct ProfilesSettingsCard: View {
                 "2. Add a profile for each — Personal, Work — and pick its Claude sign-in and Codex account.",
                 "2. 为每组账号添加一个账号组，比如「个人」「工作」，选好它的 Claude 登录和 Codex 账号。"))
             Text(L10n.t(
-                "3. Switch with the arrow after the address on the Claude or Codex card, or from the panel's ⋯ menu.",
-                "3. 用 Claude、Codex 卡片上邮箱后面的箭头切换，或在面板的 ⋯ 菜单里切换。"))
+                "3. Switch from the panel's ⋯ menu. A card's arrow changes only that card's account.",
+                "3. 在面板的 ⋯ 菜单里切换；卡片上的箭头只改那一张卡片的账号。"))
         }
         .font(.system(size: 11))
         .foregroundStyle(.secondary)
