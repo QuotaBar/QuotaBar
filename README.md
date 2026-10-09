@@ -50,14 +50,19 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.29** (2026-10-07) · **1** changes in development · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.29** (2026-10-07) · **3** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
-<summary><b>2026-10-07</b> · Unreleased · 1 added</summary>
+<summary><b>2026-10-07</b> · Unreleased · 1 added · 2 fixed</summary>
 
 **Added**
 
 - Another config dir's Claude sign-in that has run out is renewed on its own, the way the default one is: QuotaBar starts Claude Code with that `CLAUDE_CONFIG_DIR`, at most every half hour per sign-in, so a second account no longer shows as expired after eight hours. The same for a profile that reads it.
+
+**Fixed**
+
+- The hint over the menu-bar icon could stay up on the desktop, on any display: the system's tooltip is dismissed by a mouse-exit that never arrives when the icon resizes under the pointer or the pointer crosses to another display. It is now drawn by QuotaBar and goes when the pointer is anywhere but over the icon, on a click, when the displays change, or after eight seconds.
+- Choosing an account on the arrow or the bar of the Claude card no longer touches the Codex card, and the other way round: each card keeps its own choice, and the arrow no longer makes a profile named after a Claude address (which showed Claude's addresses on the Codex card). The Codex arrow now shows which account the card reads, not only the CLI's, and picking one no longer signs the CLI in as it. Profiles the beta made that way are removed on launch, keeping the sign-in in use. The dock's cards show a bar of their own provider's accounts when there are two or more.
 
 </details>
 
