@@ -366,15 +366,15 @@ final class IslandCoordinator {
         let notchWidth: CGFloat
         let height: CGFloat
 
-        /// One slot is "5d 17h · 70%" and a mark; two are a mark and a
-        /// figure each; three need a little more. Kept narrow enough to stay
+        /// One slot is a mark and a column — "70%" over "5d 17h"; two are a
+        /// mark and a figure each; three need a little more. Kept narrow enough to stay
         /// in the dead zone — past this the strip starts covering the app's
         /// own menus on the left and the status items on the right.
         func sideWidth(slots: Int) -> CGFloat {
             switch slots {
-            case ...1: 132
-            case 2: 132
-            default: 176
+            case ...1: 88
+            case 2: 116
+            default: 160
             }
         }
 
@@ -803,20 +803,19 @@ struct NotchSlot: View {
     let mirrored: Bool
 
     var body: some View {
-        HStack(spacing: 5) {
+        // The percentage over the time to reset, in one column — after
+        // codex-island, whose strip is narrower for it — with the mark against
+        // the notch and the column leaning outward.
+        HStack(spacing: 6) {
             if mirrored {
-                figure
-                separator
-                tick
+                column
                 glyph
             } else {
                 glyph
-                tick
-                separator
-                figure
+                column
             }
         }
-        .padding(.horizontal, Design.space2 + 2)
+        .padding(.horizontal, 9)
         .frame(maxWidth: .infinity, alignment: mirrored ? .trailing : .leading)
     }
 
@@ -828,8 +827,20 @@ struct NotchSlot: View {
             // The mark in the brand colour, the same one the figure wears, so
             // each side of the notch reads as one thing in one colour. `tint`
             // only reaches the monochrome marks: Claude stays terracotta and
-            // Gemini four-colour either way; Codex turns from white to blue.
+            // Gemini four-colour either way; Codex is the OpenAI knot in blue.
             IslandGlyph(id: id, size: 14, tint: Color(hex: id.accentHex))
+        }
+    }
+
+    @ViewBuilder
+    private var column: some View {
+        if id != nil {
+            VStack(alignment: mirrored ? .trailing : .leading, spacing: 1) {
+                figure.frame(height: 12)
+                tick.frame(height: 11)
+            }
+            .lineLimit(1)
+            .fixedSize()
         }
     }
 
@@ -837,14 +848,13 @@ struct NotchSlot: View {
     private var figure: some View {
         if let id, let percent = shownPercent {
             Text("\(Int(percent.rounded()))%")
-                .font(.system(size: 12, weight: .semibold))
-                .monospacedDigit()
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 // Raw brand colour: every accent is required to clear 4.5:1 on
                 // black, asserted in ProviderRegistryTests.
                 .foregroundStyle(Color(hex: id.accentHex))
-        } else if id != nil {
+        } else {
             Text("—")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.4))
         }
     }
@@ -853,16 +863,8 @@ struct NotchSlot: View {
     private var tick: some View {
         if let resetsAt {
             Text(QuotaFormat.tick(to: resetsAt))
-                .font(.system(size: 11, weight: .medium))
-                .monospacedDigit()
-                .foregroundStyle(.white.opacity(0.55))
-        }
-    }
-
-    @ViewBuilder
-    private var separator: some View {
-        if resetsAt != nil, shownPercent != nil {
-            Text("·").foregroundStyle(.white.opacity(0.3))
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.7))
         }
     }
 
