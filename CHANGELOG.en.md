@@ -11,6 +11,10 @@ Server moves, the website, and build or release scripts don't change the app its
 
 - Another config dir's Claude sign-in that has run out is renewed on its own, the way the default one is: QuotaBar starts Claude Code with that `CLAUDE_CONFIG_DIR`, at most every half hour per sign-in, so a second account no longer shows as expired after eight hours. The same for a profile that reads it.
 
+#### Fixed
+
+- The dock's Claude and Codex cards no longer carry the profile switch bar, which showed the Claude addresses a profile was named after on the Codex card. The address on them now has the same arrow after it as on the panel's cards, and the profile steps in Settings say so.
+
 ## 0.5.29 · 2026-10-07
 
 ### 2026-10-06

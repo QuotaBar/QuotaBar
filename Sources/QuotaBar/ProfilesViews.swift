@@ -1,40 +1,6 @@
 import SwiftUI
 import QuotaCore
 
-// MARK: - Switching
-
-/// Personal | Work (#8): one press and the Claude and Codex cards — and the
-/// menu bar, the island, the dock and the desktop cards with them — read the
-/// other profile's accounts. Nothing while there is one profile or none.
-struct ProfileSwitcher: View {
-    @ObservedObject var store: UsageStore
-
-    var body: some View {
-        if store.accountProfiles.count > 1 {
-            HStack(spacing: 4) {
-                ForEach(store.accountProfiles) { profile in
-                    let on = store.activeProfile?.id == profile.id
-                    Pressable(action: { store.setActiveProfile(profile.id) }) {
-                        Text(profile.name)
-                            .font(.system(size: 11, weight: on ? .semibold : .medium))
-                            .lineLimit(1)
-                            .foregroundStyle(on ? Color.black : Color.white.opacity(0.75))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 5)
-                            .background(Capsule().fill(on ? Color.white : Color.clear))
-                            .contentShape(Capsule())
-                    }
-                }
-            }
-            .padding(3)
-            .background(Capsule().fill(Color.white.opacity(0.08)))
-            .help(L10n.t(
-                "Which accounts the Claude and Codex cards read. Set up in Settings › Providers › Profiles.",
-                "Claude 和 Codex 卡片读取哪一组账号。在 设置 › 服务商 › 账号组 里设置。"))
-        }
-    }
-}
-
 // MARK: - In Settings
 
 /// Settings › Providers: the profiles, and the Claude sign-in and Codex
@@ -52,8 +18,8 @@ struct ProfilesSettingsCard: View {
         Group {
             if shown {
                 SettingsCard(L10n.t("Profiles", "账号组"), help: L10n.t(
-                    "A profile is one Claude sign-in and one Codex account — Personal and Work, say. The profile in use decides which accounts the Claude and Codex cards read, and the menu bar, the island and the dock follow. Switch at the top of the menu-bar panel, from its ⋯ menu, or from a card in the dock. It never changes what the CLIs are signed in as.",
-                    "一个账号组就是一个 Claude 登录加一个 Codex 账号，比如「个人」和「工作」。当前账号组决定 Claude 和 Codex 卡片读取哪些账号，菜单栏、刘海岛和停靠条都跟着变。在菜单栏面板顶部、面板的 ⋯ 菜单或停靠条的卡片里切换。切换不会改变 CLI 当前登录的账号。"))
+                    "A profile is one Claude sign-in and one Codex account — Personal and Work, say. The profile in use decides which accounts the Claude and Codex cards read, and the menu bar, the island and the dock follow. Switch with the arrow after the address on the Claude or Codex card, or from the panel's ⋯ menu. It never changes what the CLIs are signed in as.",
+                    "一个账号组就是一个 Claude 登录加一个 Codex 账号，比如「个人」和「工作」。当前账号组决定 Claude 和 Codex 卡片读取哪些账号，菜单栏、刘海岛和停靠条都跟着变。用 Claude、Codex 卡片上邮箱后面的箭头切换，或在面板的 ⋯ 菜单里切换。切换不会改变 CLI 当前登录的账号。"))
                 {
                     steps
                     ForEach(store.accountProfiles) { profile in
@@ -94,8 +60,8 @@ struct ProfilesSettingsCard: View {
                 "2. Add a profile for each — Personal, Work — and pick its Claude sign-in and Codex account.",
                 "2. 为每组账号添加一个账号组，比如「个人」「工作」，选好它的 Claude 登录和 Codex 账号。"))
             Text(L10n.t(
-                "3. Switch at the top of the menu-bar panel, from its ⋯ menu, or from a card in the dock.",
-                "3. 在菜单栏面板顶部、面板的 ⋯ 菜单，或停靠条的卡片里切换。"))
+                "3. Switch with the arrow after the address on the Claude or Codex card, or from the panel's ⋯ menu.",
+                "3. 用 Claude、Codex 卡片上邮箱后面的箭头切换，或在面板的 ⋯ 菜单里切换。"))
         }
         .font(.system(size: 11))
         .foregroundStyle(.secondary)
