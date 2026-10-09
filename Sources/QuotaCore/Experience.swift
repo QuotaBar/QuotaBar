@@ -281,6 +281,8 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
     public var islandSweepAlways: Bool = false
     /// The island opens for a few seconds when a window crosses its warning.
     public var islandAutoPeek: Bool = true
+    /// The island opens when the pointer rests on it; off, only a click does.
+    public var islandOpensOnHover: Bool = true
     public var islandChart: IslandChartStyle = .stepped
     /// The desktop card lists the provider closest to its limit first.
     public var widgetSortsByUrgency: Bool = false
@@ -372,7 +374,7 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case resetTimeFormat, clockStyle, alwaysShowPace, urgencyStyle, tokenCounting, currency
         case panelDensity, showSpendCard, panelTranslucent, spendMetric, expandedCards, welcomeDismissed, providersDetected
-        case reduceMotion, islandGlow, islandSweepAlways, islandAutoPeek, islandChart, widgetSortsByUrgency
+        case reduceMotion, islandGlow, islandSweepAlways, islandAutoPeek, islandOpensOnHover, islandChart, widgetSortsByUrgency
         case deskCards, deskCardsMigrated
         case hideWhenSharing, hotkey, paceAlerts, localAPI, iCloudSync, proxy, betaUpdates
         case resetEffects, resetNotify, resetCreditNotify, resetCreditNotified, hiddenProviders, cardWindows, cardWindowsKnown, hiddenWindows
@@ -411,6 +413,7 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
         islandGlow = value(.islandGlow, d.islandGlow)
         islandSweepAlways = value(.islandSweepAlways, d.islandSweepAlways)
         islandAutoPeek = value(.islandAutoPeek, d.islandAutoPeek)
+        islandOpensOnHover = value(.islandOpensOnHover, d.islandOpensOnHover)
         islandChart = choice(.islandChart, d.islandChart)
         widgetSortsByUrgency = value(.widgetSortsByUrgency, d.widgetSortsByUrgency)
         deskCards = value(.deskCards, d.deskCards)

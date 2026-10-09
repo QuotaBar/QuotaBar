@@ -9,6 +9,7 @@ Server moves, the website, and build or release scripts don't change the app its
 
 #### Added
 
+- Settings → Presentation → Island has an Open on hover switch. Off, the island opens only when you click it, like the menu-bar item, and closes when the pointer leaves; resting the pointer on it does nothing.
 - Another config dir's Claude sign-in that has run out is renewed on its own, the way the default one is: QuotaBar starts Claude Code with that `CLAUDE_CONFIG_DIR`, at most every half hour per sign-in, so a second account no longer shows as expired after eight hours. The same for a profile that reads it.
 
 #### Fixed

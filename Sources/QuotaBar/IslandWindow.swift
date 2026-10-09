@@ -557,6 +557,8 @@ struct IslandView: View {
             }
             return
         }
+        // Click to open: resting the pointer on the closed island does nothing.
+        guard store.experience.islandOpensOnHover else { return }
         dwellTask = Task { @MainActor in
             try? await Task.sleep(for: Self.hoverDelay)
             guard !Task.isCancelled else { return }
