@@ -8,12 +8,15 @@ import WidgetKit
 /// a home screen and editing it into each style is the only other way to
 /// see them, and it takes minutes per look. Debug builds only.
 struct WidgetGallery: View {
-    private let readings = MergedReadings(CloudReadings.samples)
+    private let readings = ProcessInfo.processInfo.arguments.contains("-QuotaBarRealWidgetGallery")
+        ? ReadingsCache.merged
+        : (XSubscriptionDemo.isOn ? XSubscriptionDemo.readings : MergedReadings(CloudReadings.samples))
     /// `-QuotaBarWidgetGallery overview` (or `provider`, `lock`) shows one
     /// part, so a screenshot can land on it without scrolling.
     private let part: String? = {
         let arguments = ProcessInfo.processInfo.arguments
-        guard let index = arguments.firstIndex(of: "-QuotaBarWidgetGallery"), index + 1 < arguments.count else { return nil }
+        guard let index = arguments.firstIndex(of: "-QuotaBarRealWidgetGallery") ?? arguments.firstIndex(of: "-QuotaBarWidgetGallery"),
+              index + 1 < arguments.count else { return nil }
         return arguments[index + 1]
     }()
 
@@ -116,7 +119,7 @@ struct WidgetGallery: View {
     }
 
     private func provider(_ style: ProviderStyle) -> ReadingsEntry {
-        ReadingsEntry(date: .now, readings: readings, provider: .claude, providerStyle: style)
+        ReadingsEntry(date: .now, readings: readings, provider: widgetProvider ?? .claude, providerStyle: style)
     }
 
     private var balanceParts: some View {
@@ -132,7 +135,13 @@ struct WidgetGallery: View {
     }
 
     private var balanceEntry: ReadingsEntry {
-        ReadingsEntry(date: .now, readings: readings, provider: .deepseek)
+        ReadingsEntry(date: .now, readings: readings, provider: widgetProvider ?? .deepseek)
+    }
+
+    private var widgetProvider: ProviderID? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let index = arguments.firstIndex(of: "-QuotaBarWidgetProvider"), index + 1 < arguments.count else { return nil }
+        return ProviderID(stored: arguments[index + 1])
     }
 
     private func overview(_ style: OverviewStyle) -> ReadingsEntry {

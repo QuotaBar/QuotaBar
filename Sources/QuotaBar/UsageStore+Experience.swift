@@ -155,8 +155,8 @@ extension UsageStore {
         let prefs = experience.paceAlerts
         var active: [String: Date] = [:]
         var fresh: [(PaceAlertKind, ProviderID, UsageWindow)] = []
-        for id in enabled {
-            guard let snapshot = states[id]?.snapshot else { continue }
+        for id in displayProviders(enabled) {
+            guard let snapshot = displayPhase(for: id)?.snapshot else { continue }
             for window in snapshot.windows {
                 guard let used = window.usedPercent else { continue }
                 let verdict = window.pace()?.verdict
@@ -179,7 +179,7 @@ extension UsageStore {
         for (kind, id, window) in fresh {
             let content = UNMutableNotificationContent()
             content.title = kind.title
-            content.subtitle = "\(id.displayName) · \(window.displayName)"
+            content.subtitle = "\(displayName(for: id)) · \(window.displayName)"
             content.body = paceBody(kind, window)
             content.threadIdentifier = "bar.quota.pace"
             UNUserNotificationCenter.current().add(UNNotificationRequest(
@@ -221,7 +221,7 @@ extension UsageStore {
     /// The windows a provider's card shows before it is expanded, the owner's
     /// choice applied.
     func upFrontWindows(for id: ProviderID) -> [UsageWindow] {
-        states[id]?.snapshot?.upFrontWindows(
+        displayPhase(for: id)?.snapshot?.upFrontWindows(
             for: id, picked: pickedHeadlineWindow(for: id),
             shown: experience.cardWindows[id.rawValue], known: experience.cardWindowsKnown[id.rawValue]) ?? []
     }
@@ -233,7 +233,7 @@ extension UsageStore {
         list.removeAll { $0 == windowID }
         if upFront { list.append(windowID) }
         guard !list.isEmpty else { return }
-        let known = states[id]?.snapshot?.windows.map(\.id) ?? list
+        let known = displayPhase(for: id)?.snapshot?.windows.map(\.id) ?? list
         updateExperience {
             $0.cardWindows[id.rawValue] = list
             $0.cardWindowsKnown[id.rawValue] = known
@@ -250,7 +250,8 @@ extension UsageStore {
     /// Every window the provider reported, hidden ones included — what the
     /// card's menu lists.
     func reportedWindows(for id: ProviderID) -> [UsageWindow] {
-        (reported[id] ?? states[id]?.snapshot)?.windows ?? []
+        let projection = XSubscriptionGrouping.project(reported, presentProviders: Set(enabled))
+        return (projection.snapshots[projection.owner(for: id)] ?? states[id]?.snapshot)?.windows ?? []
     }
 
     func isWindowHidden(_ windowID: String, for id: ProviderID) -> Bool {

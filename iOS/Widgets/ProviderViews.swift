@@ -188,7 +188,7 @@ struct ProviderWidgetView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 if let item { ProviderMark(id: item.provider, size: 22) }
-                Text(item?.provider.displayName ?? "QuotaBar").font(.headline)
+                Text(item?.displayName ?? "QuotaBar").font(.headline)
                 if let chip = snapshot?.chipLabel {
                     Text(chip.uppercased())
                         .font(.caption2.weight(.semibold))
@@ -264,7 +264,7 @@ struct ProviderWidgetView: View {
             ZStack {
                 AccessoryWidgetBackground()
                 VStack(spacing: -2) {
-                    Text(used.map { "\(Int((100 - $0).rounded()))" } ?? "—")
+                    Text(used.map { String(QuotaFormat.percent(100 - $0).dropLast()) } ?? "—")
                         .font(.system(size: 22, weight: .semibold, design: .rounded))
                     Text(window?.shortLabel ?? "%").font(.system(size: 10, weight: .medium))
                 }
@@ -274,7 +274,7 @@ struct ProviderWidgetView: View {
             Gauge(value: left(used), in: 0...100) {
                 item.map { ProviderMark(id: $0.provider, size: 12) }
             } currentValueLabel: {
-                Text(used.map { "\(Int((100 - $0).rounded()))" } ?? "—")
+                Text(used.map { String(QuotaFormat.percent(100 - $0).dropLast()) } ?? "—")
             }
             .gaugeStyle(.accessoryCircularCapacity)
             .widgetAccentable()
@@ -298,12 +298,12 @@ struct ProviderWidgetView: View {
     /// of the big-number style.
     private var rectangularNumbers: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(item?.provider.displayName ?? "QuotaBar").font(.caption.weight(.semibold))
+            Text(item?.displayName ?? "QuotaBar").font(.caption.weight(.semibold))
             HStack(alignment: .firstTextBaseline, spacing: 14) {
                 ForEach((snapshot?.shownWindows ?? []).prefix(2)) { window in
                     let windowUsed = window.usedNow(at: entry.date)
                     VStack(alignment: .leading, spacing: -2) {
-                        Text(windowUsed.map { "\(Int((100 - $0).rounded()))%" } ?? "—")
+                        Text(windowUsed.map { QuotaFormat.percent(100 - $0) } ?? "—")
                             .font(.system(size: 24, weight: .semibold, design: .rounded).monospacedDigit())
                             .widgetAccentable()
                         Text(window.shortLabel ?? window.displayName).font(.caption2)
@@ -317,7 +317,7 @@ struct ProviderWidgetView: View {
     private var rectangularBars: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 4) {
-                Text(item?.provider.displayName ?? "QuotaBar").font(.headline).widgetAccentable()
+                Text(item?.displayName ?? "QuotaBar").font(.headline).widgetAccentable()
                 Spacer(minLength: 0)
                 if entry.quiet {
                     Image(systemName: "exclamationmark.triangle").font(.caption2)
@@ -332,7 +332,7 @@ struct ProviderWidgetView: View {
                     Gauge(value: windowUsed.map { 100 - $0 } ?? 0, in: 0...100) { EmptyView() }
                         .gaugeStyle(.accessoryLinearCapacity)
                         .widgetAccentable()
-                    Text(windowUsed.map { "\(Int((100 - $0).rounded()))%" } ?? "—")
+                    Text(windowUsed.map { QuotaFormat.percent(100 - $0) } ?? "—")
                         .font(.caption2.monospacedDigit())
                         .frame(width: 32, alignment: .trailing)
                 }
@@ -344,7 +344,8 @@ struct ProviderWidgetView: View {
         Group {
             if let item, let used {
                 let badge = window?.shortLabel.map { " · \($0)" } ?? ""
-                Text("\(item.provider.displayName) \(L10n.t("\(Int((100 - used).rounded()))% left", "剩 \(Int((100 - used).rounded()))%"))\(badge)")
+                let shown = QuotaFormat.percent(100 - used)
+                Text("\(item.displayName) \(L10n.t("\(shown) left", "剩 \(shown)"))\(badge)")
             } else {
                 Text("QuotaBar")
             }

@@ -13,7 +13,9 @@ struct ProviderEntity: AppEntity {
     static let defaultQuery = ProviderQuery()
 
     var displayRepresentation: DisplayRepresentation {
-        DisplayRepresentation(title: "\(ProviderID(stored: id)?.displayName ?? id)")
+        let provider = ProviderID(stored: id)
+        let name = provider.flatMap { ReadingsCache.merged.item(for: $0)?.displayName } ?? provider?.displayName ?? id
+        return DisplayRepresentation(title: "\(name)")
     }
 
     var provider: ProviderID? { ProviderID(stored: id) }
@@ -115,7 +117,9 @@ struct BalanceProviderEntity: AppEntity {
     static let typeDisplayRepresentation: TypeDisplayRepresentation = "Balance provider"
     static let defaultQuery = BalanceProviderQuery()
     var displayRepresentation: DisplayRepresentation {
-        DisplayRepresentation(title: "\(ProviderID(stored: id)?.displayName ?? id)")
+        let provider = ProviderID(stored: id)
+        let name = provider.flatMap { ReadingsCache.merged.item(for: $0)?.displayName } ?? provider?.displayName ?? id
+        return DisplayRepresentation(title: "\(name)")
     }
 }
 
@@ -162,7 +166,7 @@ struct ReadingsEntry: TimelineEntry {
 
     var item: MergedReadings.Item? {
         guard let provider else { return readings.items.first }
-        return readings.items.first { $0.provider == provider }
+        return readings.item(for: provider)
     }
 
     /// Past a heartbeat and a half with no word from any Mac.
@@ -172,7 +176,8 @@ struct ReadingsEntry: TimelineEntry {
 enum ReadingsTimeline {
     /// A fetch gets a few seconds; past that the cache stands in.
     static func readings() async -> MergedReadings {
-        await ReadingsSync.fetch(within: 6)
+        if XSubscriptionDemo.isOn { return XSubscriptionDemo.readings }
+        return await ReadingsSync.fetch(within: 6)
     }
 
     /// An entry now and every quarter hour for two hours, so a window's reset
@@ -187,6 +192,7 @@ enum ReadingsTimeline {
     /// The gallery shows sample readings until the Macs have sent some; a
     /// widget the owner has placed shows the cache until its timeline comes.
     static func snapshotReadings(isPreview: Bool) -> MergedReadings {
+        if XSubscriptionDemo.isOn { return XSubscriptionDemo.readings }
         let cached = ReadingsCache.merged
         return isPreview && cached.items.isEmpty ? MergedReadings(CloudReadings.samples) : cached
     }

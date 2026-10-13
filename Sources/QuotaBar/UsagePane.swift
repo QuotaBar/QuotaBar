@@ -698,7 +698,7 @@ struct ResetCalendarCard: View {
     var now: Date?
 
     private var days: [ResetSchedule.Day] {
-        let readings = store.enabled.compactMap { id in store.states[id]?.snapshot.map { (id, $0) } }
+        let readings = store.displayProviders(store.enabled).compactMap { id in store.displayPhase(for: id)?.snapshot.map { (id, $0) } }
         return ResetSchedule.upcoming(readings, now: now ?? Date())
     }
 

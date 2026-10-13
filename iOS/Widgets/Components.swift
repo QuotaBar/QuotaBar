@@ -38,7 +38,7 @@ struct LeftFigure: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 1) {
-            Text(used.map { "\(Int((100 - $0).rounded()))" } ?? "—")
+            Text(used.map { String(QuotaFormat.percent(100 - $0).dropLast()) } ?? "—")
                 .font(.system(size: size, weight: .semibold, design: .rounded).monospacedDigit())
                 .contentTransition(.numericText())
             if used != nil {
@@ -63,7 +63,7 @@ struct WidgetHeader: View {
         HStack(spacing: 6) {
             if let item {
                 ProviderMark(id: item.provider, size: markSize)
-                Text(item.provider.displayName)
+                Text(item.displayName)
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
             } else {
@@ -147,7 +147,7 @@ struct WindowBarRow: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: 4)
-                Text(used.map { "\(Int((100 - $0).rounded()))%" } ?? "—")
+                Text(used.map { QuotaFormat.percent(100 - $0) } ?? "—")
                     .font(.caption.weight(.semibold).monospacedDigit())
                     .foregroundStyle(used.map { Color.usage($0) } ?? .secondary)
             }

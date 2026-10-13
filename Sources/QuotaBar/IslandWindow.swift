@@ -780,7 +780,7 @@ struct NotchMiniSlot: View {
             IslandGlyph(id: id, size: 13, tint: Color(hex: id.accentHex))
             if let used = store.headlinePercent(for: id, on: .island) {
                 let shown = store.meterMode.shownPercent(fromUsed: used)
-                Text("\(Int(shown.rounded()))%")
+                Text(QuotaFormat.percent(shown))
                     .font(.system(size: 11, weight: .semibold))
                     .monospacedDigit()
                     .foregroundStyle(Color(hex: id.accentHex))
@@ -849,7 +849,7 @@ struct NotchSlot: View {
     @ViewBuilder
     private var figure: some View {
         if let id, let percent = shownPercent {
-            Text("\(Int(percent.rounded()))%")
+            Text(QuotaFormat.percent(percent))
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 // Raw brand colour: every accent is required to clear 4.5:1 on
                 // black, asserted in ProviderRegistryTests.
@@ -874,7 +874,7 @@ struct NotchSlot: View {
 
     private var snapshot: UsageSnapshot? {
         guard let id else { return nil }
-        return store.states[id]?.snapshot
+        return store.displayPhase(for: id)?.snapshot
     }
 
     /// Follows the same remaining/used preference as the menu-bar glyph — both
@@ -997,24 +997,13 @@ extension IslandCoordinator {
 }
 
 
-/// A provider's mark on the island. Codex is drawn as OpenAI's knot in the
-/// provider's colour (whatever tint the surface asks for), as codex-island does; every other mark is the one the
-/// rest of the app uses.
+/// The island uses the same provider artwork as cards, settings and widgets.
 struct IslandGlyph: View {
     let id: ProviderID
     var size: CGFloat
     var tint: Color
 
     var body: some View {
-        if id == .codex, let url = ProviderGlyph.markURL(named: "codex-knot"), let image = NSImage(contentsOf: url) {
-            Image(nsImage: image)
-                .resizable()
-                .renderingMode(.template)
-                .scaledToFit()
-                .frame(width: size, height: size)
-                .foregroundStyle(Color(hex: id.accentHex))
-        } else {
-            ProviderGlyph(id: id, size: size, tint: tint)
-        }
+        ProviderGlyph(id: id, size: size, tint: tint)
     }
 }

@@ -1077,6 +1077,10 @@ public enum LocalCredentials {
         public let email: String?
         /// When the token runs out: six hours after the CLI last renewed it.
         public var expiresAt: Date? = nil
+        /// The CLI's authenticated xAI principal and workspace. They come
+        /// from the same record as accessToken, never from the email label.
+        public var userID: String? = nil
+        public var workspaceID: String? = nil
     }
 
     public static func grokAccessToken() -> String? {
@@ -1139,7 +1143,10 @@ public enum LocalCredentials {
                   let token = entry["key"] as? String, !token.isEmpty
             else { continue }
             let expiry = Dates.parseISO(entry["expires_at"] as? String)
-            let auth = GrokAuth(accessToken: token, email: entry["email"] as? String, expiresAt: expiry)
+            let auth = GrokAuth(
+                accessToken: token, email: entry["email"] as? String, expiresAt: expiry,
+                userID: entry["user_id"] as? String,
+                workspaceID: entry["team_id"] as? String)
             let expires = expiry ?? .distantFuture
             if expires > now { live.append((expires, auth)) } else { expired.append((expires, auth)) }
         }

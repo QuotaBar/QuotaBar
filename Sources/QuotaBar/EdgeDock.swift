@@ -719,7 +719,7 @@ struct EdgeDockView: View {
         // Everything that changes the card's height: its data (the tick moves
         // on every refresh), the preferences, the bar style, and the reason
         // a stale reading's note gives.
-        let sizeKey = id.map { "\($0.rawValue)|\(isDetail)|\(store.tick)|\(store.experienceRevision)|\(store.meterStyle.rawValue)|\(store.serviceStatus[$0]?.level.rawValue ?? "")|\(store.states[$0]?.explanation ?? "")" }
+        let sizeKey = id.map { "\($0.rawValue)|\(isDetail)|\(store.tick)|\(store.experienceRevision)|\(store.meterStyle.rawValue)|\(store.serviceStatus[$0]?.level.rawValue ?? "")|\(store.displayPhase(for: $0)?.explanation ?? "")" }
         coordinator.showCallout(
             at: index,
             total: store.dockProviders.count,
@@ -859,7 +859,7 @@ struct EdgeDockView: View {
                     percent: ringOverride[id] ?? store.headlinePercent(for: id, on: .dock),
                     mode: store.meterMode,
                     showsLabel: false,
-                    selected: store.selected == id,
+                    selected: store.selected.map(store.displayProvider) == id,
                     hovered: hovered == id,
                     selectionDot: true)
                     .overlay(alignment: .top) {

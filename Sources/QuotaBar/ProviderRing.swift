@@ -97,7 +97,7 @@ struct ProviderRing: View {
                 // Small and grey: the figure is a caption to the ring, not
                 // a second reading of it. At 12pt bold white it competed
                 // with the marks; selection lifts it a step, not to white.
-                Text(percent.map { "\(Int(mode.shownPercent(fromUsed: $0).rounded()))%" } ?? "—")
+                Text(percent.map { QuotaFormat.percent(mode.shownPercent(fromUsed: $0)) } ?? "—")
                     .font(.system(size: 10, weight: selected ? .semibold : .medium))
                     .monospacedDigit()
                     .foregroundStyle(.white.opacity(selected ? 0.85 : 0.55))
@@ -138,7 +138,7 @@ struct ProviderCallout: View {
         _flipped = State(initialValue: flipped)
     }
 
-    private var phase: ProviderPhase? { store.states[id] }
+    private var phase: ProviderPhase? { store.displayPhase(for: id) }
     private var status: ServiceStatus? { store.serviceStatus[id] }
 
     var body: some View {
@@ -175,7 +175,7 @@ struct ProviderCallout: View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: Design.space2) {
                 ProviderGlyph(id: id, size: 15, tint: .white)
-                Text(id.displayName)
+                Text(store.displayName(for: id))
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
@@ -209,7 +209,7 @@ struct ProviderCallout: View {
                             refreshing = false
                         }
                 } else {
-                    CalloutButton(symbol: "arrow.clockwise", help: L10n.t("Refresh \(id.displayName)", "刷新 \(id.displayName)")) {
+                    CalloutButton(symbol: "arrow.clockwise", help: L10n.t("Refresh \(store.displayName(for: id))", "刷新 \(store.displayName(for: id))")) {
                         refreshing = true
                         store.refresh(id)
                     }
@@ -342,14 +342,14 @@ struct ProviderCallout: View {
                 .tracking(0.6)
                 .foregroundStyle(.white.opacity(0.55))
             HStack(spacing: Design.space1 + 2) {
-                pinChip(L10n.t("Menu bar", "菜单栏"), on: store.selected == id) {
-                    store.selected = store.selected == id ? nil : id
+                pinChip(L10n.t("Menu bar", "菜单栏"), on: store.selected.map(store.displayProvider) == id) {
+                    store.selected = store.selected.map(store.displayProvider) == id ? nil : id
                 }
-                pinChip(L10n.t("Island", "刘海岛"), on: store.islandPin == id) {
-                    store.setIslandPin(store.islandPin == id ? nil : id)
+                pinChip(L10n.t("Island", "刘海岛"), on: store.islandPin.map(store.displayProvider) == id) {
+                    store.setIslandPin(store.islandPin.map(store.displayProvider) == id ? nil : id)
                 }
-                pinChip(L10n.t("Dock", "停靠条"), on: store.dockPin == id) {
-                    store.setDockPin(store.dockPin == id ? nil : id)
+                pinChip(L10n.t("Dock", "停靠条"), on: store.dockPin.map(store.displayProvider) == id) {
+                    store.setDockPin(store.dockPin.map(store.displayProvider) == id ? nil : id)
                 }
                 pinChip(L10n.t("Desktop card", "桌面卡片"), on: store.isPinnedToDesktop(id)) {
                     if store.isPinnedToDesktop(id) {

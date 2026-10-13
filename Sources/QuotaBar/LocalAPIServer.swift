@@ -69,9 +69,11 @@ final class LocalAPIServer {
         case "/v1/limits", "/v1/usage":
             // Windows hidden from the app's own surfaces are still served:
             // hiding is a display choice, and the tools asking want the data.
-            let providers = store.enabled.map { id in
-                (id: id, snapshot: store.states[id]?.snapshot == nil ? nil : store.reported[id] ?? store.states[id]?.snapshot,
-                 error: store.states[id]?.errorMessage)
+            let raw = store.reported.filter { store.enabled.contains($0.key) && store.states[$0.key]?.snapshot != nil }
+            let projection = XSubscriptionGrouping.project(raw)
+            let providers = store.displayProviders(store.enabled).map { id in
+                (id: id, snapshot: projection.snapshots[id] ?? store.displayPhase(for: id)?.snapshot,
+                 error: store.displayPhase(for: id)?.errorMessage)
             }
             return ("200 OK", LimitsJSON.make(providers: providers))
         case "/v1/spend":

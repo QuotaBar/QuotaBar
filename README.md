@@ -50,10 +50,49 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.29** (2026-10-07) · **5** changes in development · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.31** (2026-10-13) · [full changelog](CHANGELOG.en.md)
 
 <details open>
-<summary><b>2026-10-07</b> · Unreleased · 2 added · 3 fixed</summary>
+<summary><b>2026-10-13</b> · 0.5.31 · 2 added · 1 changed · 2 fixed</summary>
+
+**Added**
+
+- Mac, iOS and widgets support migrated X Subscription accounts, grouping Cursor and Grok only for the same verified workspace and seat and showing shared weekly usage and prepaid balance once. Existing plans keep their original presentation.
+- iOS DeepSeek uses a balance-only card: one large amount for a single currency, side-by-side CNY and USD balances, and no balance progress bars or repeated quota rows. Details and sharing use the same layout.
+
+**Changed**
+
+- Codex uses one flat OpenAI mark in the existing island blue across Mac, iOS and widgets, replacing the old gradient icon.
+
+**Fixed**
+
+- Migrated plans no longer reuse stale Cursor monthly quotas or duplicate Grok Bot allowances. Unknown usage remains a dash; reported zero usage and zero balances remain valid.
+- Existing Cursor selections, widgets and links resolve to the shared card. Sync, cache restoration and multi-Mac merges preserve shared subscription identity.
+
+</details>
+
+<details>
+<summary><b>2026-10-13</b> · 0.5.30 · 3 added · 6 fixed</summary>
+
+**Added**
+
+- iOS adds a Usage tab with today, yesterday and 30-day totals, trends, and provider and model breakdowns, with clear empty-data states.
+- iOS adds balance widgets for the Home Screen and Lock Screen, keeping currencies separate and showing data freshness.
+- Claude account management identifies the current sign-in before adding another account, updates account details and quotas after browser sign-in, and keeps the selected account across restarts.
+
+**Fixed**
+
+- Grok reads its own plan usage correctly. Grok Bot quotas billed through Cursor appear only in Cursor, without duplicate cached quotas or misleading refresh failures.
+- Missing usage fields in parts of Cursor, Alibaba Coding Plan, MiMo, Qoder, Windsurf, Kiro, Kimi and Claude responses no longer become 0%. Explicit zero usage remains visible.
+- Unconfigured, signed-out, unavailable and redirected providers discard inapplicable cached quotas. Late requests cannot overwrite results after an account or source change.
+- Missing Claude login directories and removed accounts prompt re-adding the account. Duplicate sign-ins are identified and expired sign-ins no longer misleadingly promise repeated renewal.
+- iOS quota pages and widgets show unknown usage as a dash and a gray meter, instead of 100% remaining. Expired cached windows wait for a new Mac reading instead of inferring zero usage.
+- An iPhone that retains its Quota Run account but lacks its device login key now prompts reconnection instead of reporting normal reception or only suggesting the Mac is asleep.
+
+</details>
+
+<details>
+<summary><b>2026-10-07</b> · 0.5.30 · 2 added · 3 fixed</summary>
 
 **Added**
 
@@ -65,39 +104,6 @@ Latest release **0.5.29** (2026-10-07) · **5** changes in development · [full 
 - The closed island is narrower: each side is the mark and a column — the percentage over the time to reset — instead of a row, after codex-island. The side is 88pt, from 132.
 - The hint over the menu-bar icon could stay up on the desktop, on any display: the system's tooltip is dismissed by a mouse-exit that never arrives when the icon resizes under the pointer or the pointer crosses to another display. It is now drawn by QuotaBar and goes when the pointer is anywhere but over the icon, on a click, when the displays change, or after eight seconds.
 - Choosing an account on the arrow or the bar of the Claude card no longer touches the Codex card, and the other way round: each card keeps its own choice, and the arrow no longer makes a profile named after a Claude address (which showed Claude's addresses on the Codex card). The Codex arrow now shows which account the card reads, not only the CLI's, and picking one no longer signs the CLI in as it. Profiles the beta made that way are removed on launch, keeping the sign-in in use. The dock's cards show a bar of their own provider's accounts when there are two or more.
-
-</details>
-
-<details>
-<summary><b>2026-10-06</b> · 0.5.29 · 3 added · 6 fixed</summary>
-
-**Added**
-
-- Codex card: with two or more kept accounts, the address gets the same arrow after it to pick the account; with one, the "Accounts" list under the card no longer repeats the address already shown above it. The Claude card's arrow lists the email alone.
-- Claude works without Claude Code: with no Claude Code sign-in on this Mac (or a signed-out one), the card reads a claude.ai web sign-in instead — the Claude desktop app's, then Chrome's, Edge's, Brave's, Arc's, Vivaldi's, Chromium's, Firefox's or Safari's — so switching account in the app or the browser switches the card. Settings → Providers → Claude has a Source choice: Automatic (Claude Code first, then the web), Claude Code only, or Web sign-in only, and says which web sign-ins it found. macOS asks once to let QuotaBar read a sealed cookie key (Always Allow); Safari's file needs Full Disk Access. Sessions are used in memory only.
-- With two or more Claude sign-ins on this Mac, the account line on the Claude card gets a small arrow: pick which sign-in the card, menu bar, island and dock show. A sign-in with no profile yet gets one made for it. With a single sign-in there is no arrow. Claude's desktop app keeps its own sign-in, which QuotaBar cannot read; a second sign-in for QuotaBar comes from `CLAUDE_CONFIG_DIR`.
-
-**Fixed**
-
-- The list under the Claude card's arrow names a sign-in whose token has run out by its address, read from the `.claude.json` of its config dir, instead of "Organization 2".
-- On a display with no notch the opened island has the same notch-wide gap between its two columns as the closed strip, and Codex's row carries the same OpenAI knot, taken from theSVG.
-- On the island, Codex is drawn as OpenAI's knot in Codex's blue instead of the gradient cloud, like codex-island. The other places Codex's mark appears are unchanged.
-- On a display with no notch the island is no longer a separate pill: it is the same strip as on a notched Mac — a figure either side, with a notch's worth of black between them — at the same width and with the same rounded corners.
-- The Claude card's list under its arrow, now headed "Accounts", is one line per account — the email, the plan and which one is on the card — with the others' limits on a single line below, instead of four.
-- The menu-bar panel no longer has the profile switch bar across its top; the arrow after the account on the Claude and Codex cards does the choosing.
-
-</details>
-
-<details>
-<summary><b>2026-10-06</b> · 0.5.27 · 1 added · 1 fixed</summary>
-
-**Added**
-
-- The Kimi Code card names the plan — Moderato, Allegretto, Allegro or Vivace — beside the edition, as "ALLEGRO · GLOBAL". The Global edition's quota reply carries no plan, so the card showed the edition alone; when the quota names none, the plan is now read from the profile Kimi Code's own account panel reads, at most once an hour. For the sign-in on this Mac and a pasted API key alike.
-
-**Fixed**
-
-- The plan chip broke onto two lines in the dock's cards. It now stays on one line: plan and edition where they fit, the plan alone where they do not, with the whole of it in the tooltip. The same in the menu-bar panel and the island.
 
 </details>
 

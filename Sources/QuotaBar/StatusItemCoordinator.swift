@@ -223,7 +223,7 @@ final class StatusItemCoordinator: NSObject {
     /// the used-or-left mode.
     private static func stripItems(_ store: UsageStore) -> [(id: ProviderID, percent: Double?)] {
         guard store.menuBarIconMode == .text else { return [] }
-        let ids = store.selected.map { [$0] } ?? Array(store.enabled.prefix(3))
+        let ids = store.selected.map { store.displayProviders([$0]) } ?? Array(store.displayProviders(store.enabled).prefix(3))
         return ids.map { id in (id: id, percent: store.headlinePercent(for: id).map { store.meterMode.shownPercent(fromUsed: $0) }) }
     }
 
@@ -279,9 +279,9 @@ final class StatusItemCoordinator: NSObject {
                             detail: store.hottestProvider?.id.displayName) { [store] in store.selected = nil }
         automatic.state = store.selected == nil ? .on : .off
         menu.addItem(.separator())
-        for id in store.enabled {
-            let row = add(menu, id.displayName, detail: reading(for: id, store: store)) { [store] in store.selected = id }
-            row.state = store.selected == id ? .on : .off
+        for id in store.displayProviders(store.enabled) {
+            let row = add(menu, store.displayName(for: id), detail: reading(for: id, store: store)) { [store] in store.selected = id }
+            row.state = store.selected.map(store.displayProvider) == id ? .on : .off
             if let logo = ProviderGlyph.logo(for: id), let image = logo.image.copy() as? NSImage {
                 image.size = NSSize(width: 16, height: 16)
                 // Single-colour marks follow the menu's text colour in light
@@ -301,14 +301,14 @@ final class StatusItemCoordinator: NSObject {
     /// would move it.
     private func limitMenu(store: UsageStore) -> NSMenuItem? {
         guard let id = store.selected,
-              let windows = store.states[id]?.snapshot?.windows.filter({ $0.usedPercent != nil }), windows.count > 1
+              let windows = store.displayPhase(for: id)?.snapshot?.windows.filter({ $0.usedPercent != nil }), windows.count > 1
         else { return nil }
         let item = NSMenuItem(title: L10n.t("\(id.displayName) Limit Shown", "\(id.displayName) 显示的额度"), action: nil, keyEquivalent: "")
         let menu = NSMenu()
         let picked = store.pickedHeadlineWindow(for: id)
         let following = windows.contains { $0.id == picked } ? picked : nil
         let automatic = add(menu, L10n.t("Automatic (fullest of the plan's)", "自动（套餐里用得最满的）"),
-                            detail: store.states[id]?.snapshot?.headlineWindow?.menuName)
+                            detail: store.displayPhase(for: id)?.snapshot?.headlineWindow?.menuName)
         { [store] in store.setHeadlineWindow(nil, for: id) }
         automatic.state = following == nil ? .on : .off
         menu.addItem(.separator())

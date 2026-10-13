@@ -25,7 +25,10 @@ struct QuotaBarPhoneApp: App {
     @ViewBuilder
     private var root: some View {
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("-QuotaBarWidgetGallery") {
+        if BalanceCardPreviewFixtures.isOn {
+            BalanceCardPreview()
+        } else if ProcessInfo.processInfo.arguments.contains("-QuotaBarWidgetGallery")
+                    || ProcessInfo.processInfo.arguments.contains("-QuotaBarRealWidgetGallery") {
             WidgetGallery()
         } else {
             pages
@@ -44,9 +47,10 @@ struct QuotaBarPhoneApp: App {
                 // The Mac's neutral accent, not system blue: the provider
                 // colours are the only hues on screen.
                 .tint(Color(hex: QuotaTheme.accentDarkHex))
-                .task { await model.start() }
+                .task { if !IsolatedReadingsPreview.isOn { await model.start() } }
         }
         .onChange(of: scenePhase) { _, phase in
+            guard !IsolatedReadingsPreview.isOn else { return }
             switch phase {
             case .active: Task { await model.refresh() }
             case .background: BackgroundRefresh.schedule()
@@ -54,6 +58,7 @@ struct QuotaBarPhoneApp: App {
             }
         }
         .backgroundTask(.appRefresh(BackgroundRefresh.identifier)) {
+            guard !IsolatedReadingsPreview.isOn else { return }
             BackgroundRefresh.schedule()
             if case .success = await ReadingsSync.fetch() {
                 WidgetCenter.shared.reloadAllTimelines()
@@ -70,7 +75,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool
     {
-        application.registerForRemoteNotifications()
+        if !IsolatedReadingsPreview.isOn { application.registerForRemoteNotifications() }
         return true
     }
 
@@ -80,6 +85,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void)
     {
+        guard !IsolatedReadingsPreview.isOn else { completionHandler(.noData); return }
         Task {
             switch await ReadingsSync.fetch() {
             case .success:
@@ -136,9 +142,13 @@ final class ReadingsModel {
     private var uptimeLoading: Set<String> = []
 
     /// Showing the sample readings rather than the Macs'.
-    private(set) var isDemo = Demo.isOn
+    private(set) var isDemo = Demo.isOn || IsolatedReadingsPreview.isOn
 
     init() {
+        if IsolatedReadingsPreview.isOn {
+            readings = BalanceCardPreviewFixtures.isOn ? BalanceCardPreviewFixtures.readings : XSubscriptionDemo.readings
+            return
+        }
         if Demo.isOn {
             // Into the cache too, so the widgets show the same sample.
             ReadingsCache.save(CloudReadings.samples)
@@ -148,6 +158,7 @@ final class ReadingsModel {
     }
 
     func start() async {
+        guard !IsolatedReadingsPreview.isOn else { return }
         guard !Demo.isOn else {
             await refresh()
             return
@@ -164,6 +175,7 @@ final class ReadingsModel {
 
     /// The samples, from the empty page's "查看示例".
     func showDemo() {
+        guard !IsolatedReadingsPreview.isOn else { return }
         Demo.set(true)
         isDemo = true
         ReadingsCache.save(CloudReadings.samples)
@@ -176,6 +188,7 @@ final class ReadingsModel {
     /// Back to the Macs' own readings: the samples leave the cache, so no
     /// widget goes on showing them.
     func endDemo() {
+        guard !IsolatedReadingsPreview.isOn else { return }
         Demo.set(false)
         isDemo = false
         ReadingsCache.save([])
@@ -194,12 +207,18 @@ final class ReadingsModel {
         var items = readings.items
         items.move(fromOffsets: source, toOffset: destination)
         readings.items = items
-        CardOrder.save(items.map(\.provider))
-        WidgetCenter.shared.reloadTimelines(ofKind: "overview")
+        if !IsolatedReadingsPreview.isOn {
+            CardOrder.save(items.map(\.provider))
+            WidgetCenter.shared.reloadTimelines(ofKind: "overview")
+        }
     }
 
     /// Back to the Mac's order.
     func resetOrder() {
+        if IsolatedReadingsPreview.isOn {
+            readings = BalanceCardPreviewFixtures.isOn ? BalanceCardPreviewFixtures.readings : XSubscriptionDemo.readings
+            return
+        }
         CardOrder.reset()
         readings = ReadingsCache.merged
         WidgetCenter.shared.reloadTimelines(ofKind: "overview")
@@ -208,6 +227,10 @@ final class ReadingsModel {
     /// `statusPages: false` for the quiet re-reads while a Mac is still to
     /// allow this phone: the readings only.
     func refresh(statusPages: Bool = true) async {
+        if IsolatedReadingsPreview.isOn {
+            readings = BalanceCardPreviewFixtures.isOn ? BalanceCardPreviewFixtures.readings : XSubscriptionDemo.readings
+            return
+        }
         guard !isRefreshing else { return }
         isRefreshing = true
         defer { isRefreshing = false }
@@ -278,6 +301,10 @@ final class ReadingsModel {
     /// every half minute, reads everything, and writes at once. A Mac that
     /// is asleep never answers, and the phone says so rather than spinning.
     func askMacToRefresh() async {
+        if IsolatedReadingsPreview.isOn {
+            macRefresh = .done
+            return
+        }
         if case .asking = macRefresh { return }
         clearTask?.cancel()
         let asked = Date()

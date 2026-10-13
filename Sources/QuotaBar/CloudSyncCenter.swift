@@ -258,9 +258,9 @@ extension UsageStore {
             money: CloudMoney(
                 currency: experience.currency,
                 usdRate: experience.currency == "USD" ? nil : CurrencyRates.shared.rate(for: experience.currency)),
-            providers: enabled.map { id in
+            providers: displayProviders(enabled).map { id in
                 CloudReadings.Entry(
-                    id: id.rawValue, snapshot: states[id]?.snapshot, error: states[id]?.errorMessage,
+                    id: id.rawValue, snapshot: displayPhase(for: id)?.snapshot, error: displayPhase(for: id)?.errorMessage,
                     spend: cloudSpend(for: id),
                     links: CloudLinks(console: dashboardURL(for: id)))
             })

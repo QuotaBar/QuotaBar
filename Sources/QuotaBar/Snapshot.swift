@@ -1,4 +1,5 @@
 import AppKit
+import ObjectiveC
 import SwiftUI
 import QuotaCore
 
@@ -950,6 +951,75 @@ enum Snapshot {
             .padding(Design.space4)
     }
 
+    /// Private fixtures exercise the real cards and sync projection without
+    /// reading or writing the owner's account cache or preferences.
+    static func xSubscriptionPreview(directory: String) {
+        let url = URL(fileURLWithPath: directory, isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        L10n.override = .zhHans
+        let now = Date()
+        let info = XSubscriptionInfo(tier: "premium", workspaceID: "preview-workspace", seatID: "preview-seat")
+        let weekly = L10n.t("Shared weekly usage", "共享每周额度")
+        let cursor = UsageSnapshot(planName: "Premium", account: "demo@example.com", windows: [
+            UsageWindow(title: weekly, usedPercent: 18, resetsAt: now.addingTimeInterval(604_800), windowSeconds: 604_800),
+        ], fetchedAt: now.addingTimeInterval(-60), balance: BalanceSheet(balances: [AccountBalance(currency: "USD", total: 20)]), xSubscription: info)
+        let grok = UsageSnapshot(planName: "Premium", account: "demo@example.com", windows: [
+            UsageWindow(title: weekly, usedPercent: 42.5, resetsAt: now.addingTimeInterval(604_800), windowSeconds: 604_800),
+        ], fetchedAt: now, balance: BalanceSheet(balances: [AccountBalance(currency: "USD", total: 12.34)]), xSubscription: info)
+        let fixture = url.appendingPathComponent("shared-cache.json")
+        let cache = SnapshotCache(fileURL: fixture)
+        cache.store(cursor, for: .cursor)
+        cache.store(grok, for: .grok)
+        guard let restoredCursor = SnapshotCache(fileURL: fixture).snapshot(for: .cursor),
+              let restoredGrok = SnapshotCache(fileURL: fixture).snapshot(for: .grok) else { return }
+        let shared = UsageStore.preview(enabled: [.cursor, .grok], states: [.cursor: .loaded(restoredCursor), .grok: .loaded(restoredGrok)])
+        shared.meterMode = .used
+        shared.experience.hiddenWindows = [:]
+        shared.experience.cardWindows = [:]
+        let cloud = shared.cloudReadings(now: now)
+        guard let encoded = try? JSONEncoder().encode(cloud),
+              let decoded = try? JSONDecoder().decode(CloudReadings.self, from: encoded) else { return }
+        try? encoded.write(to: url.appendingPathComponent("shared-sync.json"))
+        let phone = MergedReadings([decoded])
+        let summary: [String: Any] = [
+            "macProviders": shared.displayProviders(shared.enabled).map(\.rawValue),
+            "macName": shared.displayName(for: .grok),
+            "macPercent": shared.headlinePercent(for: .grok) as Any,
+            "macBalance": shared.displayPhase(for: .grok)?.snapshot?.balance?.balances.first?.total as Any,
+            "phoneProviders": phone.items.map { $0.provider.rawValue },
+            "oldCursorSelectionResolves": phone.item(for: .cursor)?.provider == .grok,
+        ]
+        if let json = try? JSONSerialization.data(withJSONObject: summary, options: [.prettyPrinted, .sortedKeys]) {
+            try? json.write(to: url.appendingPathComponent("verification.json"))
+        }
+        render(VStack(alignment: .leading, spacing: 14) {
+            Text("独立验证样本 · 合并后只显示一份共享额度和余额").font(.system(size: 12)).foregroundStyle(.white)
+            ProviderCallout(store: shared, id: .grok, detail: true)
+        }.padding(20).environment(\.colorScheme, .dark), to: url, name: "xsubscription-shared", backing: Color(hex: "303840"))
+        var oldCursor = cursor
+        oldCursor.xSubscription = nil
+        oldCursor.planName = "Pro Plus"
+        oldCursor.balance = nil
+        oldCursor.windows = [UsageWindow(title: "月度套餐", usedPercent: 18, resetsAt: now.addingTimeInterval(2_592_000), windowSeconds: 2_592_000)]
+        var oldGrok = grok
+        oldGrok.xSubscription = nil
+        oldGrok.planName = "SuperGrok"
+        oldGrok.balance = nil
+        oldGrok.windows[0].title = "每周额度"
+        let legacy = UsageStore.preview(enabled: [.cursor, .grok], states: [.cursor: .loaded(oldCursor), .grok: .loaded(oldGrok)])
+        legacy.meterMode = .used
+        legacy.experience.hiddenWindows = [:]
+        render(HStack(alignment: .top, spacing: 14) {
+            ProviderCallout(store: legacy, id: .cursor)
+            ProviderCallout(store: legacy, id: .grok)
+        }.padding(20).environment(\.colorScheme, .dark), to: url, name: "xsubscription-legacy", backing: Color(hex: "303840"))
+        var unknown = grok
+        unknown.windows = [UsageWindow(title: "未提供的用量", usedPercent: nil), UsageWindow(title: "明确返回的零用量", usedPercent: 0)]
+        let missing = UsageStore.preview(enabled: [.grok], states: [.grok: .loaded(unknown)])
+        missing.meterMode = .used
+        render(ProviderCallout(store: missing, id: .grok).padding(20).environment(\.colorScheme, .dark), to: url, name: "xsubscription-unknown-zero", backing: Color(hex: "303840"))
+    }
+
     /// The exact dock card, with a private cache fixture: unknown and zero
     /// survive serialization separately without changing any account data.
     static func missingUsagePreview(directory: String) {
@@ -1133,6 +1203,111 @@ enum Snapshot {
         }
         L10n.override = ConfigStore.shared.language
         FileHandle.standardOutput.write(Data("Wrote the projects pane to \(base.path)\n".utf8))
+    }
+
+    /// Website artwork drawn from the native views and synthetic accounts.
+    /// Hosting captures preserve AppKit controls that ImageRenderer omits.
+    static func websitePreview(directory: String) async {
+        // Resolve native text/control colours before the view hierarchy is
+        // constructed. This affects only the isolated capture process.
+        NSApp.appearance = NSAppearance(named: .aqua)
+        let base = URL(fileURLWithPath: directory, isDirectory: true)
+        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        let current = Date()
+        func sampleStore() -> UsageStore {
+            var fresh = sampleStates().compactMapValues(\.snapshot)
+            for id in fresh.keys {
+                fresh[id]?.fetchedAt = current
+                for index in fresh[id]!.windows.indices {
+                    let seconds = id == .codex ? 5 * 86_400 + 16 * 3600 : 2 * 3600 + 41 * 60
+                    fresh[id]?.windows[index].resetsAt = current.addingTimeInterval(Double(seconds))
+                }
+            }
+            let store = UsageStore.preview(
+                enabled: [.codex, .claude, .cursor, .zai], states: fresh.mapValues { .loaded($0) })
+            store.experience.hiddenWindows = [:]
+            store.experience.cardWindows = [:]
+            return store
+        }
+        let visible = CommandLine.arguments.contains("--website-visible")
+        let requestedLanguage = L10n.override ?? .en
+        for (language, suffix) in [(L10n.Language.en, "en"), (.zhHans, "zh")] where !visible || language == requestedLanguage {
+            L10n.override = language
+            let store = sampleStore()
+            let content = SettingsView(store: store, scrollable: true, section: .providers)
+                .foregroundStyle(Color.black)
+                .environment(\.colorScheme, .light)
+                .environment(\.controlActiveState, .key)
+            await nativeCapture(content, to: base, name: "settings-\(suffix)", size: NSSize(width: 840, height: 700), dark: false)
+        }
+        if visible { return }
+        L10n.override = .zhHans
+        NSApp.appearance = NSAppearance(named: .darkAqua)
+        let store = sampleStore()
+        store.meterMode = .used
+        let notch = IslandCoordinator.NotchMetrics(notchWidth: 200, height: 38)
+        let strip = NotchStrip(store: store, metrics: notch, slots: 2)
+            .frame(width: notch.totalWidth(slots: 2), height: notch.height)
+            .background(Color.black)
+            .environment(\.colorScheme, .dark)
+        await nativeCapture(strip, to: base, name: "notch", size: NSSize(width: notch.totalWidth(slots: 2), height: notch.height))
+        L10n.override = ConfigStore.shared.language
+        FileHandle.standardOutput.write(Data("Wrote native website artwork to \(base.path)\n".utf8))
+    }
+
+    private final class WebsiteCaptureWindow: NSWindow {
+        override var isKeyWindow: Bool { true }
+        override var isMainWindow: Bool { true }
+
+        static func answerActive() {
+            let always: @convention(block) (AnyObject) -> Bool = { _ in true }
+            for name in ["_hasActiveAppearance", "_hasActiveAppearanceIgnoringKeyFocus", "_hasKeyAppearance", "_hasMainAppearance"] {
+                let selector = NSSelectorFromString(name)
+                guard class_getInstanceMethod(NSWindow.self, selector) != nil else { continue }
+                class_addMethod(Self.self, selector, imp_implementationWithBlock(always), "B@:")
+            }
+        }
+    }
+
+    private static var websiteLiveWindow: NSWindow?
+
+    private static func nativeCapture(
+        _ view: some View, to directory: URL, name: String, size: NSSize, dark: Bool = true) async
+    {
+        WebsiteCaptureWindow.answerActive()
+        let window = WebsiteCaptureWindow(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.titled, .fullSizeContentView], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        window.backgroundColor = .black
+        let host = NSHostingView(rootView: view.frame(width: size.width, height: size.height))
+        host.appearance = window.appearance
+        host.frame = NSRect(origin: .zero, size: size)
+        window.contentView = host
+        if CommandLine.arguments.contains("--website-visible") {
+            websiteLiveWindow = window
+            window.center()
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let left = NSScreen.screens.map(\.frame.minX).min() ?? 0
+        window.setFrameOrigin(NSPoint(x: left - size.width - 4000, y: 0))
+        window.orderFrontRegardless()
+        try? await Task.sleep(for: .milliseconds(250))
+        host.layoutSubtreeIfNeeded()
+        host.displayIfNeeded()
+        window.appearance?.performAsCurrentDrawingAppearance {
+            if let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
+                host.cacheDisplay(in: host.bounds, to: bitmap)
+                if let png = bitmap.representation(using: .png, properties: [:]) {
+                    try? png.write(to: directory.appendingPathComponent("\(name).png"))
+                }
+            }
+        }
+        window.orderOut(nil)
+        window.close()
     }
 
     private static func write(

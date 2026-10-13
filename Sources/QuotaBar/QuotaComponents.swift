@@ -243,7 +243,7 @@ struct QuotaRowView: View {
             .paceTick(window, mode: store.meterMode, always: experience.alwaysShowPace)
             // An older reading standing in for one that failed: the bar is
             // dimmed, as on the island, so it is not taken for today's.
-            .opacity(store.states[id]?.staleReading != nil ? 0.45 : 1)
+            .opacity(store.displayPhase(for: id)?.staleReading != nil ? 0.45 : 1)
             .help(projectionHelp)
             .animation(Motion.animation(.easeOut(duration: 0.3)), value: shown)
     }
@@ -312,7 +312,7 @@ struct QuotaRowView: View {
             // Reset time passed on a reading that is not updating: the
             // figure is the window that ended, so the line says so in the
             // not-updating amber rather than reading as current.
-            let lapsed = store.states[id]?.staleReading != nil && StaleReading.resetLapsed(resetsAt)
+            let lapsed = store.displayPhase(for: id)?.staleReading != nil && StaleReading.resetLapsed(resetsAt)
             Text(store.resetText(resetsAt))
                 .font(.system(size: 11))
                 .foregroundStyle(lapsed ? Palette.amber : .white.opacity(0.5))

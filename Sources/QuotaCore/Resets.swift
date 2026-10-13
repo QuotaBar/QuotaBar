@@ -87,6 +87,7 @@ public enum ResetDetector {
     /// Another edition of a service with separate regional accounts, or
     /// another kind of credential, counts as another account too.
     public static func accountChanged(from previous: UsageSnapshot, to current: UsageSnapshot) -> Bool {
+        if let before = previous.xSubscription?.verifiedIdentity, let after = current.xSubscription?.verifiedIdentity, before != after { return true }
         if let before = previous.edition, let after = current.edition, before != after { return true }
         if let before = previous.source, let after = current.source, before != after { return true }
         guard let before = previous.account?.lowercased(), let after = current.account?.lowercased(),

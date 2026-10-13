@@ -455,6 +455,30 @@ public struct GrokProvider: QuotaProvider {
 
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
         var local = LocalCredentials.grokAuth()
+        // A migrated Cursor sign-in can read the whole shared pool directly.
+        // Use it here only when its server-issued xAI workspace/seat exactly
+        // matches this CLI credential's own authenticated principal. Emails
+        // and coincident reset dates are deliberately not compared.
+        if config.credential(for: .grok) == nil,
+           let local, let identity = XSubscriptionClient.grokIdentity(local)
+        {
+            let editor = try? CursorProvider().cookieHeader(config)
+            let bot = GrokBot.lookup(interactive: false).session?.cookieHeader
+            var cookies: [String] = []
+            for cookie in [editor, bot].compactMap({ $0 }) where !cookies.contains(cookie) { cookies.append(cookie) }
+            for cookie in cookies {
+                let shared = await XSubscriptionClient.read(cookie: cookie, account: local.email)
+                if let snapshot = shared.snapshot, snapshot.xSubscription?.verifiedIdentity == identity {
+                    return snapshot
+                }
+                if shared.migrationUnavailable,
+                   SnapshotCache.shared.snapshot(for: .grok)?.xSubscription?.verifiedIdentity == identity {
+                    throw ProviderError.network(L10n.t(
+                        "The shared subscription could not be checked this time.",
+                        "这次暂时无法确认共享订阅。"))
+                }
+            }
+        }
         // Run out after six hours away from the grok CLI: have it renew.
         var renewal: CLIRenewal.Outcome?
         if config.credential(for: .grok) == nil, let expiry = local?.expiresAt,
@@ -507,6 +531,8 @@ public struct GrokProvider: QuotaProvider {
 
     static func botOnly(_ reading: GrokBot.Reading) throws -> UsageSnapshot {
         switch reading {
+        case let .subscription(snapshot):
+            return snapshot
         case let .row(window, plan, account):
             return UsageSnapshot(planName: plan, account: account, windows: [window])
         case .onCursorCard:
@@ -527,6 +553,10 @@ public struct GrokProvider: QuotaProvider {
 
     static func withoutCredits(_ error: ProviderError, bot: GrokBot.Reading?) throws -> UsageSnapshot {
         switch bot {
+        case .subscription?:
+            // A manual/CLI credential with unavailable credits must not be
+            // silently replaced by a different Bot account's shared pool.
+            throw error
         case let .row(window, plan, account)?:
             return UsageSnapshot(planName: plan, account: account, windows: [window])
         case .onCursorCard?:
@@ -558,6 +588,19 @@ public struct GrokProvider: QuotaProvider {
     // MARK: Response shape
 
     struct Amount: Decodable { let val: Double? }
+    /// xAI's Cent message is USD cents. An explicit empty message is proto3
+    /// zero; an absent message or an explicit malformed scalar is unknown.
+    struct PrepaidAmount: Decodable {
+        let cents: Double?
+        private enum CodingKeys: String, CodingKey { case val }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            if !c.contains(.val) { cents = 0 }
+            else if let value = try? c.decode(Double.self, forKey: .val), value.isFinite { cents = value }
+            else if let raw = try? c.decode(String.self, forKey: .val), let value = Double(raw), value.isFinite { cents = value }
+            else { cents = nil }
+        }
+    }
     struct Period: Decodable {
         let start: String?
         let type: String?
@@ -578,6 +621,7 @@ public struct GrokProvider: QuotaProvider {
         let onDemandUsed: Amount?
         let productUsage: [Product]?
         let subscriptionTier: String?
+        let prepaidBalance: PrepaidAmount?
     }
     struct Body: Decodable {
         let config: Config?
@@ -663,9 +707,16 @@ public struct GrokProvider: QuotaProvider {
                 "This xAI account has no Grok plan with credits to read.",
                 "这个 xAI 账号没有带额度的 Grok 套餐可读。"))
         }
+        // The CLI reports prepaid ledger credits as signed cents. Its own
+        // display uses the magnitude as available credit (including zero).
+        let balance = configBody.prepaidBalance?.cents.map {
+            let dollars = abs($0) / 100
+            return BalanceSheet(balances: [AccountBalance(currency: "USD", total: dollars, paid: dollars)])
+        }
         return UsageSnapshot(
             planName: configBody.subscriptionTier ?? body.subscriptionTier,
-            windows: windows)
+            windows: windows,
+            balance: balance)
     }
 
     /// `USAGE_PERIOD_TYPE_WEEKLY` and friends → a title and the window length

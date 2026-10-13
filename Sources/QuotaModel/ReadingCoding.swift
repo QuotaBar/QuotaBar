@@ -70,7 +70,7 @@ extension UsageWindow: Codable {
 }
 
 extension UsageSnapshot: Codable {
-    private enum CodingKeys: String, CodingKey { case planName, account, windows, fetchedAt, resetCredits, balance, edition, source }
+    private enum CodingKeys: String, CodingKey { case planName, account, windows, fetchedAt, resetCredits, balance, edition, source, xSubscription }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -82,7 +82,8 @@ extension UsageSnapshot: Codable {
             resetCredits: try? c.decodeIfPresent(ResetCredits.self, forKey: .resetCredits),
             balance: try? c.decodeIfPresent(BalanceSheet.self, forKey: .balance),
             edition: try? c.decodeIfPresent(String.self, forKey: .edition),
-            source: try? c.decodeIfPresent(String.self, forKey: .source))
+            source: try? c.decodeIfPresent(String.self, forKey: .source),
+            xSubscription: try? c.decodeIfPresent(XSubscriptionInfo.self, forKey: .xSubscription))
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -95,5 +96,6 @@ extension UsageSnapshot: Codable {
         try c.encodeIfPresent(balance, forKey: .balance)
         try c.encodeIfPresent(edition, forKey: .edition)
         try c.encodeIfPresent(source, forKey: .source)
+        try c.encodeIfPresent(xSubscription, forKey: .xSubscription)
     }
 }

@@ -8,7 +8,7 @@ extension UsageStore {
     /// Records a prepaid balance as it is read, and, where the credential can
     /// only ask for the balance, fills in usage from how it has fallen.
     func withBalanceEstimate(_ id: ProviderID, _ snapshot: UsageSnapshot) -> UsageSnapshot {
-        guard var sheet = snapshot.balance else { return snapshot }
+        guard snapshot.xSubscription == nil, var sheet = snapshot.balance else { return snapshot }
         BalanceHistoryStore.shared.record(id, balances: sheet.balances, at: snapshot.fetchedAt)
         guard !sheet.hasUsage else { return snapshot }
         BalanceEstimate.apply(to: &sheet, readings: BalanceHistoryStore.shared.readings(for: id))
@@ -22,7 +22,7 @@ extension UsageStore {
     /// a top-up clears it.
     func evaluateBalanceNotices() {
         let floor = experience.balanceFloor
-        let sheets = reported.compactMapValues(\.balance)
+        let sheets = XSubscriptionGrouping.project(reported).snapshots.compactMapValues(\.balance)
         let result = LowBalanceCheck.evaluate(
             sheets: sheets, floor: floor,
             rate: { CurrencyRates.shared.rate(for: $0) },

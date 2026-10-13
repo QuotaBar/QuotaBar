@@ -160,7 +160,8 @@ struct UsageView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 8) {
                         ProviderMark(id: provider.id, size: 20)
-                        Text(provider.id.displayName).font(.subheadline.weight(.semibold))
+                        Text(model.readings.item(for: provider.id)?.displayName ?? provider.id.displayName)
+                            .font(.subheadline.weight(.semibold))
                         Spacer(minLength: 4)
                         Text(model.readings.money.format(provider.usd)).font(.subheadline.monospacedDigit())
                     }
@@ -170,7 +171,7 @@ struct UsageView: View {
                         if usd > 0 { Text("\(Int((provider.usd / usd * 100).rounded()))%") }
                     }
                     .font(.caption).foregroundStyle(.secondary)
-                    if let item = model.readings.items.first(where: { $0.provider == provider.id }) {
+                    if let item = model.readings.item(for: provider.id) {
                         if let error = item.error {
                             Label(error, systemImage: "exclamationmark.triangle")
                                 .font(.caption).foregroundStyle(.orange)

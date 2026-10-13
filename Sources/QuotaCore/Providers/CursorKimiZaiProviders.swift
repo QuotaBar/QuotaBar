@@ -14,7 +14,7 @@ public struct CursorProvider: QuotaProvider {
     /// The value for the WorkosCursorSessionToken cookie. A pasted credential
     /// is used verbatim; otherwise it is composed from Cursor.app's own
     /// signed-in session, which stores the token as `sub::JWT`.
-    private func cookieHeader(_ config: ConfigStore) throws -> String {
+    func cookieHeader(_ config: ConfigStore) throws -> String {
         if let raw = config.credential(for: .cursor) {
             if raw.lowercased().contains("workoscursorsessiontoken=") {
                 return raw
@@ -67,18 +67,32 @@ public struct CursorProvider: QuotaProvider {
         let cookie = try cookieHeader(config)
         let headers = ["Accept": "application/json", "Cookie": cookie]
 
-        let summaryURL = URL(string: "https://cursor.com/api/usage-summary")!
-        let response = try await HTTP.get(summaryURL, headers: headers).requireOK()
-        let summary = try response.json(Summary.self)
-
-        let account = try? await HTTP.get(URL(string: "https://cursor.com/api/auth/me")!, headers: headers)
-            .requireOK().json(Me.self)
-
         // Grok Bot's weekly allowance, from the dashboard endpoint the usage
         // summary does not cover. Best effort, like the account: an account
         // without Grok Bot, or a stalled endpoint, must not cost the card its
         // plan numbers.
         let sand = try? await GrokBot.status(cookie: cookie)
+
+        let shared = await XSubscriptionClient.read(cookie: cookie, account: nil, sand: sand)
+        if shared.migrated {
+            guard let snapshot = shared.snapshot else {
+                throw ProviderError.usageUnavailable(L10n.t(
+                    "This account is on The X Subscription, but its current plan and shared usage could not be read.",
+                    "这个账号已迁移到 X Subscription，但暂未读到当前套餐和共享用量。"))
+            }
+            return snapshot
+        }
+        if shared.migrationUnavailable {
+            throw ProviderError.network(L10n.t(
+                "The current subscription could not be checked. The retained legacy summary has not been used.",
+                "暂时无法确认当前订阅，未采用可能过时的旧套餐数据。"))
+        }
+
+        let summaryURL = URL(string: "https://cursor.com/api/usage-summary")!
+        let response = try await HTTP.get(summaryURL, headers: headers).requireOK()
+        let summary = try response.json(Summary.self)
+        let account = try? await HTTP.get(URL(string: "https://cursor.com/api/auth/me")!, headers: headers)
+            .requireOK().json(Me.self)
 
         return Self.snapshot(from: summary, account: account?.email, sand: sand)
     }

@@ -177,9 +177,9 @@ struct DeskCardMenu: View {
                 Toggle(card.style.singleProvider ? L10n.t("Follow the menu bar", "跟随菜单栏选中的") : L10n.t("Every provider", "全部服务商"), isOn: Binding(
                     get: { card.provider == nil },
                     set: { if $0 { store.updateDeskCard(card.id) { $0.provider = nil } } }))
-                ForEach(store.enabled) { id in
-                    Toggle(id.displayName, isOn: Binding(
-                        get: { card.provider == id },
+                ForEach(store.displayProviders(store.enabled)) { id in
+                    Toggle(store.displayName(for: id), isOn: Binding(
+                        get: { card.provider.map(store.displayProvider) == id },
                         set: { if $0 { store.updateDeskCard(card.id) { $0.provider = id } } }))
                 }
             }
@@ -247,7 +247,7 @@ struct DesktopWidgetView: View {
     }
 
     private var latestFetch: Date? {
-        providerList.compactMap { store.states[$0]?.snapshot?.fetchedAt }.max()
+        providerList.compactMap { store.displayPhase(for: $0)?.snapshot?.fetchedAt }.max()
     }
 
     @ViewBuilder
@@ -312,7 +312,7 @@ struct DesktopWidgetView: View {
                 showsLabel: false)
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text(id.displayName)
+                    Text(store.displayName(for: id))
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.white)
                     Spacer()
@@ -358,7 +358,7 @@ struct DesktopWidgetView: View {
     private func windows(_ id: ProviderID) -> [UsageWindow] {
         var seen = Set<String>()
         var out: [UsageWindow] = []
-        for window in store.states[id]?.snapshot?.windows ?? [] where window.usedPercent != nil {
+        for window in store.displayPhase(for: id)?.snapshot?.windows ?? [] where window.usedPercent != nil {
             let horizon = window.shortLabel ?? window.title
             guard seen.insert(horizon).inserted else { continue }
             out.append(window)
@@ -373,8 +373,8 @@ struct DesktopWidgetView: View {
 
     /// In the order enabled, or closest to the limit first when asked.
     private var providers: [ProviderID] {
-        guard store.experience.widgetSortsByUrgency else { return providerList }
-        return providerList.sorted { (percent($0) ?? -1) > (percent($1) ?? -1) }
+        guard store.experience.widgetSortsByUrgency else { return store.displayProviders(providerList) }
+        return store.displayProviders(providerList).sorted { (percent($0) ?? -1) > (percent($1) ?? -1) }
     }
 
     private func tint(_ percent: Double) -> Color {

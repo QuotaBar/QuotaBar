@@ -701,8 +701,8 @@ private struct OptionsMenuButton: NSViewRepresentable {
                     store.flashNotice(L10n.t("Copied to clipboard", "已复制到剪贴板"))
                 }
             }
-            for id in store.enabled {
-                add(submenu, id.displayName, "") { [store] in
+            for id in store.displayProviders(store.enabled) {
+                add(submenu, store.displayName(for: id), "") { [store] in
                     if CardImageExporter.copy(ShareableCard(store: store) { ProviderCardView(store: store, id: id, forExport: true) }) {
                         store.flashNotice(L10n.t("Copied to clipboard", "已复制到剪贴板"))
                     }

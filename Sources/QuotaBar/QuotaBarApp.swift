@@ -119,6 +119,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        if let index = arguments.firstIndex(of: "--xsubscription-check"), index + 1 < arguments.count {
+            XSubscriptionCheck.run(directory: arguments[index + 1])
+            return
+        }
+        if let index = arguments.firstIndex(of: "--xsubscription-preview"), index + 1 < arguments.count {
+            Snapshot.xSubscriptionPreview(directory: arguments[index + 1])
+            NSApp.terminate(nil)
+        }
         if let index = arguments.firstIndex(of: "--usage-display-preview"), index + 1 < arguments.count {
             Snapshot.missingUsagePreview(directory: arguments[index + 1])
             NSApp.terminate(nil)
@@ -132,6 +140,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let directory = index + 1 < arguments.count ? arguments[index + 1] : "./settings"
             Snapshot.settingsPreview(directory: directory)
             NSApp.terminate(nil)
+        }
+        if let index = arguments.firstIndex(of: "--website-preview"), index + 1 < arguments.count {
+            let directory = arguments[index + 1]
+            Task { @MainActor in
+                await Snapshot.websitePreview(directory: directory)
+                if !arguments.contains("--website-visible") { NSApp.terminate(nil) }
+            }
+            return
         }
         if let index = arguments.firstIndex(of: "--projects-preview") {
             let directory = index + 1 < arguments.count ? arguments[index + 1] : "./projects"

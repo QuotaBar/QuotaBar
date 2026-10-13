@@ -35,7 +35,7 @@ extension Color {
 // MARK: - A provider's mark
 
 /// The provider's logo from the same PNGs the Mac ships. A mark with no
-/// colour of its own — Codex, Cursor, OpenCode — is recoloured, or it would
+/// colour of its own — Cursor, OpenCode — is recoloured, or it would
 /// vanish into the dark surfaces it is drawn on.
 struct ProviderMark: View {
     let id: ProviderID
@@ -54,6 +54,7 @@ struct ProviderMark: View {
             } else {
                 Image(uiImage: logo.image)
                     .resizable()
+                    .renderingMode(.original)
                     .scaledToFit()
                     .frame(width: size, height: size)
             }

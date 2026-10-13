@@ -78,6 +78,16 @@ final class QuotaFormatTests: XCTestCase {
         XCTAssertEqual(QuotaFormat.age(of: now.addingTimeInterval(60), now: now), "just now")
     }
 
+    func testTinyRealUsageNeverFormatsAsExactZeroOrFullRemaining() {
+        XCTAssertEqual(QuotaFormat.percent(0), "0%")
+        XCTAssertEqual(QuotaFormat.percent(100), "100%")
+        XCTAssertEqual(QuotaFormat.percent(0.08667388949), "0.1%")
+        XCTAssertEqual(QuotaFormat.percent(99.91332611051), "99.9%")
+        XCTAssertEqual(QuotaFormat.percent(0.001), "<0.1%")
+        XCTAssertEqual(QuotaFormat.percent(99.999), ">99.9%")
+        XCTAssertEqual(QuotaFormat.percent(99.95), ">99.9%")
+    }
+
     func testPercentDropsTrailingZero() {
         XCTAssertEqual(QuotaFormat.percent(35), "35%")
         XCTAssertEqual(QuotaFormat.percent(35.04), "35%")

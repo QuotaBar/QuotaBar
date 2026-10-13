@@ -7,7 +7,7 @@ struct BalanceWidgetView: View {
     var family: WidgetFamily
 
     private var item: MergedReadings.Item? {
-        if let provider = entry.provider { return entry.readings.items.first { $0.provider == provider } }
+        if let provider = entry.provider { return entry.readings.item(for: provider) }
         return entry.readings.items.first { $0.snapshot?.balance?.balances.isEmpty == false }
     }
     private var sheet: BalanceSheet? { item?.snapshot?.balance }

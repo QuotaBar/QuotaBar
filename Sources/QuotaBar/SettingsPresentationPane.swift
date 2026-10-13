@@ -289,14 +289,14 @@ private struct PlaceWindowRow: View {
     let id: ProviderID
 
     private var windows: [UsageWindow] {
-        store.states[id]?.snapshot?.windows.filter { $0.usedPercent != nil } ?? []
+        store.displayPhase(for: id)?.snapshot?.windows.filter { $0.usedPercent != nil } ?? []
     }
 
     /// What stands in for the menus when there is nothing to choose between.
     /// No reading is not no limits: a provider still loading, or one whose
     /// read failed, says that, and keeps whatever was picked for it.
     private var note: String {
-        guard store.states[id]?.snapshot != nil else {
+        guard store.displayPhase(for: id)?.snapshot != nil else {
             return store.isLoading(id) ? L10n.t("Loading…", "加载中…") : L10n.t("No reading yet", "还没有读数")
         }
         guard let only = windows.first else {

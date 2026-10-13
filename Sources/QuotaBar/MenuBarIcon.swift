@@ -21,7 +21,7 @@ enum MenuBarIcon {
             ForEach(items, id: \.id) { item in
                 HStack(spacing: 3) {
                     ProviderGlyph(id: item.id, size: 13, tint: .black)
-                    Text(item.percent.map { "\(Int($0.rounded()))%" } ?? "—")
+                    Text(item.percent.map(QuotaFormat.percent) ?? "—")
                         .font(.system(size: 12, weight: .semibold))
                         .monospacedDigit()
                         .foregroundStyle(.black)
@@ -505,7 +505,7 @@ enum MenuBarIcon {
     // MARK: 数字 — monospaced percent text
 
     private static func renderPercent(_ percent: Double?, ink: NSColor) -> NSImage {
-        let text = percent.map { "\(Int($0.rounded()))%" } ?? "--"
+        let text = percent.map(QuotaFormat.percent) ?? "--"
         let attributed = NSAttributedString(
             string: text,
             attributes: [
@@ -536,11 +536,11 @@ extension Color {
 
 /// Brand logo (thesvg) with SF Symbol fallback.
 ///
-/// Several brand marks ship as a single flat colour — Codex, Kimi, z.ai and
+/// Several brand marks ship as a neutral flat colour — Kimi, z.ai and
 /// OpenCode are black; Cursor, Grok and Manus are white. Drawn as-is, each of
 /// them disappears against one of the two appearances. Monochrome marks are
 /// therefore detected and drawn as templates so they take the foreground
-/// colour; multi-colour marks (Claude, Gemini, DeepSeek, MiniMax) keep theirs.
+/// colour; coloured marks (Codex, Claude, Gemini, DeepSeek, MiniMax) keep theirs.
 struct ProviderGlyph: View {
     let id: ProviderID
     var size: CGFloat = 18
@@ -551,7 +551,7 @@ struct ProviderGlyph: View {
     /// Needed wherever the background is not the window's own: the always-dark
     /// surfaces (dock, widget, island) resolve `Color.primary` against the
     /// system appearance, which in light mode is black — and the black marks
-    /// (Codex, Cursor, OpenCode, z.ai, Kimi) then vanish into a black panel.
+    /// (Cursor, OpenCode, z.ai, Kimi) then vanish into a black panel.
     var tint: Color?
     /// `size` is for the drawn mark, not the image's box: a mark that leaves
     /// room round itself in its file is drawn larger to make up for it, so it

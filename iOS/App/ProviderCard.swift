@@ -19,13 +19,13 @@ struct ProviderCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 ProviderMark(id: item.provider, size: 22)
-                Text(item.provider.displayName)
+                Text(item.displayName)
                     .font(.headline)
                 if let chip = item.snapshot?.chipLabel {
                     PlanChip(text: chip)
                 }
                 Spacer(minLength: 0)
-                if let today = item.spend?.period("today"), !today.isEmpty {
+                if item.provider != .deepseek, let today = item.spend?.period("today"), !today.isEmpty {
                     Text(L10n.t("Today \(money.format(today.usd))", "今日 \(money.format(today.usd))"))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
@@ -56,13 +56,28 @@ struct ProviderCard: View {
             }
 
             if let snapshot = item.snapshot {
-                ForEach(snapshot.windows.filter { !$0.extra && $0.credit == nil }) { window in
+                let represented = Set(snapshot.balance?.representedWindowIDs ?? [])
+                let windows = item.provider == .deepseek ? [] : snapshot.windows.filter {
+                    !$0.extra && $0.credit == nil && !represented.contains($0.id)
+                }
+                ForEach(windows) { window in
                     WindowRow(window: window, pace: .whenItMatters, still: still)
                 }
-                if let balance = snapshot.balance, !balance.balances.isEmpty {
-                    Text(balance.balanceLine)
-                        .font(.title3.monospacedDigit().weight(.semibold))
+                if let balance = snapshot.balance {
+                    if windows.isEmpty {
+                        BalanceAmounts(balances: balance.balances)
+                    } else {
+                        Text(balance.balances.isEmpty ? "—" : balance.balanceLine)
+                            .font(.title3.monospacedDigit().weight(.semibold))
+                    }
+                } else if item.provider == .deepseek {
+                    BalanceAmounts(balances: [])
                 }
+                if windows.isEmpty, snapshot.balance != nil || item.provider == .deepseek {
+                    balanceUpdated(snapshot.fetchedAt)
+                }
+            } else if item.provider == .deepseek {
+                BalanceAmounts(balances: [])
             } else if item.error == nil {
                 Text(L10n.t("No reading yet", "暂无读数"))
                     .font(.footnote)
@@ -73,6 +88,66 @@ struct ProviderCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func balanceUpdated(_ fetchedAt: Date) -> some View {
+        if let still {
+            updatedLabel(fetchedAt, now: still)
+        } else {
+            TimelineView(.periodic(from: .now, by: 60)) { context in
+                updatedLabel(fetchedAt, now: context.date)
+            }
+        }
+    }
+
+    private func updatedLabel(_ fetchedAt: Date, now: Date) -> some View {
+        Text(L10n.t("Updated \(QuotaFormat.age(of: fetchedAt, now: now))", "\(QuotaFormat.age(of: fetchedAt, now: now))更新"))
+            .font(.caption2).foregroundStyle(.tertiary)
+    }
+}
+
+/// Each account currency keeps its own amount: one large figure, or two
+/// equally sized columns. A third currency wraps rather than being converted
+/// or dropped, and an unavailable balance remains unknown.
+struct BalanceAmounts: View {
+    let balances: [AccountBalance]
+
+    var body: some View {
+        if balances.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("—").font(.system(size: 32, weight: .semibold, design: .rounded))
+                Text(L10n.t("Balance unavailable", "尚未读到余额"))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        } else if let only = balances.first, balances.count == 1 {
+            amount(only, large: true)
+        } else {
+            LazyVGrid(columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)],
+                      alignment: .leading, spacing: 16) {
+                ForEach(balances, id: \.currency) { amount($0, large: false) }
+            }
+        }
+    }
+
+    private func amount(_ balance: AccountBalance, large: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(currencyLabel(balance.currency))
+                .font(.caption.weight(.medium)).foregroundStyle(.secondary)
+            Text(QuotaFormat.amount(balance.total, code: balance.currency))
+                .font(.system(size: large ? 34 : 30, weight: .semibold, design: .rounded).monospacedDigit())
+                .lineLimit(1).minimumScaleFactor(0.6)
+                .textSelection(.enabled)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func currencyLabel(_ currency: String) -> String {
+        switch currency.uppercased() {
+        case "CNY": L10n.t("CNY balance", "人民币余额")
+        case "USD": L10n.t("USD balance", "美元余额")
+        default: L10n.t("\(currency) balance", "\(currency) 余额")
+        }
     }
 }
 
@@ -157,10 +232,10 @@ struct WindowRow: View {
     }
 
     private func figure(_ used: Double) -> String {
-        let shown = Int(mode.shownPercent(fromUsed: used).rounded())
+        let shown = QuotaFormat.percent(mode.shownPercent(fromUsed: used))
         return switch mode {
-        case .remaining: L10n.t("\(shown)% left", "剩 \(shown)%")
-        case .used: L10n.t("\(shown)% used", "已用 \(shown)%")
+        case .remaining: L10n.t("\(shown) left", "剩 \(shown)")
+        case .used: L10n.t("\(shown) used", "已用 \(shown)")
         }
     }
 }

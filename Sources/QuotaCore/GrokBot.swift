@@ -35,6 +35,11 @@ public enum GrokBot {
         let includedUsageSuperGrokPlan: String?
         /// The tier as Grok names it, "SuperGrok".
         let grokPlanLabel: String?
+        /// The migrated X Subscription, distinct from the older linked
+        /// SuperGrok allowance and from isUnifiedBillingUser in Grok credits.
+        var isUnified: Bool? = nil
+        var cursorPlanName: String? = nil
+        var isTeamSeat: Bool? = nil
 
         var billing: Billing {
             if superGrokPlan != nil { return .grok }
@@ -91,6 +96,9 @@ public enum GrokBot {
     enum Reading: Sendable {
         /// SuperGrok pays: the row, the tier, and the account it belongs to.
         case row(UsageWindow, plan: String?, account: String?)
+        /// The authenticated account has migrated: the entire shared pool and
+        /// prepaid wallet, even when only Grok Bot is installed on this Mac.
+        case subscription(UsageSnapshot)
         /// A Cursor plan pays, so the row is on the Cursor card.
         case onCursorCard
         case needsAuthorization
@@ -116,6 +124,13 @@ public enum GrokBot {
             throw ProviderError.sessionExpired(L10n.t(
                 "Grok Bot's sign-in has run out. Open Grok Bot once and it renews it.",
                 "Grok Bot 的登录已过期。打开一次 Grok Bot，它会自己续期。"))
+        }
+        if status.isUnified == true {
+            let shared = await XSubscriptionClient.read(cookie: session.cookieHeader, account: session.email, sand: status)
+            if let snapshot = shared.snapshot { return .subscription(snapshot) }
+            throw ProviderError.usageUnavailable(L10n.t(
+                "This Grok Bot account has migrated, but its shared subscription could not be read.",
+                "这个 Grok Bot 账号已迁移，但暂未读到共享订阅。"))
         }
         guard belongsOnGrokCard(status, cursorCardShown: cursorCardShown) else { return .onCursorCard }
         guard let window = window(status) else { return .nothing }

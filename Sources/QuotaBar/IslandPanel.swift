@@ -403,7 +403,7 @@ private struct IslandSyncStatus: View {
     @State private var hovering = false
 
     private var latest: Date? {
-        store.enabled.compactMap { store.states[$0]?.snapshot?.fetchedAt }.max()
+        store.enabled.compactMap { store.displayPhase(for: $0)?.snapshot?.fetchedAt }.max()
     }
 
     var body: some View {
@@ -486,8 +486,9 @@ private struct IslandFailureList: View {
             ForEach(shown) { id in
                 IslandFailureRow(
                     id: id,
-                    reason: store.states[id]?.errorMessage ?? "",
-                    staleSince: store.states[id]?.staleReading?.snapshot.fetchedAt,
+                    name: store.displayName(for: id),
+                    reason: store.displayPhase(for: id)?.errorMessage ?? "",
+                    staleSince: store.displayPhase(for: id)?.staleReading?.snapshot.fetchedAt,
                     lines: lines) { open(id) }
             }
             if rest > 0 {
@@ -507,6 +508,7 @@ private struct IslandFailureList: View {
 
 private struct IslandFailureRow: View {
     let id: ProviderID
+    let name: String
     let reason: String
     /// When the numbers still on show were read; nil when there are none.
     let staleSince: Date?
@@ -519,7 +521,7 @@ private struct IslandFailureRow: View {
             HStack(spacing: 6) {
                 IslandGlyph(id: id, size: 12, tint: .white)
                     .frame(width: 14)
-                Text(id.displayName)
+                Text(name)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
@@ -550,8 +552,8 @@ private struct IslandFailureRow: View {
         .onHover { inside in withAnimation(Motion.animation(Motion.hoverFade)) { hovering = inside } }
         .onTapGesture(perform: action)
         .help((reason.isEmpty ? "" : reason + "\n")
-            + L10n.t("Click to open \(id.displayName) in Settings.", "点击在设置里打开 \(id.displayName)。"))
-        .accessibilityLabel("\(id.displayName): \(reason)")
+            + L10n.t("Click to open \(name) in Settings.", "点击在设置里打开 \(name)。"))
+        .accessibilityLabel("\(name): \(reason)")
         .accessibilityAddTraits(.isButton)
     }
 }
@@ -597,9 +599,9 @@ private struct IslandProviderBlock: View {
         }
     }
 
-    private var snapshot: UsageSnapshot? { store.states[id]?.snapshot }
+    private var snapshot: UsageSnapshot? { store.displayPhase(for: id)?.snapshot }
     /// The last refresh failed and these are older numbers.
-    private var stale: (snapshot: UsageSnapshot, reason: String)? { store.states[id]?.staleReading }
+    private var stale: (snapshot: UsageSnapshot, reason: String)? { store.displayPhase(for: id)?.staleReading }
 
     /// One window per horizon, two at most — the 5-hour and the 7-day when
     /// both exist, the one there is otherwise.
@@ -626,7 +628,7 @@ private struct IslandProviderBlock: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 IslandGlyph(id: id, size: 14, tint: .white)
-                Text(id.displayName)
+                Text(store.displayName(for: id))
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
@@ -734,7 +736,7 @@ private struct IslandProviderBlock: View {
 
     private var emptyTile: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(store.states[id]?.errorMessage ?? L10n.t("No reading yet.", "还没有读数。"))
+            Text(store.displayPhase(for: id)?.errorMessage ?? L10n.t("No reading yet.", "还没有读数。"))
                 .font(.system(size: 11))
                 .foregroundStyle(.white.opacity(0.5))
                 .lineLimit(3)
@@ -825,7 +827,7 @@ private struct IslandTile: View {
 
     private func figureView(size: CGFloat) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 1) {
-            Text("\(Int(percent.rounded()))")
+            Text(String(QuotaFormat.percent(percent).dropLast()))
                 .font(.system(size: size, weight: .semibold, design: .monospaced))
                 .foregroundStyle(figureColor)
                 .contentTransition(.numericText(value: percent))
@@ -876,7 +878,7 @@ private struct IslandTile: View {
                     .trim(from: 0, to: max(0.01, percent / 100))
                     .stroke(barTint, style: StrokeStyle(lineWidth: 6, lineCap: .round))
                     .rotationEffect(.degrees(-90))
-                Text("\(Int(percent.rounded()))")
+                Text(String(QuotaFormat.percent(percent).dropLast()))
                     .font(.system(size: 15, weight: .semibold, design: .monospaced))
                     .foregroundStyle(figureColor)
                     .contentTransition(.numericText(value: percent))

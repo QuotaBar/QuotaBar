@@ -18,11 +18,12 @@ struct ProviderDetail: View {
     /// Read afresh from the model, so a refresh while the page is open
     /// updates it.
     private var item: MergedReadings.Item? {
-        model.readings.items.first { $0.provider == provider }
+        model.readings.item(for: provider)
     }
 
     private var money: CloudMoney { model.readings.money }
-    private var accent: Color { Color(hex: provider.accentHex) }
+    private var accent: Color { Color(hex: (item?.provider ?? provider).accentHex) }
+    private var displayName: String { item?.displayName ?? provider.displayName }
 
     var body: some View {
         ScrollView {
@@ -36,17 +37,21 @@ struct ProviderDetail: View {
                     }
                     if let snapshot = item.snapshot {
                         windows(snapshot)
-                        if let credits = snapshot.resetCredits, credits.isShown {
+                        if item.provider != .deepseek, let credits = snapshot.resetCredits, credits.isShown {
                             ResetCreditsSection(credits: credits, accent: accent)
                         }
-                        if snapshot.windows.contains(where: { $0.credit != nil }) {
+                        if item.provider != .deepseek, snapshot.windows.contains(where: { $0.credit != nil }) {
                             CreditsSection(windows: snapshot.windows.filter { $0.credit != nil }, accent: accent)
                         }
-                        if let balance = snapshot.balance, !balance.balances.isEmpty {
-                            BalanceSection(balance: balance)
+                        if let balance = snapshot.balance {
+                            BalanceSection(balance: balance, showsUsage: item.provider != .deepseek)
+                        } else if item.provider == .deepseek {
+                            BalanceSection(balance: BalanceSheet(balances: []))
                         }
+                    } else if item.provider == .deepseek {
+                        BalanceSection(balance: BalanceSheet(balances: []))
                     }
-                    if let spend = item.spend {
+                    if item.provider != .deepseek, let spend = item.spend {
                         SpendSection(spend: spend, money: money)
                         TrendSection(spend: spend, accent: accent)
                     }
@@ -65,7 +70,7 @@ struct ProviderDetail: View {
         }
         .refreshable { await model.refresh() }
         .background(Color.black)
-        .navigationTitle(headerHidden ? provider.displayName : "")
+        .navigationTitle(headerHidden ? displayName : "")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
         .toolbar {
@@ -133,10 +138,10 @@ struct ProviderDetail: View {
 
     private func header(_ item: MergedReadings.Item) -> some View {
         HStack(spacing: 12) {
-            ProviderMark(id: provider, size: 36)
+            ProviderMark(id: item.provider, size: 36)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    Text(provider.displayName).font(.title2.weight(.semibold))
+                    Text(item.displayName).font(.title2.weight(.semibold))
                     if let chip = item.snapshot?.chipLabel { PlanChip(text: chip) }
                 }
                 if let account = item.snapshot?.account {
@@ -151,12 +156,18 @@ struct ProviderDetail: View {
         .padding(.top, 8)
     }
 
+    @ViewBuilder
     private func windows(_ snapshot: UsageSnapshot) -> some View {
-        Section(L10n.t("Limits", "额度")) {
-            VStack(alignment: .leading, spacing: 14) {
-                // Balances have a section of their own below.
-                ForEach(snapshot.windows.filter { $0.credit == nil }) { window in
-                    WindowRow(window: window, pace: .always)
+        let represented = Set(snapshot.balance?.representedWindowIDs ?? [])
+        let windows = provider == .deepseek ? [] : snapshot.windows.filter {
+            $0.credit == nil && !represented.contains($0.id)
+        }
+        if !windows.isEmpty {
+            Section(L10n.t("Limits", "额度")) {
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(windows) { window in
+                        WindowRow(window: window, pace: .always)
+                    }
                 }
             }
         }
@@ -416,19 +427,13 @@ private struct CreditsSection: View {
 
 private struct BalanceSection: View {
     let balance: BalanceSheet
+    var showsUsage = true
 
     var body: some View {
         Section(L10n.t("Balance", "余额")) {
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(balance.balances, id: \.currency) { item in
-                    HStack {
-                        Text(item.currency).foregroundStyle(.secondary)
-                        Spacer()
-                        Text(QuotaFormat.amount(item.total, code: item.currency))
-                            .font(.title3.monospacedDigit().weight(.semibold))
-                    }
-                }
-                ForEach(KeyUsagePeriod.allCases.filter { balance.usage[$0]?.isEmpty == false }) { period in
+                BalanceAmounts(balances: balance.balances)
+                ForEach(showsUsage ? KeyUsagePeriod.allCases.filter { balance.usage[$0]?.isEmpty == false } : []) { period in
                     if let figures = balance.usage[period] {
                         HStack {
                             Text(period.displayName).foregroundStyle(.secondary)

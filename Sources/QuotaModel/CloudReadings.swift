@@ -239,8 +239,14 @@ extension CloudReadings {
             if let snapshot = entry.snapshot {
                 line.append(snapshot.planName ?? "")
                 line.append(snapshot.edition ?? "")
+                if let subscription = snapshot.xSubscription {
+                    line.append("x-subscription:\(subscription.tier)")
+                    line.append("workspace:\(subscription.workspaceID ?? "")")
+                    line.append("seat:\(subscription.seatID ?? "")")
+                    line.append("members:\(subscription.memberProviders.map(\.rawValue).joined(separator: ","))")
+                }
                 for window in snapshot.windows {
-                    let used = window.usedPercent.map { String(Int($0.rounded())) } ?? "-"
+                    let used = window.usedPercent.map { snapshot.xSubscription == nil ? String(Int($0.rounded())) : QuotaFormat.percent($0) } ?? "-"
                     let reset = window.resetsAt.map { String(Int(($0.timeIntervalSince1970 / 60).rounded())) } ?? "-"
                     line.append("\(window.id)=\(used)@\(reset)")
                 }
@@ -271,6 +277,7 @@ public struct MergedReadings: Sendable {
         public var deviceUpdatedAt: Date
 
         public var id: String { provider.rawValue }
+        public var displayName: String { snapshot?.displayName(for: provider) ?? provider.displayName }
     }
 
     public var items: [Item]
@@ -324,7 +331,20 @@ public struct MergedReadings: Sendable {
                 if Self.isNewer(item, than: current) { best[provider] = item }
             }
         }
-        items = order.compactMap { best[$0] }
+        let projection = XSubscriptionGrouping.project(best.compactMapValues(\.snapshot), presentProviders: Set(best.keys))
+        var shown = Set<ProviderID>()
+        items = order.compactMap { provider in
+            let owner = projection.owner(for: provider)
+            guard shown.insert(owner).inserted else { return nil }
+            let source = projection.authoritativeProviders[owner] ?? owner
+            guard var item = best[source] else { return nil }
+            item.provider = owner
+            item.snapshot = projection.snapshots[owner]
+            if item.snapshot?.xSubscription != nil {
+                item.links = CloudLinks(console: URL(string: "https://grok.com/dashboard"))
+            }
+            return item
+        }
         updatedAt = newestFirst.first?.updatedAt
         refreshSeconds = newestFirst.first?.refreshSeconds
         latestDeviceName = newestFirst.first?.deviceName
@@ -334,15 +354,33 @@ public struct MergedReadings: Sendable {
         money = newestFirst.first?.money ?? CloudMoney()
     }
 
+    /// A saved Cursor widget or link still reaches its verified shared card.
+    /// A direct card wins when Cursor has since changed to another account.
+    public func item(for provider: ProviderID) -> Item? {
+        items.first { $0.provider == provider }
+            ?? items.first { item in
+                guard let info = item.snapshot?.xSubscription, info.verifiedIdentity != nil else { return false }
+                return info.memberProviders.contains(provider)
+            }
+    }
+
     /// In the order the owner dragged the cards into on the phone. A
     /// provider the order has never seen — newly enabled on a Mac — goes at
     /// the end, in the Mac's order, rather than jumping to the top.
     public func ordered(by saved: [String]) -> MergedReadings {
         var copy = self
         let rank = Dictionary(saved.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        let direct = Set(items.map(\.provider))
+        func savedRank(_ item: Item) -> Int? {
+            var names = [item.provider]
+            if let info = item.snapshot?.xSubscription, info.verifiedIdentity != nil {
+                names += info.memberProviders.filter { !direct.contains($0) }
+            }
+            return names.compactMap { rank[$0.rawValue] }.min()
+        }
         let indexed = items.enumerated().map { (offset: $0.offset, item: $0.element) }
         copy.items = indexed.sorted { a, b in
-            switch (rank[a.item.provider.rawValue], rank[b.item.provider.rawValue]) {
+            switch (savedRank(a.item), savedRank(b.item)) {
             case let (x?, y?): x < y
             case (.some, nil): true
             case (nil, .some): false

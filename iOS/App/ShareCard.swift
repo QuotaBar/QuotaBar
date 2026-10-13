@@ -116,7 +116,7 @@ struct CardShareActions: View {
         }
         Button {
             guard let image = image else { return }
-            CardImage.share(image, title: L10n.t("\(item.provider.displayName) limits", "\(item.provider.displayName) 额度"))
+            CardImage.share(image, title: L10n.t("\(item.displayName) limits", "\(item.displayName) 额度"))
         } label: {
             Label(L10n.t("Share Image…", "分享图片…"), systemImage: "square.and.arrow.up")
         }

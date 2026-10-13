@@ -59,8 +59,8 @@ extension UsageStore {
         resetCheckTask?.cancel()
         let now = Date()
         var due: [(id: ProviderID, at: Date)] = []
-        for id in enabled {
-            guard let snapshot = states[id]?.snapshot else { continue }
+        for id in displayProviders(enabled) {
+            guard let snapshot = displayPhase(for: id)?.snapshot else { continue }
             if let next = ResetDetector.nextCheck(for: snapshot, after: now) {
                 due.append((id, next))
             }

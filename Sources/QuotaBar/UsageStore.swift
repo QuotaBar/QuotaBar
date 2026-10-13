@@ -319,7 +319,7 @@ final class UsageStore: ObservableObject {
     /// menu bar is telling you about.
     var meterReading: MeterReading {
         let sources: [ProviderID] = selected.map { [$0] } ?? enabled
-        var reading = MeterReading.across(sources.compactMap { states[$0]?.snapshot })
+        var reading = MeterReading.across(displayProviders(sources).compactMap { displayPhase(for: $0)?.snapshot })
         // One provider on show: its single figure is the window the owner
         // picked for it, here as everywhere else.
         if let selected, pickedHeadlineWindow(for: selected) != nil {
@@ -336,11 +336,11 @@ final class UsageStore: ObservableObject {
     /// limit while the dock's ring follows the week. The menu bar goes with
     /// the card: double-clicking a limit there is how its figure is chosen.
     func headlinePercent(for id: ProviderID, on place: FigurePlace = .card) -> Double? {
-        states[id]?.snapshot?.headlinePercent(preferring: pickedHeadlineWindow(for: id, on: place))
+        displayPhase(for: id)?.snapshot?.headlinePercent(preferring: pickedHeadlineWindow(for: id, on: place))
     }
 
     func headlineWindow(for id: ProviderID, on place: FigurePlace = .card) -> UsageWindow? {
-        states[id]?.snapshot?.headlineWindow(preferring: pickedHeadlineWindow(for: id, on: place))
+        displayPhase(for: id)?.snapshot?.headlineWindow(preferring: pickedHeadlineWindow(for: id, on: place))
     }
 
     /// The pick itself, whether or not the provider currently reports it.
@@ -373,8 +373,8 @@ final class UsageStore: ObservableObject {
     /// The enabled provider currently closest to its limit (for alert captions).
     var hottestProvider: (id: ProviderID, percent: Double)? {
         var best: (ProviderID, Double)?
-        for id in enabled {
-            guard let percent = states[id]?.snapshot?.headlinePercent else { continue }
+        for id in displayProviders(enabled) {
+            guard let percent = displayPhase(for: id)?.snapshot?.headlinePercent else { continue }
             if best == nil || percent > best!.1 { best = (id, percent) }
         }
         return best
@@ -383,7 +383,7 @@ final class UsageStore: ObservableObject {
     /// Providers whose most recent refresh failed — surfaced in the footer so a
     /// dead credential is visible without opening every tile.
     var failingProviders: [ProviderID] {
-        enabled.filter { states[$0]?.errorMessage != nil }
+        displayProviders(enabled).filter { displayPhase(for: $0)?.errorMessage != nil }
     }
 
     /// Providers with no reading whose last refresh failed, being read again.
@@ -413,7 +413,8 @@ final class UsageStore: ObservableObject {
 
     func refresh(_ id: ProviderID) {
         guard isEnabled(id), !isLoading(id) else { return }
-        refresh([id])
+        let owner = displayProvider(id)
+        refresh(enabled.filter { displayProvider($0) == owner && !isLoading($0) })
     }
 
     /// Fetches every provider concurrently and applies each result the moment
@@ -611,13 +612,16 @@ final class UsageStore: ObservableObject {
                 carryWindowChoices(for: id, from: old, to: snapshot.windows)
             }
             let previousReading = reported[id]
+            let previousVisible = snapshot.xSubscription != nil ? displayPhase(for: id)?.snapshot : states[id]?.snapshot
             reported[id] = snapshot
             if Self.profileProviders.contains(id) { accountReadings[profileAccountKey(id)] = snapshot }
             noteResetCredits(id, previous: previousReading, current: snapshot.resetCredits)
             if snapshot.balance != nil || previousReading?.balance != nil { evaluateBalanceNotices() }
             let visible = shown(snapshot, for: id)
-            let resets = ResetDetector.events(provider: id, previous: states[id]?.snapshot, current: visible)
             states[id] = .loaded(visible)
+            let owner = displayProvider(id)
+            let currentVisible = displayPhase(for: owner)?.snapshot ?? visible
+            let resets = ResetDetector.events(provider: owner, previous: previousVisible, current: currentVisible)
             if !resets.isEmpty { noteResets(resets, before: before) }
             SnapshotCache.shared.store(snapshot, for: id)
             run.record(id, snapshot)
@@ -728,7 +732,8 @@ final class UsageStore: ObservableObject {
     /// The console for the account in use — the kimi.ai one for a global
     /// Kimi Code sign-in — else the provider's usual one.
     func dashboardURL(for id: ProviderID) -> URL? {
-        sourceInfo[id]?.consoleURL ?? id.dashboardURL
+        if displayPhase(for: id)?.snapshot?.xSubscription != nil { return URL(string: "https://grok.com/dashboard") }
+        return sourceInfo[id]?.consoleURL ?? id.dashboardURL
     }
 
     /// Raises the keychain dialog for Claude Code's item — the only place the
@@ -957,17 +962,21 @@ final class UsageStore: ObservableObject {
         LowQuota.level(used: islandShown.map { headlinePercent(for: $0, on: .island) })
     }
     var dockProviders: [ProviderID] { surfaceProviders(.dock, pin: dockPin) }
-    var panelProviders: [ProviderID] { experience.visible(enabled, on: .panel) }
+    var panelProviders: [ProviderID] { displayProviders(experience.visible(enabled, on: .panel)) }
 
     private func surfaceProviders(_ surface: DisplaySurface, pin: ProviderID?) -> [ProviderID] {
-        if let pin, enabled.contains(pin) { return [pin] }
-        return experience.visible(enabled, on: surface)
+        if let pin, enabled.contains(pin) { return displayProviders([pin]) }
+        return displayProviders(experience.visible(enabled, on: surface))
     }
 
     /// Hides a provider from one surface or shows it there again. It stays
     /// enabled either way.
     func setHidden(_ hidden: Bool, _ id: ProviderID, on surface: DisplaySurface) {
-        updateExperience { $0.setHidden(hidden, id, on: surface) }
+        let owner = displayProvider(id)
+        let members = enabled.filter { displayProvider($0) == owner }
+        updateExperience { prefs in
+            for member in members { prefs.setHidden(hidden, member, on: surface) }
+        }
         switch surface {
         case .dock: dockRevision &+= 1
         case .island: islandRevision &+= 1
@@ -978,7 +987,8 @@ final class UsageStore: ObservableObject {
 
     /// Enabled providers hidden from a surface.
     func hiddenProviders(on surface: DisplaySurface) -> [ProviderID] {
-        enabled.filter { experience.isHidden($0, on: surface) }
+        let visible = Set(displayProviders(experience.visible(enabled, on: surface)))
+        return displayProviders(enabled.filter { experience.isHidden($0, on: surface) }).filter { !visible.contains($0) }
     }
 
     func setIslandPin(_ id: ProviderID?) {
@@ -1007,7 +1017,7 @@ final class UsageStore: ObservableObject {
             }
             if !widgetEnabled { setWidgetEnabled(true) }
         } else if let previous {
-            for card in experience.deskCards where card.provider == previous {
+            for card in experience.deskCards where card.provider.map(displayProvider) == displayProvider(previous) {
                 updateDeskCard(card.id) { $0.provider = nil }
             }
         }
@@ -1017,7 +1027,7 @@ final class UsageStore: ObservableObject {
 
     /// Whether some desktop card shows this provider alone.
     func isPinnedToDesktop(_ id: ProviderID) -> Bool {
-        widgetEnabled && experience.deskCards.contains { $0.provider == id && $0.style.singleProvider }
+        widgetEnabled && experience.deskCards.contains { $0.provider.map(displayProvider) == displayProvider(id) && $0.style.singleProvider }
     }
 
     // MARK: Screen

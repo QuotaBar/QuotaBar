@@ -851,6 +851,10 @@ public struct UsageSnapshot: Sendable {
     /// The credential the reading came from, as a stable id —
     /// `KimiSource.rawValue` — for providers that take more than one.
     public var source: String?
+    /// Set only after the service explicitly identifies an X Subscription.
+    /// Its verified workspace and seat identify one shared allowance across
+    /// Cursor and Grok; an email or an old unified-billing flag does not.
+    public var xSubscription: XSubscriptionInfo?
 
     public init(
         planName: String? = nil,
@@ -860,7 +864,8 @@ public struct UsageSnapshot: Sendable {
         resetCredits: ResetCredits? = nil,
         balance: BalanceSheet? = nil,
         edition: String? = nil,
-        source: String? = nil)
+        source: String? = nil,
+        xSubscription: XSubscriptionInfo? = nil)
     {
         self.planName = planName
         self.account = account
@@ -870,6 +875,11 @@ public struct UsageSnapshot: Sendable {
         self.balance = balance
         self.edition = edition
         self.source = source
+        self.xSubscription = xSubscription
+    }
+
+    public func displayName(for provider: ProviderID) -> String {
+        xSubscription == nil ? provider.displayName : "X Subscription"
     }
 
     /// "Global", "国内版".
@@ -891,7 +901,7 @@ public struct UsageSnapshot: Sendable {
     /// The chip beside the provider's name: the plan and the edition, either
     /// one alone, or nothing. Not yet upper-cased; each surface styles it.
     public var chipLabel: String? {
-        let parts = [planName, editionLabel]
+        let parts = [xSubscription?.tierLabel ?? planName, editionLabel]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
@@ -901,7 +911,7 @@ public struct UsageSnapshot: Sendable {
     /// alone for a header too narrow for both. Empty when there is no chip.
     public var chipLabels: [String] {
         guard let full = chipLabel else { return [] }
-        guard let plan = planName?.trimmingCharacters(in: .whitespacesAndNewlines), !plan.isEmpty, plan != full else {
+        guard let plan = (xSubscription?.tierLabel ?? planName)?.trimmingCharacters(in: .whitespacesAndNewlines), !plan.isEmpty, plan != full else {
             return [full]
         }
         return [full, plan]
@@ -1084,6 +1094,10 @@ public enum QuotaFormat {
     }
 
     public static func percent(_ value: Double) -> String {
+        // Small real usage must never read as an exact zero (or as a full
+        // remaining allowance) simply because the caption rounds to a tenth.
+        if value > 0 && value < 0.05 { return "<0.1%" }
+        if value >= 99.95 && value < 100 { return ">99.9%" }
         let rounded = (value * 10).rounded() / 10
         return rounded.truncatingRemainder(dividingBy: 1) == 0
             ? "\(Int(rounded))%"

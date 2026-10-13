@@ -150,20 +150,20 @@ extension UsageStore {
     /// The provider a single-provider card shows: its own, else the one the
     /// menu bar follows, else the one closest to its limit.
     func deskProvider(_ card: DeskCard) -> ProviderID? {
-        if let provider = card.provider, enabled.contains(provider) { return provider }
-        let shown = experience.visible(enabled, on: .desktop)
-        if let selected, shown.contains(selected) { return selected }
+        if let provider = card.provider, enabled.contains(provider) { return displayProvider(provider) }
+        let shown = displayProviders(experience.visible(enabled, on: .desktop))
+        if let selected, shown.contains(displayProvider(selected)) { return displayProvider(selected) }
         return shown.max { (headlinePercent(for: $0) ?? -1) < (headlinePercent(for: $1) ?? -1) }
     }
 
     /// The providers a multi-provider card shows.
     func deskProviders(_ card: DeskCard) -> [ProviderID] {
-        if let provider = card.provider, enabled.contains(provider) { return [provider] }
-        return experience.visible(enabled, on: .desktop)
+        if let provider = card.provider, enabled.contains(provider) { return displayProviders([provider]) }
+        return displayProviders(experience.visible(enabled, on: .desktop))
     }
 
     func deskWindows(_ id: ProviderID) -> (lead: UsageWindow?, other: UsageWindow?, all: [UsageWindow]) {
-        let windows = states[id]?.snapshot?.windows.filter { $0.usedPercent != nil } ?? []
+        let windows = displayPhase(for: id)?.snapshot?.windows.filter { $0.usedPercent != nil } ?? []
         let lead = headlineWindow(for: id) ?? windows.first
         let other = windows.first { $0.id != lead?.id && $0.horizon != lead?.horizon && $0.scope == nil }
             ?? windows.first { $0.id != lead?.id }
@@ -180,7 +180,7 @@ extension UsageStore {
 
     func deskPill(_ id: ProviderID) -> (text: String, color: Color)? {
         // A window that just reset says so in place of the status for a while.
-        if let windows = states[id]?.snapshot?.windows, windows.contains(where: { justReset(id, window: $0.id) }) {
+        if let windows = displayPhase(for: id)?.snapshot?.windows, windows.contains(where: { justReset(id, window: $0.id) }) {
             return (L10n.t("Just reset", "刚刚重置"), id.accent)
         }
         guard let status = serviceStatus[id] else { return nil }
@@ -188,7 +188,7 @@ extension UsageStore {
     }
 
     func deskUpdated(_ ids: [ProviderID]) -> String {
-        Desk.clock(ids.compactMap { states[$0]?.snapshot?.fetchedAt }.max())
+        Desk.clock(ids.compactMap { displayPhase(for: $0)?.snapshot?.fetchedAt }.max())
     }
 
     /// Percent shown on a card, in the used-or-left mode.
@@ -235,13 +235,13 @@ private struct DeskFocus: View {
     private func content(_ id: ProviderID) -> some View {
         let windows = store.deskWindows(id)
         let used = windows.lead?.usedPercent ?? 0
-        let snapshot = store.states[id]?.snapshot
+        let snapshot = store.displayPhase(for: id)?.snapshot
         let compact = card.size == .small
         DeskFrame(size: card.size) {
-            DeskHeader(title: id.displayName, id: id, plan: snapshot?.chipLabel, pill: store.deskPill(id), compact: compact)
+            DeskHeader(title: store.displayName(for: id), id: id, plan: snapshot?.chipLabel, pill: store.deskPill(id), compact: compact)
             Spacer(minLength: compact ? 6 : 10)
             HStack(alignment: .firstTextBaseline, spacing: 3) {
-                Text(windows.lead == nil ? "—" : "\(Int(store.deskShown(used).rounded()))")
+                Text(windows.lead == nil ? "—" : String(QuotaFormat.percent(store.deskShown(used)).dropLast()))
                     .font(.system(size: compact ? 44 : 52, weight: .semibold, design: .monospaced))
                     .foregroundStyle(Desk.figureColor(used))
                     .contentTransition(.numericText(value: used))
@@ -252,7 +252,7 @@ private struct DeskFocus: View {
             if !compact {
                 Spacer(minLength: 10)
                 HStack(spacing: 0) {
-                    DeskStat(value: windows.other?.usedPercent.map { "\(Int(store.deskShown($0).rounded()))%" } ?? "—",
+                    DeskStat(value: windows.other?.usedPercent.map { QuotaFormat.percent(store.deskShown($0)) } ?? "—",
                              label: windows.other?.displayName ?? "—", color: Desk.green)
                     StatDivider()
                     DeskStat(value: id.costSource.map { QuotaFormat.moneyCompact(store.cost.spend(.today).bySource[$0] ?? 0) } ?? (windows.lead?.pace()?.verdict == .over ? L10n.t("Fast", "偏快") : "—"),
@@ -270,7 +270,7 @@ private struct DeskFocus: View {
                     }
                 }
                 Spacer(minLength: 10)
-                DeskFooter(symbol: "person.crop.circle", text: store.isPrivacyMasked ? id.displayName : (snapshot?.account ?? id.displayName), time: store.deskUpdated([id]))
+                DeskFooter(symbol: "person.crop.circle", text: store.isPrivacyMasked ? store.displayName(for: id) : (snapshot?.account ?? store.displayName(for: id)), time: store.deskUpdated([id]))
             } else {
                 Spacer(minLength: 4)
             }
@@ -299,7 +299,7 @@ private struct DeskWindowLine: View {
                 Text(window.displayName).font(.system(size: 11, weight: .medium)).foregroundStyle(.white.opacity(0.8)).lineLimit(1)
                 Spacer()
                 Text(window.resetsAt.map { QuotaFormat.tick(to: $0) } ?? "").font(.system(size: 10, design: .monospaced)).foregroundStyle(.white.opacity(0.4))
-                Text("\(Int(store.deskShown(used).rounded()))%").font(.system(size: 11, weight: .semibold, design: .monospaced)).foregroundStyle(Desk.figureColor(used)).frame(width: 36, alignment: .trailing)
+                Text(QuotaFormat.percent(store.deskShown(used))).font(.system(size: 11, weight: .semibold, design: .monospaced)).foregroundStyle(Desk.figureColor(used)).frame(width: 36, alignment: .trailing)
             }
             Meter(percent: store.deskShown(used), tint: Color(hex: UsageRamp.hex(used: used)), style: store.meterStyle, height: 4, track: .white.opacity(0.1))
                 .paceTick(window, mode: store.meterMode, always: store.experience.alwaysShowPace)
@@ -328,9 +328,9 @@ private struct DeskGauge: View {
         let windows = store.deskWindows(id)
         let used = windows.lead?.usedPercent ?? 0
         let pace = windows.lead?.pace()
-        let snapshot = store.states[id]?.snapshot
+        let snapshot = store.displayPhase(for: id)?.snapshot
         DeskFrame(size: card.size) {
-            DeskHeader(title: id.displayName, id: id, plan: snapshot?.chipLabel, pill: store.deskPill(id), compact: card.size == .small)
+            DeskHeader(title: store.displayName(for: id), id: id, plan: snapshot?.chipLabel, pill: store.deskPill(id), compact: card.size == .small)
             if card.size == .small {
                 Spacer(minLength: 4)
                 HStack {
@@ -350,7 +350,7 @@ private struct DeskGauge: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(windows.lead?.displayName ?? "—").font(.system(size: 12)).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
                         HStack(alignment: .firstTextBaseline, spacing: 3) {
-                            Text(windows.lead == nil ? "—" : "\(Int(store.deskShown(used).rounded()))")
+                            Text(windows.lead == nil ? "—" : String(QuotaFormat.percent(store.deskShown(used)).dropLast()))
                                 .font(.system(size: 46, weight: .semibold, design: .monospaced)).foregroundStyle(Desk.figureColor(used))
                                 .contentTransition(.numericText(value: used))
                             Text("% \(store.deskShownLabel)").font(.system(size: 14, weight: .medium)).foregroundStyle(.white.opacity(0.6))
@@ -364,7 +364,7 @@ private struct DeskGauge: View {
                     tile("clock", windows.lead?.resetsAt.map { QuotaFormat.tick(to: $0) } ?? "—", L10n.t("to reset", "后重置"), padding: medium ? 6 : 8)
                     tile("flame", pace.map { $0.runOutSeconds.map { QuotaFormat.tick(to: Date().addingTimeInterval($0)) } ?? L10n.t("OK", "够用") } ?? "—",
                          L10n.t("runs out", "预计用完"), tint: pace?.verdict == .over || pace?.verdict == .spent ? Palette.red : Desk.green, padding: medium ? 6 : 8)
-                    tile("calendar", windows.other?.usedPercent.map { "\(Int(store.deskShown($0).rounded()))%" } ?? "—", windows.other?.displayName ?? "—", padding: medium ? 6 : 8)
+                    tile("calendar", windows.other?.usedPercent.map { QuotaFormat.percent(store.deskShown($0)) } ?? "—", windows.other?.displayName ?? "—", padding: medium ? 6 : 8)
                 }
                 if card.size == .large {
                     Spacer(minLength: 12)
@@ -375,7 +375,7 @@ private struct DeskGauge: View {
                     }
                 }
                 Spacer(minLength: medium ? 6 : 8)
-                DeskFooter(symbol: "person.crop.circle", text: store.isPrivacyMasked ? id.displayName : (snapshot?.account ?? id.displayName), time: store.deskUpdated([id]))
+                DeskFooter(symbol: "person.crop.circle", text: store.isPrivacyMasked ? store.displayName(for: id) : (snapshot?.account ?? store.displayName(for: id)), time: store.deskUpdated([id]))
             }
         }
     }
@@ -389,7 +389,7 @@ private struct DeskGauge: View {
                 .animation(Motion.animation(.easeOut(duration: 0.4)), value: shown)
             if figure {
                 VStack(spacing: 0) {
-                    Text(used == nil ? "—" : "\(Int(shown.rounded()))%").font(.system(size: 20, weight: .semibold, design: .monospaced)).foregroundStyle(.white)
+                    Text(used == nil ? "—" : QuotaFormat.percent(shown)).font(.system(size: 20, weight: .semibold, design: .monospaced)).foregroundStyle(.white)
                     ProviderGlyph(id: id, size: 12, tint: .white.opacity(0.7))
                 }
             } else {
@@ -621,7 +621,7 @@ private struct DeskGrid: View {
             HStack(spacing: 5) {
                 ProviderGlyph(id: id, size: big ? 14 : 12, tint: .white)
                 if big {
-                    Text(id.displayName).font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
+                    Text(store.displayName(for: id)).font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
                 }
                 Spacer(minLength: 0)
             }
@@ -636,7 +636,7 @@ private struct DeskGrid: View {
                 Text(L10n.t("Balance", "余额")).font(.system(size: 10)).foregroundStyle(.white.opacity(0.45)).lineLimit(1)
             } else {
                 HStack(alignment: .firstTextBaseline, spacing: 1) {
-                    Text(window == nil ? "—" : "\(Int(store.deskShown(used).rounded()))")
+                    Text(window == nil ? "—" : String(QuotaFormat.percent(store.deskShown(used)).dropLast()))
                         .font(.system(size: big ? 30 : 22, weight: .semibold, design: .monospaced)).foregroundStyle(Desk.figureColor(used))
                         .lineLimit(1).minimumScaleFactor(0.6)
                         .contentTransition(.numericText(value: used))
@@ -657,9 +657,9 @@ private struct DeskGrid: View {
         return VStack(spacing: 4) {
             HStack(spacing: 6) {
                 ProviderGlyph(id: id, size: 13, tint: .white)
-                Text(id.displayName).font(.system(size: 11, weight: .medium)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
+                Text(store.displayName(for: id)).font(.system(size: 11, weight: .medium)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
                 Spacer(minLength: 2)
-                Text(reading == nil ? store.balanceFigure(for: id) ?? "—" : "\(Int(store.deskShown(used).rounded()))%").font(.system(size: 13, weight: .semibold, design: .monospaced)).foregroundStyle(Desk.figureColor(used))
+                Text(reading == nil ? store.balanceFigure(for: id) ?? "—" : QuotaFormat.percent(store.deskShown(used))).font(.system(size: 13, weight: .semibold, design: .monospaced)).foregroundStyle(Desk.figureColor(used))
             }
             if reading != nil || store.balanceFigure(for: id) == nil {
                 Meter(percent: store.deskFill(reading), tint: Color(hex: UsageRamp.hex(used: used)), style: .stepped, height: 4, track: .white.opacity(0.1))
@@ -708,12 +708,12 @@ private struct DeskRanking: View {
             ProviderGlyph(id: id, size: compact ? 14 : 18, tint: .white)
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text(id.displayName).font(.system(size: compact ? 11 : 12, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+                    Text(store.displayName(for: id)).font(.system(size: compact ? 11 : 12, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
                     Spacer(minLength: 2)
                     if !compact {
                         Text(window?.resetsAt.map { QuotaFormat.tick(to: $0) } ?? "").font(.system(size: 10, design: .monospaced)).foregroundStyle(.white.opacity(0.45))
                     }
-                    Text(window == nil ? store.balanceFigure(for: id) ?? "—" : "\(Int(store.deskShown(used).rounded()))%")
+                    Text(window == nil ? store.balanceFigure(for: id) ?? "—" : QuotaFormat.percent(store.deskShown(used)))
                         .font(.system(size: compact ? 12 : 13, weight: .semibold, design: .monospaced)).foregroundStyle(Desk.figureColor(used))
                         .lineLimit(1).minimumScaleFactor(0.7)
                         .frame(width: compact ? 34 : 42, alignment: .trailing)

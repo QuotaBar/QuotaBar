@@ -69,10 +69,10 @@ struct OverviewWidgetView: View {
                     .aspectRatio(1, contentMode: .fit)
                     .frame(maxWidth: columns == 2 && family == .systemLarge ? 104 : .infinity)
                     if family != .systemSmall {
-                        Text(used(item).map { "\(Int((100 - $0).rounded()))%" } ?? "—")
+                        Text(used(item).map { QuotaFormat.percent(100 - $0) } ?? "—")
                             .font(.caption.weight(.semibold).monospacedDigit())
                             .foregroundStyle(used(item).map { Color.usage($0) } ?? .secondary)
-                        Text(item.provider.displayName)
+                        Text(item.displayName)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -92,14 +92,14 @@ struct OverviewWidgetView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         ProviderMark(id: item.provider, size: 14)
-                        Text(item.provider.displayName)
+                        Text(item.displayName)
                             .font(.caption.weight(.semibold))
                             .lineLimit(1)
                         Spacer(minLength: 4)
                         if item.error != nil {
                             Image(systemName: "exclamationmark.triangle.fill").font(.caption2).foregroundStyle(.orange)
                         }
-                        Text(self.used(item).map { "\(Int((100 - $0).rounded()))%" } ?? "—")
+                        Text(self.used(item).map { QuotaFormat.percent(100 - $0) } ?? "—")
                             .font(.caption.weight(.semibold).monospacedDigit())
                             .foregroundStyle(used.map { Color.usage($0) } ?? .secondary)
                     }
@@ -126,7 +126,7 @@ struct OverviewWidgetView: View {
                 HStack(spacing: 8) {
                     ProviderMark(id: item.provider, size: 16)
                     if family != .systemSmall {
-                        Text(item.provider.displayName)
+                        Text(item.displayName)
                             .font(.caption.weight(.semibold))
                             .lineLimit(1)
                     }
@@ -152,7 +152,7 @@ struct OverviewWidgetView: View {
                 if badge, let label = window.shortLabel {
                     Text(label).font(.caption2).foregroundStyle(.secondary)
                 }
-                Text(used.map { "\(Int((100 - $0).rounded()))%" } ?? "—")
+                Text(used.map { QuotaFormat.percent(100 - $0) } ?? "—")
                     .font(.caption.weight(.semibold).monospacedDigit())
                     .foregroundStyle(used.map { Color.usage($0) } ?? .secondary)
             }
@@ -166,9 +166,9 @@ struct OverviewWidgetView: View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(items) { item in
                 HStack(spacing: 4) {
-                    Text(item.provider.displayName).lineLimit(1)
+                    Text(item.displayName).lineLimit(1)
                     Spacer(minLength: 2)
-                    Text(used(item).map { "\(Int((100 - $0).rounded()))%" } ?? "—")
+                    Text(used(item).map { QuotaFormat.percent(100 - $0) } ?? "—")
                         .monospacedDigit()
                         .widgetAccentable()
                 }

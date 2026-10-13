@@ -11,6 +11,7 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
+            ScrollViewReader { reader in
             // A List rather than a stack of cards in a ScrollView: its rows
             // reorder with the system's own long-press drag (`onMove`), no
             // edit mode, and a tap still opens the detail.
@@ -51,6 +52,7 @@ struct ContentView: View {
                         CardShareActions(item: item, model: model, notice: $notice)
                     }
                     .modifier(CardRows())
+                    .id(item.id)
                 }
                 .onMove { from, to in
                     withAnimation(.snappy) { model.move(fromOffsets: from, toOffset: to) }
@@ -85,8 +87,19 @@ struct ContentView: View {
                 path = [provider]
             }
             #endif
-                        .navigationDestination(for: ProviderID.self) { provider in
+            #if DEBUG
+            // Scroll a real quota card into view without changing its order.
+            .task {
+                let arguments = ProcessInfo.processInfo.arguments
+                guard let index = arguments.firstIndex(of: "-QuotaBarScrollToProvider"), index + 1 < arguments.count,
+                      let provider = ProviderID(stored: arguments[index + 1]) else { return }
+                try? await Task.sleep(for: .seconds(0.5))
+                reader.scrollTo(model.readings.item(for: provider)?.id ?? provider.rawValue, anchor: .bottom)
+            }
+            #endif
+            .navigationDestination(for: ProviderID.self) { provider in
                 ProviderDetail(model: model, provider: provider, notice: $notice)
+            }
             }
         }
         .overlay(alignment: .bottom) { NoticePill(text: notice) }

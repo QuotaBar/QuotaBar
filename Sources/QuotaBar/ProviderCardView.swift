@@ -17,7 +17,7 @@ struct ProviderCardView: View {
 
     @State private var refreshing = false
 
-    private var phase: ProviderPhase? { store.states[id] }
+    private var phase: ProviderPhase? { store.displayPhase(for: id) }
     private var snapshot: UsageSnapshot? { phase?.snapshot }
     private var expanded: Bool { !forExport && store.isCardExpanded(id) }
     private var compact: Bool { store.experience.panelDensity == .compact }
@@ -40,7 +40,7 @@ struct ProviderCardView: View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 7) {
                 ProviderGlyph(id: id, size: 16, tint: .white)
-                Text(id.displayName)
+                Text(store.displayName(for: id))
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
@@ -94,7 +94,7 @@ struct ProviderCardView: View {
                                 refreshing = false
                             }
                     } else {
-                        CalloutButton(symbol: "arrow.clockwise", help: L10n.t("Refresh \(id.displayName)", "刷新 \(id.displayName)")) {
+                        CalloutButton(symbol: "arrow.clockwise", help: L10n.t("Refresh \(store.displayName(for: id))", "刷新 \(store.displayName(for: id))")) {
                             refreshing = true
                             store.refresh(id)
                         }
@@ -381,7 +381,7 @@ struct ProviderCardView: View {
 
     @ViewBuilder
     private var contextItems: some View {
-        Button(L10n.t("Refresh \(id.displayName)", "刷新 \(id.displayName)")) { store.refresh(id) }
+        Button(L10n.t("Refresh \(store.displayName(for: id))", "刷新 \(store.displayName(for: id))")) { store.refresh(id) }
         Button(L10n.t("Copy as Image", "复制为图片")) { copyImage() }
         Divider()
         ProviderQuickMenus(store: store, id: id)
@@ -503,7 +503,7 @@ struct ProviderQuickMenus: View {
     let id: ProviderID
 
     var body: some View {
-        if let snapshot = store.states[id]?.snapshot, !snapshot.windows.isEmpty {
+        if let snapshot = store.displayPhase(for: id)?.snapshot, !snapshot.windows.isEmpty {
             windowsMenu(snapshot)
             if store.reportedWindows(for: id).count > 1 { hideMenu }
             ringMenu(snapshot)
@@ -585,7 +585,7 @@ struct ProviderQuickMenus: View {
             }
             Divider()
             Toggle(L10n.t("Menu Bar Shows Only \(id.displayName)", "菜单栏只显示 \(id.displayName)"), isOn: Binding(
-                get: { store.selected == id },
+                get: { store.selected.map(store.displayProvider) == id },
                 set: { store.selected = $0 ? id : nil }))
             Button(L10n.t("Add a \(id.displayName) Desktop Card", "添加一张 \(id.displayName) 桌面卡片")) {
                 store.addDeskCard(for: id)
