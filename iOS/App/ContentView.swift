@@ -17,7 +17,15 @@ struct ContentView: View {
             List {
                 Group {
                     header
-                    FreshnessBanner(readings: model.readings, error: model.error, macRefresh: model.macRefresh)
+                    if model.quotaRun.needsReconnect {
+                        Button { showsHelp = true } label: {
+                            Label(L10n.t("This phone needs to reconnect Quota Run. Tap to restore sync.", "这台手机需要重新连接 Quota Run，点击恢复同步。"), systemImage: "exclamationmark.triangle")
+                                .font(.footnote)
+                                .foregroundStyle(.orange)
+                        }
+                    } else {
+                        FreshnessBanner(readings: model.readings, error: model.error, macRefresh: model.macRefresh)
+                    }
                     if model.isDemo && !Demo.isForScreenshots {
                         DemoBanner { withAnimation(.snappy) { model.endDemo() } }
                     }
@@ -178,7 +186,7 @@ private struct CardRows: ViewModifier {
 
 /// Said at the top, always: when the Mac last wrote, and whether it seems to
 /// have stopped. A figure from a sleeping Mac is never shown as current.
-private struct FreshnessBanner: View {
+struct FreshnessBanner: View {
     let readings: MergedReadings
     let error: String?
     /// A "refresh now" in flight takes the place of the age, in this line —

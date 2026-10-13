@@ -387,6 +387,13 @@ public enum CloudFreshness: Equatable, Sendable {
 }
 
 extension UsageWindow {
+    /// Once the cached window ends, wait for a new reading rather than
+    /// presenting an inferred zero as confirmed usage.
+    public func usedNow(at date: Date = .now) -> Double? {
+        guard let usedPercent else { return nil }
+        return hasReset(now: date) ? nil : usedPercent
+    }
+
     /// The reset this reading reports has passed. The figure on file is from
     /// the window before, so the phone says the window has reset rather than
     /// showing a spent quota that is in fact fresh.

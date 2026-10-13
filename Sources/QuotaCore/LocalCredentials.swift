@@ -413,15 +413,22 @@ public enum LocalCredentials {
         candidates += ((try? fm.contentsOfDirectory(atPath: config.path)) ?? [])
             .filter { $0.hasPrefix("claude") }.map { config.appendingPathComponent($0).path }
         return candidates.first {
-            SHA256.hash(data: Data($0.utf8)).map { String(format: "%02x", $0) }.joined().prefix(8) == suffix
+            var isDirectory: ObjCBool = false
+            guard fm.fileExists(atPath: $0, isDirectory: &isDirectory), isDirectory.boolValue else { return false }
+            return SHA256.hash(data: Data($0.utf8)).map { String(format: "%02x", $0) }.joined().prefix(8) == suffix
         }.map { URL(fileURLWithPath: $0, isDirectory: true) }
     }
 
     /// Who a config dir's sign-in is, from the `.claude.json` Claude Code keeps
     /// in it — for when the token has run out and the server cannot be asked.
-    static func claudeConfigIdentity(service: String, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> ClaudeProvider.Identity? {
-        guard let dir = claudeConfigDir(service: service, home: home),
-              let data = FileManager.default.contents(atPath: dir.path + "/.claude.json"),
+    public static func claudeConfigIdentity(service: String, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> ClaudeProvider.Identity? {
+        let file: URL
+        if service == claudeService { file = home.appendingPathComponent(".claude.json") }
+        else {
+            guard let dir = claudeConfigDir(service: service, home: home) else { return nil }
+            file = dir.appendingPathComponent(".claude.json")
+        }
+        guard let data = FileManager.default.contents(atPath: file.path),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let account = root["oauthAccount"] as? [String: Any]
         else { return nil }

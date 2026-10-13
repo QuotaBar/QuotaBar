@@ -569,7 +569,7 @@ public struct ClaudeProvider: QuotaProvider {
         case .needsAuthorization:
             throw ProviderError.needsAuthorization(hint: LocalCredentials.claudeAuthorizationHint)
         case .signedOut:
-            throw ProviderError.sessionExpired(ClaudeSignIns.signedOutMessage)
+            throw ProviderError.signedOut(ClaudeSignIns.signedOutMessage)
         case .missing:
             throw ProviderError.notConfigured(hint: L10n.t(
                 "The profile's Claude sign-in is no longer on this Mac. Pick another in Settings › Providers › Profiles.",
@@ -581,18 +581,19 @@ public struct ClaudeProvider: QuotaProvider {
         var plan = lookup.plan
         if let expiry = lookup.expiresAt, expiry <= Date().addingTimeInterval(60) {
             // Run out: have Claude Code renew it, with this sign-in's own config dir.
-            guard await ClaudeCodeRenewal.renewIfExpired(service: service) == .renewed else {
-                throw ProviderError.sessionExpired(ClaudeSignIns.expiredMessage)
+            let outcome = await ClaudeCodeRenewal.renewIfExpired(service: service)
+            guard outcome == .renewed || outcome == .notNeeded else {
+                throw ClaudeSignIns.renewalError(service: service, outcome: outcome)
             }
             let renewed = LocalCredentials.readClaudeNow(service: service)
-            guard let fresh = renewed.token else { throw ProviderError.sessionExpired(ClaudeSignIns.expiredMessage) }
+            guard let fresh = renewed.token else { throw ClaudeSignIns.renewalError(service: service, outcome: nil) }
             token = fresh
             plan = renewed.plan
         }
         do {
             return try await usage(token: token, plan: plan)
         } catch ProviderError.unauthorized {
-            throw ProviderError.sessionExpired(ClaudeSignIns.expiredMessage)
+            throw ClaudeSignIns.renewalError(service: service, outcome: nil)
         }
     }
 
@@ -810,7 +811,7 @@ public struct ClaudeProvider: QuotaProvider {
         case .needsAuthorization:
             return .needsAuthorization(hint: LocalCredentials.claudeAuthorizationHint)
         case .signedOut:
-            return .sessionExpired(LocalCredentials.claudeSignedOutHint)
+            return .signedOut(LocalCredentials.claudeSignedOutHint)
         case .available, .missing:
             return .notConfigured(hint: ProviderID.claude.setupHint)
         }
@@ -1029,10 +1030,12 @@ public struct ClaudeProvider: QuotaProvider {
             let day = expires.map(creditDay)
             var window: UsageWindow
             if limit > 0 {
-                let used = number(block["used_dollars"]) ?? 0
-                let left = number(block["remaining_dollars"]) ?? max(limit - used, 0)
-                let percent = number(block["utilization"]) ?? used / limit * 100
-                var detail = "\(QuotaFormat.usd(used)) / \(QuotaFormat.usd(limit))"
+                let remaining = number(block["remaining_dollars"])
+                let used = number(block["used_dollars"]) ?? remaining.map { max(limit - $0, 0) }
+                let left = remaining ?? used.map { max(limit - $0, 0) }
+                let percent = number(block["utilization"]) ?? used.map { $0 / limit * 100 }
+                var detail = used.map { "\(QuotaFormat.usd($0)) / \(QuotaFormat.usd(limit))" }
+                    ?? L10n.t("Limit \(QuotaFormat.usd(limit))", "额度上限 \(QuotaFormat.usd(limit))")
                 if let day { detail += L10n.t(" · expires \(day)", " · \(day)到期") }
                 window = UsageWindow(
                     title: creditNames[key] ?? L10n.t("Bonus credit", "赠送额度"),
@@ -1042,9 +1045,9 @@ public struct ClaudeProvider: QuotaProvider {
                         "A credit Anthropic added to the account, counted apart from the plan's limits\(day.map { ". What is left runs out \($0)" } ?? "").",
                         "Anthropic 赠送的额度，和套餐限额分开计算\(day.map { "，没用完的在 \($0)到期" } ?? "")。"))
                 window.credit = CreditAmount(
-                    amount: QuotaFormat.usd(left),
-                    caption: L10n.t("Used \(QuotaFormat.usd(used)) of \(QuotaFormat.usd(limit))",
-                                    "已用 \(QuotaFormat.usd(used)) / \(QuotaFormat.usd(limit))"),
+                    amount: left.map(QuotaFormat.usd) ?? L10n.t("Balance not provided", "余额未提供"),
+                    caption: used.map { L10n.t("Used \(QuotaFormat.usd($0)) of \(QuotaFormat.usd(limit))", "已用 \(QuotaFormat.usd($0)) / \(QuotaFormat.usd(limit))") }
+                        ?? L10n.t("Limit \(QuotaFormat.usd(limit))", "额度上限 \(QuotaFormat.usd(limit))"),
                     expiresAt: expires)
             } else {
                 let percent = number(block["utilization"])
@@ -1054,7 +1057,7 @@ public struct ClaudeProvider: QuotaProvider {
                     detail: day.map { L10n.t("One-time credit · expires \($0)", "一次性额度 · \($0)到期") }
                         ?? L10n.t("One-time credit", "一次性额度"))
                 window.credit = CreditAmount(
-                    amount: L10n.t("\(QuotaFormat.percent(100 - (percent ?? 0))) left", "剩余 \(QuotaFormat.percent(100 - (percent ?? 0)))"),
+                    amount: percent.map { L10n.t("\(QuotaFormat.percent(100 - $0)) left", "剩余 \(QuotaFormat.percent(100 - $0))") } ?? L10n.t("Usage not provided", "用量未提供"),
                     caption: L10n.t("One-time credit", "一次性额度"),
                     expiresAt: expires)
             }
@@ -1135,16 +1138,15 @@ public struct ClaudeProvider: QuotaProvider {
     }
 
     private static func dollarDetail(_ window: LegacyWindow?) -> String? {
-        guard let window, let limit = window.limitDollars, limit > 0 else { return nil }
-        let used = window.usedDollars ?? 0
+        guard let window, let limit = window.limitDollars, limit > 0, let used = window.usedDollars else { return nil }
         return "\(QuotaFormat.usd(used)) / \(QuotaFormat.usd(limit))"
     }
 
     private static func extraUsageWindow(_ extra: ExtraUsage?) -> UsageWindow? {
         guard let extra, extra.isEnabled == true else { return nil }
         var detail: String?
-        if let limit = extra.monthlyLimit, limit > 0 {
-            detail = "\(QuotaFormat.usd(extra.usedCredits ?? 0)) / \(QuotaFormat.usd(limit))"
+        if let limit = extra.monthlyLimit, limit > 0, let used = extra.usedCredits {
+            detail = "\(QuotaFormat.usd(used)) / \(QuotaFormat.usd(limit))"
         }
         if extra.spendLimitReached == true {
             let reached = L10n.t("spend limit reached", "已达消费上限")

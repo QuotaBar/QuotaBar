@@ -56,7 +56,7 @@ struct ProviderCard: View {
             }
 
             if let snapshot = item.snapshot {
-                ForEach(snapshot.windows.filter { $0.usedPercent != nil && !$0.extra }) { window in
+                ForEach(snapshot.windows.filter { !$0.extra && $0.credit == nil }) { window in
                     WindowRow(window: window, pace: .whenItMatters, still: still)
                 }
                 if let balance = snapshot.balance, !balance.balances.isEmpty {
@@ -114,7 +114,7 @@ struct WindowRow: View {
 
     private func row(at date: Date) -> some View {
         let reset = window.hasReset(now: date)
-        let used = window.usedNow(at: date) ?? 0
+        let used = window.usedNow(at: date)
         return Group {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
@@ -130,14 +130,14 @@ struct WindowRow: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                     Spacer(minLength: 8)
-                    Text(figure(used))
+                    Text(used.map { figure($0) } ?? window.detail ?? "—")
                         .font(.subheadline.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(Color.usage(used))
+                        .foregroundStyle(used.map { Color.usage($0) } ?? .secondary)
                         .contentTransition(.numericText())
                 }
                 // The colour stays keyed off what is used; only the length
                 // and the figure follow the mode.
-                SteppedMeter(fill: mode.shownPercent(fromUsed: used), tint: Color.usage(used))
+                SteppedMeter(fill: used.map { mode.shownPercent(fromUsed: $0) }, tint: used.map { Color.usage($0) } ?? .secondary)
                 HStack(spacing: 8) {
                     if reset {
                         // The Mac has not read it since: the figure is the
@@ -149,7 +149,7 @@ struct WindowRow: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 0)
-                    if !reset { PaceNote(window: window, date: date, mode: pace, meter: mode) }
+                    if !reset && used != nil { PaceNote(window: window, date: date, mode: pace, meter: mode) }
                 }
                 .font(.caption)
             }

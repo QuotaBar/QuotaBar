@@ -8,6 +8,19 @@ struct QuotaWidgets: WidgetBundle {
         ProviderWidget()
         OverviewWidget()
         SpendWidget()
+        BalanceWidget()
+    }
+}
+
+struct BalanceWidget: Widget {
+    var body: some WidgetConfiguration {
+        AppIntentConfiguration(kind: "balance", intent: BalanceWidgetIntent.self, provider: BalanceTimeline()) { entry in
+            FamilyReader { BalanceWidgetView(entry: entry, family: $0) }
+                .containerBackground(Color.widgetSurface, for: .widget)
+        }
+        .configurationDisplayName(L10n.t("Balance", "账户余额"))
+        .description(L10n.t("Account balance, including paid and bonus credit where available.", "账户余额，以及服务提供的充值和赠送明细。"))
+        .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular])
     }
 }
 

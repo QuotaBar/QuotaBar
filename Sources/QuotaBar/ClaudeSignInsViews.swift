@@ -45,7 +45,7 @@ struct ClaudeSignInsSection: View {
                     Text(windows.map(figure).joined(separator: "  ·  "))
                 }
                 if let error = reading.error {
-                    Text(error).foregroundStyle(Palette.amber)
+                    Text(error).foregroundStyle(reading.discardsCachedReading ? Color.white.opacity(0.5) : Palette.amber)
                 } else if windows.isEmpty {
                     Text(L10n.t("Reading…", "读取中…"))
                 }
@@ -114,9 +114,7 @@ struct ClaudeAccountPicker: View {
     @ObservedObject var signIns: ClaudeSignInsModel
     let account: String
 
-    var body: some View {
-        if signIns.services.count > 1 { menu } else { plain }
-    }
+    var body: some View { menu }
 
     private var plain: some View {
         Text(account)
@@ -133,6 +131,8 @@ struct ClaudeAccountPicker: View {
                     get: { store.claudeCardService == service },
                     set: { on in if on { store.useClaudeSignIn(service) } }))
             }
+            Divider()
+            Button(L10n.t("Manage accounts…", "管理账号／添加账号…")) { SettingsWindow.open(provider: .claude) }
         } label: {
             // One run of text, so the arrow cannot land before the address.
             (Text(account) + Text(" ") + Text(Image(systemName: "chevron.down")).font(.system(size: 8, weight: .semibold)))
@@ -154,38 +154,120 @@ struct ClaudeAccountPicker: View {
 struct ClaudeSignInsSettings: View {
     @ObservedObject var store: UsageStore
     @ObservedObject var signIns: ClaudeSignInsModel
+    @State private var name = ""
+    @State private var notice: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Design.space2) {
-            ForEach(Array(signIns.others.enumerated()), id: \.element.id) { index, reading in
-                HStack(spacing: Design.space2) {
-                    Text(signIns.label(reading.identity, number: index + 2, masked: store.isPrivacyMasked))
-                        .font(.system(size: 12))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    if let email = signIns.detail(reading.identity, masked: store.isPrivacyMasked) {
-                        Text(email)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
+            ForEach(signIns.services, id: \.self) { service in
+                let missing = ClaudeSignIns.directoryMissing(service: service)
+                let reading = signIns.allReadings[service]
+                let snapshot = service == store.claudeCardService ? store.states[.claude]?.snapshot : reading?.snapshot
+                let duplicate = service != LocalCredentials.claudeService && ClaudeSignIns.sameAccount(signIns.identities[service], signIns.identities[LocalCredentials.claudeService])
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: Design.space2) {
+                        Text(signIns.pickerLabel(service, masked: store.isPrivacyMasked))
+                            .font(.system(size: 12))
                             .lineLimit(1)
                             .truncationMode(.middle)
+                        if duplicate {
+                            Text(L10n.t("Same as default", "与默认登录相同")).font(.system(size: 11)).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                        if reading?.needsAuthorization == true {
+                            Button(L10n.t("Allow access", "授权读取")) { store.authorizeClaude() }
+                                .glassAction(compact: true)
+                        }
+                        if missing {
+                            Button(L10n.t("Add again", "重新添加")) {
+                                notice = store.addClaudeAccount(name: store.experience.claudeAccountNames[service] ?? "", replacing: service)
+                            }.glassAction(compact: true)
+                        } else if service != LocalCredentials.claudeService && (duplicate || snapshot == nil || reading?.error != nil || store.states[.claude]?.errorMessage != nil) {
+                            Button(duplicate ? L10n.t("Sign in to another account", "换账号登录") : L10n.t("Sign in", "登录")) { notice = store.reconnectClaudeAccount(service) }
+                                .glassAction(compact: true)
+                        }
+                        if service == store.claudeCardService {
+                            Text(L10n.t("In use", "使用中")).font(.system(size: 11)).foregroundStyle(.secondary)
+                        } else if !missing {
+                            Button(L10n.t("Use", "使用")) { store.useClaudeSignIn(service) }
+                                .glassAction(compact: true)
+                                .disabled(service != LocalCredentials.claudeService && reading?.snapshot == nil)
+                        }
+                        if service != LocalCredentials.claudeService {
+                            Button(L10n.t("Remove", "移除")) { store.removeClaudeSignIn(service) }
+                                .glassAction(compact: true)
+                                .help(L10n.t("Forget in QuotaBar; Claude Code's login and files stay intact.", "只从 QuotaBar 移除，保留 Claude Code 的登录和文件。"))
+                        }
                     }
-                    if let plan = reading.snapshot?.planName ?? reading.plan {
-                        Text(plan)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
+                    if store.claudeLoginsPending.contains(service) {
+                        Text(L10n.t("Waiting for browser login; updates automatically when complete.", "等待浏览器登录，完成后会自动更新。"))
+                            .font(.system(size: 11)).foregroundStyle(.secondary)
                     }
-                    Spacer(minLength: 0)
+                    if !store.isPrivacyMasked, let note = store.experience.claudeAccountNames[service], !note.isEmpty {
+                        Text(L10n.t("Note: \(note)", "备注：\(note)")).font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                    if missing {
+                        Text(L10n.t("Login folder not found. Add it again or remove this entry.", "找不到登录目录，请重新添加或移除这项记录。"))
+                            .font(.system(size: 11)).foregroundStyle(.secondary)
+                    } else if service != LocalCredentials.claudeService, reading?.snapshot == nil, service != store.claudeCardService, !store.claudeLoginsPending.contains(service) {
+                        Text(reading?.error ?? L10n.t("Complete browser login to update automatically.", "完成浏览器登录后，会自动更新。"))
+                            .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2)
+                    }
                 }
-                .help(reading.error ?? reading.id)
+            }
+            HStack(spacing: Design.space2) {
+                TextField(L10n.t("Account note (optional)", "账号备注（可选）"), text: $name)
+                    .textFieldStyle(.roundedBorder)
+                Button(L10n.t("Add account", "添加账号")) {
+                    notice = store.addClaudeAccount(name: name)
+                    if notice == nil { name = "" }
+                }.glassAction(prominent: true)
+                Button(L10n.t("Check accounts", "检查账号")) {
+                    LocalCredentials.invalidateClaudeToken()
+                    Task { await store.readClaudeSignIns(force: true); store.refresh(.claude) }
+                }.glassAction(compact: true)
+            }
+            if let notice {
+                Text(notice).font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Text(L10n.t(
-                "Claude Code keeps one sign-in per config dir, and each is tied to one organization. Sign in to another with `CLAUDE_CONFIG_DIR=<dir> claude`, then /login, and it shows up here and under the Claude card's arrow by itself. QuotaBar only reads these sign-ins; Claude Code renews each while it runs with that dir.",
-                "Claude Code 每个配置目录一个登录，每个登录对应一个组织。用 `CLAUDE_CONFIG_DIR=<目录> claude` 启动并 /login 登录另一个组织或账号后，它会自动出现在这里和 Claude 卡片展开后的列表里。QuotaBar 只读取这些登录；每个登录由 Claude Code 在用那个目录运行时自己续期。"))
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
+                "The list shows the account Claude actually signed in to; notes are labels only. Choose a different account in the browser; the list updates after login. Check accounts refreshes manually. Remove an entry to stop reading it.",
+                "上方显示 Claude 实际登录的账号，备注只是标记。请在浏览器里选择另一个账号，登录完成后列表会自动更新；也可点击「检查账号」手动刷新。移除后不再读取或提示这项登录。"))
+                .font(.system(size: 11)).foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .task { await store.readClaudeSignIns() }
+    }
+}
+
+/// Recovery stays actionable even when the card has no account snapshot.
+struct ClaudeSignInRecovery: View {
+    @ObservedObject var store: UsageStore
+    @ObservedObject var signIns: ClaudeSignInsModel
+    @State private var notice: String?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Menu(L10n.t("Choose account", "选择账号")) {
+                ForEach(signIns.services.filter { !ClaudeSignIns.directoryMissing(service: $0) }, id: \.self) { service in
+                    Button(signIns.pickerLabel(service, masked: store.isPrivacyMasked)) { store.useClaudeSignIn(service) }
+                }
+                Button(L10n.t("Manage accounts…", "管理账号…")) { SettingsWindow.open(provider: .claude) }
+            }
+            if ClaudeSignIns.directoryMissing(service: store.claudeCardService) {
+                Button(L10n.t("Add again", "重新添加")) {
+                    notice = store.addClaudeAccount(name: store.experience.claudeAccountNames[store.claudeCardService] ?? "", replacing: store.claudeCardService)
+                }
+                Button(L10n.t("Remove", "移除")) { store.removeClaudeSignIn(store.claudeCardService) }
+            } else {
+                Button(L10n.t("Manage accounts", "管理账号")) { SettingsWindow.open(provider: .claude) }
+            }
+        }
+        .font(.system(size: 11))
+        .buttonStyle(.borderless)
+        .foregroundStyle(Color(hex: ProviderID.claude.accentHex))
+        .alert(L10n.t("Claude login", "Claude 登录"), isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) {
+            Button(L10n.t("OK", "好")) { notice = nil }
+        } message: { Text(notice ?? "") }
     }
 }

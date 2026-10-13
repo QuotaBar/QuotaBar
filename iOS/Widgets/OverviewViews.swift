@@ -69,7 +69,7 @@ struct OverviewWidgetView: View {
                     .aspectRatio(1, contentMode: .fit)
                     .frame(maxWidth: columns == 2 && family == .systemLarge ? 104 : .infinity)
                     if family != .systemSmall {
-                        Text(used(item).map { "\(Int((100 - $0).rounded()))%" } ?? "–")
+                        Text(used(item).map { "\(Int((100 - $0).rounded()))%" } ?? "—")
                             .font(.caption.weight(.semibold).monospacedDigit())
                             .foregroundStyle(used(item).map { Color.usage($0) } ?? .secondary)
                         Text(item.provider.displayName)
@@ -88,7 +88,7 @@ struct OverviewWidgetView: View {
     private var list: some View {
         VStack(alignment: .leading, spacing: family == .systemLarge ? 12 : 8) {
             ForEach(items) { item in
-                let used = used(item) ?? 0
+                let used = used(item)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         ProviderMark(id: item.provider, size: 14)
@@ -99,11 +99,11 @@ struct OverviewWidgetView: View {
                         if item.error != nil {
                             Image(systemName: "exclamationmark.triangle.fill").font(.caption2).foregroundStyle(.orange)
                         }
-                        Text(self.used(item).map { "\(Int((100 - $0).rounded()))%" } ?? "–")
+                        Text(self.used(item).map { "\(Int((100 - $0).rounded()))%" } ?? "—")
                             .font(.caption.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(Color.usage(used))
+                            .foregroundStyle(used.map { Color.usage($0) } ?? .secondary)
                     }
-                    SteppedMeter(fill: self.used(item).map { 100 - $0 }, tint: Color.usage(used), height: family == .systemLarge ? 6 : 4)
+                    SteppedMeter(fill: self.used(item).map { 100 - $0 }, tint: used.map { Color.usage($0) } ?? .secondary, height: family == .systemLarge ? 6 : 4)
                     if family == .systemLarge {
                         ResetLine(
                             window: item.snapshot.flatMap { entry.window.window(in: $0) },
@@ -146,14 +146,15 @@ struct OverviewWidgetView: View {
 
     @ViewBuilder
     private func figure(_ window: UsageWindow?, badge: Bool) -> some View {
-        if let window, let used = window.usedNow(at: entry.date) {
+        if let window {
+            let used = window.usedNow(at: entry.date)
             HStack(spacing: 3) {
                 if badge, let label = window.shortLabel {
                     Text(label).font(.caption2).foregroundStyle(.secondary)
                 }
-                Text("\(Int((100 - used).rounded()))%")
+                Text(used.map { "\(Int((100 - $0).rounded()))%" } ?? "—")
                     .font(.caption.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(Color.usage(used))
+                    .foregroundStyle(used.map { Color.usage($0) } ?? .secondary)
             }
             .frame(minWidth: badge ? 54 : 36, alignment: .trailing)
         }
@@ -167,7 +168,7 @@ struct OverviewWidgetView: View {
                 HStack(spacing: 4) {
                     Text(item.provider.displayName).lineLimit(1)
                     Spacer(minLength: 2)
-                    Text(used(item).map { "\(Int((100 - $0).rounded()))%" } ?? "–")
+                    Text(used(item).map { "\(Int((100 - $0).rounded()))%" } ?? "—")
                         .monospacedDigit()
                         .widgetAccentable()
                 }

@@ -6,6 +6,22 @@ import XCTest
 /// Claude Code gives their keychain items, told apart by organization, and
 /// read without the card's caches pushing each other out.
 final class ClaudeSignInsTests: XCTestCase {
+    func testOrphanedSignInClearsOldQuotaButTemporaryFailureKeepsIt() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let error = ClaudeSignIns.renewalError(service: "Claude Code-credentials-b5e21659", outcome: .failed("missing directory"), home: home)
+        XCTAssertTrue(ProviderPhase.failure(error, previous: nil).discardsCachedReading)
+        let old = ClaudeSignIns.Reading(id: "old", snapshot: UsageSnapshot(windows: [UsageWindow(title: "5h", usedPercent: 12)]))
+        var missing = ClaudeSignIns.Reading(id: "old", error: error.localizedDescription)
+        missing.discardsCachedReading = true
+        XCTAssertNil(missing.preserving(old).snapshot)
+        let temporary = ClaudeSignIns.Reading(id: "old", error: "offline")
+        XCTAssertEqual(temporary.preserving(old).snapshot?.windows.first?.usedPercent, 12)
+        let defaultError = ClaudeSignIns.renewalError(service: LocalCredentials.claudeService, outcome: .failed("offline"), home: home)
+        XCTAssertFalse(ProviderPhase.failure(defaultError, previous: nil).discardsCachedReading)
+    }
+
     func testOnlyClaudeCodesPerDirItemsAreTakenUp() {
         XCTAssertTrue(LocalCredentials.isExtraClaudeService("Claude Code-credentials-1a2b3c4d"))
         // The default item is the card's own.

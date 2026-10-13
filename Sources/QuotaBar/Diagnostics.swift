@@ -457,6 +457,8 @@ enum Diagnostics {
             case let .stale(snapshot, error)?:
                 return "stale \(snapshot.headlinePercent.map { QuotaFormat.percent($0) } ?? "—") (\(error))"
             case let .failed(message)?: return "failed (\(message))"
+            case let .redirected(provider, _)?: return "on \(provider.rawValue) card"
+            case let .notice(message)?: return "notice (\(message))"
             case .loading?: return "loading"
             case nil: return "empty"
             }

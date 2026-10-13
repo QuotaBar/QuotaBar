@@ -359,6 +359,8 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
     /// kept Codex account (nil follows the CLI). One for each card, so
     /// choosing a Claude account never touches Codex.
     public var claudeSignInChoice: String?
+    public var hiddenClaudeSignIns: [String] = []
+    public var claudeAccountNames: [String: String] = [:]
     public var codexAccountChoice: String?
 
     // Sharing
@@ -381,7 +383,7 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
         case placeWindows, placeWindowsSeeded
         case spendBudget, budgetNotified, balanceFloor, balanceFloorNotified, balanceChart, weeklyDigest, weeklyDigestSent
         case shareSignature, shareShowsSignature, shareMasksAccount
-        case accountProfiles, activeProfileID, claudeSource, claudeSignInChoice, codexAccountChoice
+        case accountProfiles, activeProfileID, claudeSource, claudeSignInChoice, codexAccountChoice, hiddenClaudeSignIns, claudeAccountNames
     }
 
     public init(from decoder: Decoder) throws {
@@ -450,6 +452,8 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
         claudeSource = choice(.claudeSource, d.claudeSource)
         claudeSignInChoice = try? c.decodeIfPresent(String.self, forKey: .claudeSignInChoice)
         codexAccountChoice = try? c.decodeIfPresent(String.self, forKey: .codexAccountChoice)
+        hiddenClaudeSignIns = value(.hiddenClaudeSignIns, d.hiddenClaudeSignIns)
+        claudeAccountNames = value(.claudeAccountNames, d.claudeAccountNames)
         migrateArrowProfiles()
     }
 }

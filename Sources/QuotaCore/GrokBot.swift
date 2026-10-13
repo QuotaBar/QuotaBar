@@ -136,8 +136,8 @@ public enum GrokBot {
 
     public static var onCursorCardHint: String {
         L10n.t(
-            "Grok Bot on this Mac is paid for with a Cursor plan, so it is on the Cursor card. Sign in with the grok CLI to read Grok's own credits here.",
-            "这台 Mac 上的 Grok Bot 由 Cursor 套餐付费，显示在 Cursor 卡片里。用 grok CLI 登录后，这里显示 Grok 自己的额度。")
+            "Grok Bot on this Mac is paid for with a Cursor plan, so its usage is on the Cursor card. Grok's separate credits appear here when its billing service reports them.",
+            "这台 Mac 上的 Grok Bot 由 Cursor 套餐付费，用量请看 Cursor 卡片。Grok 自己的额度会在接口提供后显示。")
     }
 
     // MARK: The sign-in Grok Bot keeps

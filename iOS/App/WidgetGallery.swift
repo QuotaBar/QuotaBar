@@ -33,6 +33,7 @@ struct WidgetGallery: View {
                 if shows("provider") { providerParts }
                 if shows("overview") { overviewParts }
                 if shows("lock") { lockParts }
+                if shows("balance") { balanceParts }
                 if part == "logos" { logoParts }
             }
             .padding(16)
@@ -116,6 +117,22 @@ struct WidgetGallery: View {
 
     private func provider(_ style: ProviderStyle) -> ReadingsEntry {
         ReadingsEntry(date: .now, readings: readings, provider: .claude, providerStyle: style)
+    }
+
+    private var balanceParts: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            title("余额 · 小")
+            tile(small) { BalanceWidgetView(entry: balanceEntry, family: .systemSmall) }
+            title("余额 · 中")
+            tile(medium) { BalanceWidgetView(entry: balanceEntry, family: .systemMedium) }
+            title("余额 · 锁屏")
+            BalanceWidgetView(entry: balanceEntry, family: .accessoryRectangular)
+                .frame(width: 172, height: 76)
+        }
+    }
+
+    private var balanceEntry: ReadingsEntry {
+        ReadingsEntry(date: .now, readings: readings, provider: .deepseek)
     }
 
     private func overview(_ style: OverviewStyle) -> ReadingsEntry {

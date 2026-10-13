@@ -134,7 +134,9 @@ extension UsageStore {
             do {
                 try await codexAccounts.switchTo(id)
                 followCodexCLI()
-                refresh(.codex)
+                if isEnabled(.codex) {
+                    switchAccount(.codex, showing: lastReading(.codex))
+                }
                 let name = codexAccounts.saved.first { $0.id == id }.map { codexAccounts.label($0, masked: isPrivacyMasked) } ?? "Codex"
                 flashNotice(L10n.t("Switched to \(name)", "已切换到 \(name)"))
                 codexSwitchNotice = L10n.t(

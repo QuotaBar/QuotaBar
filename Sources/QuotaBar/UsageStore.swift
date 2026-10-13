@@ -4,30 +4,6 @@ import Network
 @preconcurrency import UserNotifications
 import QuotaCore
 
-enum ProviderPhase: Sendable {
-    case loading
-    case loaded(UsageSnapshot)
-    /// Last refresh failed but we still have earlier numbers. Shown with a
-    /// staleness badge — silently serving old data is how a user ends up
-    /// trusting a figure from an expired session.
-    case stale(UsageSnapshot, error: String)
-    case failed(String)
-
-    var snapshot: UsageSnapshot? {
-        switch self {
-        case let .loaded(snapshot), let .stale(snapshot, _): snapshot
-        case .loading, .failed: nil
-        }
-    }
-
-    var errorMessage: String? {
-        switch self {
-        case let .stale(_, error), let .failed(error): error
-        case .loading, .loaded: nil
-        }
-    }
-}
-
 @MainActor
 final class UsageStore: ObservableObject {
     @Published var enabled: [ProviderID]
@@ -193,6 +169,8 @@ final class UsageStore: ObservableObject {
     /// The Codex accounts kept besides the one the CLI is signed in as (issue #6).
     let codexAccounts = CodexAccountsModel()
     let claudeSignIns = ClaudeSignInsModel()
+    @Published var claudeLoginsPending: Set<String> = []
+    var claudeLoginTasks: [String: Task<Void, Never>] = [:]
     /// What the last Codex account switch or save said, for Settings.
     @Published var codexSwitchNotice: String?
     /// Quota Run: the personal records every reading feeds, and the upload
@@ -211,10 +189,9 @@ final class UsageStore: ObservableObject {
     private var systemObservers: [NSObjectProtocol] = []
     /// When Kimi Code last wrote its sign-in files; see `noteKimiCodeSignIn`.
     private var kimiCodeWritten: [String: Date]?
-    /// Bumped each time a provider's pasted credential is replaced or
-    /// cleared: a read that started before belongs to the credential that
-    /// was, and is dropped when it lands.
-    private var credentialGeneration: [ProviderID: Int] = [:]
+    /// Latest request per provider; account/config changes also invalidate
+    /// earlier reads so they cannot resurrect an old or disabled card.
+    private var readTracker = ProviderReadTracker()
     /// The last reading of each account a profile (#8) can put on a card,
     /// by `profileAccountKey`: what a switch shows while it reads again.
     var accountReadings: [String: UsageSnapshot] = [:]
@@ -435,7 +412,7 @@ final class UsageStore: ObservableObject {
     }
 
     func refresh(_ id: ProviderID) {
-        guard !isLoading(id) else { return }
+        guard isEnabled(id), !isLoading(id) else { return }
         refresh([id])
     }
 
@@ -515,9 +492,10 @@ final class UsageStore: ObservableObject {
     }
 
     private func refreshNow(_ ids: [ProviderID]) async {
+        let ids = ids.filter { isEnabled($0) }
         guard !ids.isEmpty else { return }
         for id in ids { markLoading(id) }
-        let generations = Dictionary(uniqueKeysWithValues: ids.map { ($0, credentialGeneration[$0, default: 0]) })
+        let generations = Dictionary(uniqueKeysWithValues: ids.map { ($0, readTracker.begin($0)) })
         do {
             let config = self.config
             await withTaskGroup(of: (ProviderID, Result<UsageSnapshot, Error>).self) { group in
@@ -531,9 +509,10 @@ final class UsageStore: ObservableObject {
                     }
                 }
                 for await (id, result) in group {
-                    // Read with a credential replaced since: the read with the
-                    // new one is already on its way (`setCredential`).
-                    if self.credentialGeneration[id, default: 0] == generations[id] {
+                    // A newer read, a different credential, or a disabled
+                    // provider supersedes the request that just finished.
+                    if let generation = generations[id],
+                       self.readTracker.accepts(generation, for: id, isEnabled: self.isEnabled(id)) {
                         self.apply(id, result)
                     }
                     // A read may have renewed the Kimi Code sign-in, which
@@ -604,7 +583,7 @@ final class UsageStore: ObservableObject {
         // a failure with none keeps its message; only a provider with nothing
         // yet gets the spinner.
         switch states[id] {
-        case .loaded, .stale: break
+        case .loaded, .stale, .redirected, .notice: break
         case .failed: retrying.insert(id)
         case .loading, nil: states[id] = .loading
         }
@@ -647,13 +626,21 @@ final class UsageStore: ObservableObject {
                 history[id] = UsageHistoryStore.shared.readings(for: id).map(\.percent)
             }
         case let .failure(error):
-            let message = error.localizedDescription
-            if let previous = states[id]?.snapshot {
-                states[id] = .stale(previous, error: message)
-            } else {
-                states[id] = .failed(message)
+            states[id] = ProviderPhase.failure(error, previous: states[id])
+            if states[id]?.discardsCachedReading == true {
+                // A confirmed move, sign-out, or absent plan leaves no quota
+                // to preserve. A restart or sync must not revive old rows.
+                discardReading(id, clearPhase: false)
             }
         }
+    }
+
+    private func discardReading(_ id: ProviderID, clearPhase: Bool = true) {
+        if clearPhase { states[id] = nil }
+        retrying.remove(id)
+        reported[id] = nil
+        accountReadings[profileAccountKey(id)] = nil
+        SnapshotCache.shared.remove(id)
     }
 
     /// The window the ring follows and the windows a card shows, moved to the
@@ -689,7 +676,7 @@ final class UsageStore: ObservableObject {
             switch states[id] {
             case .loaded: states[id] = .loaded(shown(snapshot, for: id))
             case let .stale(_, error): states[id] = .stale(shown(snapshot, for: id), error: error)
-            case .loading, .failed, nil: break
+            case .loading, .failed, .redirected, .notice, nil: break
             }
         }
     }
@@ -766,14 +753,16 @@ final class UsageStore: ObservableObject {
     /// a reset count read against another account's would announce resets
     /// that were never given.
     func switchAccount(_ id: ProviderID, showing last: UsageSnapshot?) {
-        credentialGeneration[id, default: 0] &+= 1
+        readTracker.invalidate(id)
         retrying.remove(id)
         reported[id] = last
         if let last {
             states[id] = .loaded(shown(last, for: id))
+            SnapshotCache.shared.store(last, for: id)
             if Date().timeIntervalSince(last.fetchedAt) < TimeInterval(refreshMinutes * 60) { return }
         } else {
             states[id] = nil
+            SnapshotCache.shared.remove(id)
         }
         refresh([id])
     }
@@ -1165,6 +1154,8 @@ final class UsageStore: ObservableObject {
     // MARK: Settings
 
     func setEnabled(_ id: ProviderID, _ on: Bool) {
+        guard isEnabled(id) != on else { return }
+        readTracker.invalidate(id)
         config.setEnabled(id, on)
         if on {
             if !enabled.contains(id) { enabled.append(id) }
@@ -1174,10 +1165,7 @@ final class UsageStore: ObservableObject {
             Task { await refreshServiceStatus([id]) }
         } else {
             enabled.removeAll { $0 == id }
-            states[id] = nil
-            retrying.remove(id)
-            reported[id] = nil
-            SnapshotCache.shared.remove(id)
+            discardReading(id)
             if selected == id { selected = enabled.first }
         }
     }
@@ -1241,8 +1229,17 @@ final class UsageStore: ObservableObject {
     }
 
     func setCredential(_ value: String, for id: ProviderID) {
-        config.setCredential(value, for: id)
-        credentialGeneration[id, default: 0] &+= 1
+        let previous = config.credential(for: id)
+        guard config.setCredential(value, for: id) else {
+            objectWillChange.send()
+            return
+        }
+        guard previous != config.credential(for: id) else {
+            objectWillChange.send()
+            return
+        }
+        readTracker.invalidate(id)
+        discardReading(id)
         // A replaced credential may be a different account entirely, which
         // would splice two unrelated series into one trend line.
         UsageHistoryStore.shared.clear(id)
@@ -1252,6 +1249,17 @@ final class UsageStore: ObservableObject {
         // this replaces — a Kimi Code sign-in can take a minute and more to
         // renew — and its result is dropped when it lands.
         if isEnabled(id) { refresh([id]) }
+    }
+
+    /// OAuth and browser sessions can belong to different Claude accounts.
+    /// The newly selected source must never inherit the former one's quota.
+    func setClaudeSource(_ source: ClaudeSource) {
+        guard experience.claudeSource != source else { return }
+        updateExperience { $0.claudeSource = source }
+        readTracker.invalidate(.claude)
+        discardReading(.claude)
+        refreshConfigured()
+        if isEnabled(.claude) { refresh([.claude]) }
     }
 
     /// Wipes every recorded trend line.
@@ -1302,7 +1310,10 @@ final class UsageStore: ObservableObject {
         defer { kimiCodeWritten = written }
         guard let previous = kimiCodeWritten, previous != written else { return }
         refreshConfigured()
-        if isEnabled(.kimi) { refresh(.kimi) }
+        if isEnabled(.kimi) {
+            readTracker.invalidate(.kimi)
+            refresh([.kimi])
+        }
     }
 
     /// Refresh shortly after wake and when the network recovers, mirroring

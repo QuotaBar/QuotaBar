@@ -264,7 +264,7 @@ struct ProviderWidgetView: View {
             ZStack {
                 AccessoryWidgetBackground()
                 VStack(spacing: -2) {
-                    Text(used.map { "\(Int((100 - $0).rounded()))" } ?? "–")
+                    Text(used.map { "\(Int((100 - $0).rounded()))" } ?? "—")
                         .font(.system(size: 22, weight: .semibold, design: .rounded))
                     Text(window?.shortLabel ?? "%").font(.system(size: 10, weight: .medium))
                 }
@@ -274,7 +274,7 @@ struct ProviderWidgetView: View {
             Gauge(value: left(used), in: 0...100) {
                 item.map { ProviderMark(id: $0.provider, size: 12) }
             } currentValueLabel: {
-                Text(used.map { "\(Int((100 - $0).rounded()))" } ?? "–")
+                Text(used.map { "\(Int((100 - $0).rounded()))" } ?? "—")
             }
             .gaugeStyle(.accessoryCircularCapacity)
             .widgetAccentable()
@@ -301,9 +301,9 @@ struct ProviderWidgetView: View {
             Text(item?.provider.displayName ?? "QuotaBar").font(.caption.weight(.semibold))
             HStack(alignment: .firstTextBaseline, spacing: 14) {
                 ForEach((snapshot?.shownWindows ?? []).prefix(2)) { window in
-                    let windowUsed = window.usedNow(at: entry.date) ?? 0
+                    let windowUsed = window.usedNow(at: entry.date)
                     VStack(alignment: .leading, spacing: -2) {
-                        Text("\(Int((100 - windowUsed).rounded()))%")
+                        Text(windowUsed.map { "\(Int((100 - $0).rounded()))%" } ?? "—")
                             .font(.system(size: 24, weight: .semibold, design: .rounded).monospacedDigit())
                             .widgetAccentable()
                         Text(window.shortLabel ?? window.displayName).font(.caption2)
@@ -324,15 +324,15 @@ struct ProviderWidgetView: View {
                 }
             }
             ForEach((snapshot?.shownWindows ?? []).prefix(2)) { window in
-                let windowUsed = window.usedNow(at: entry.date) ?? 0
+                let windowUsed = window.usedNow(at: entry.date)
                 HStack(spacing: 6) {
                     Text(window.shortLabel ?? "")
                         .font(.caption2.monospacedDigit())
                         .frame(width: 22, alignment: .leading)
-                    Gauge(value: 100 - windowUsed, in: 0...100) { EmptyView() }
+                    Gauge(value: windowUsed.map { 100 - $0 } ?? 0, in: 0...100) { EmptyView() }
                         .gaugeStyle(.accessoryLinearCapacity)
                         .widgetAccentable()
-                    Text("\(Int((100 - windowUsed).rounded()))%")
+                    Text(windowUsed.map { "\(Int((100 - $0).rounded()))%" } ?? "—")
                         .font(.caption2.monospacedDigit())
                         .frame(width: 32, alignment: .trailing)
                 }

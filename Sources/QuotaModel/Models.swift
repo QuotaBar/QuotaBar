@@ -959,6 +959,9 @@ public struct UsageSnapshot: Sendable {
 
 public enum ProviderError: LocalizedError, Sendable {
     case notConfigured(hint: String)
+    /// The fetch succeeded in identifying where this allowance belongs.
+    /// It is informational, not a failure to update an old quota reading.
+    case usageOnOtherProvider(provider: ProviderID, hint: String)
     /// The credential exists but macOS wants the user's permission before
     /// this app may read it (Claude Code's keychain item).
     case needsAuthorization(hint: String)
@@ -970,6 +973,11 @@ public enum ProviderError: LocalizedError, Sendable {
     /// Signed in, and the account simply has no plan to read — said as it
     /// is, not as an expired session or a reply that would not parse.
     case noPlan(String)
+    /// Logged in, but the response contains no verifiable quota figures.
+    case usageUnavailable(String)
+    /// The source explicitly says the account signed out. Unlike an expired
+    /// token, there is no current account whose old numbers should remain.
+    case signedOut(String)
     /// A sign-in another app owns and renews has run out, or a credential
     /// was turned down, said with what brings it back when that is not what
     /// `.unauthorized` tells people — using that app once rather than
@@ -983,7 +991,13 @@ public enum ProviderError: LocalizedError, Sendable {
 
     public var errorDescription: String? {
         switch self {
+        case let .usageOnOtherProvider(_, hint):
+            return hint
+        case let .usageUnavailable(message):
+            return message
         case let .noPlan(message):
+            return message
+        case let .signedOut(message):
             return message
         case let .sessionExpired(message):
             return message

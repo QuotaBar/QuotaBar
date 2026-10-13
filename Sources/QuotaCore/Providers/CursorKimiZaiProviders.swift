@@ -99,11 +99,11 @@ public struct CursorProvider: QuotaProvider {
             windows.append(contentsOf: planWindows(plan, resetsAt: cycleEnd))
         }
         if let onDemand = summary.individualUsage?.onDemand, let limit = onDemand.limit, limit > 0 {
-            let used = onDemand.used ?? 0
+            let used = onDemand.used ?? onDemand.remaining.map { max(limit - $0, 0) }
             windows.append(UsageWindow(
                 title: L10n.t("On-demand", "按量付费"),
-                usedPercent: Double(used) / Double(limit) * 100,
-                detail: "\(QuotaFormat.dollars(cents: used)) / \(QuotaFormat.dollars(cents: limit))",
+                usedPercent: used.map { Double($0) / Double(limit) * 100 },
+                detail: used.map { "\(QuotaFormat.dollars(cents: $0)) / \(QuotaFormat.dollars(cents: limit))" },
                 resetsAt: cycleEnd))
         }
         // Only while a Cursor plan pays for it: a SuperGrok subscription's
@@ -140,11 +140,11 @@ public struct CursorProvider: QuotaProvider {
                 resetsAt: resetsAt))
         } else if let limit = plan.limit, limit > 0 {
             // Older shape, with no percentages to prefer.
-            let used = plan.used ?? 0
+            let used = plan.used ?? plan.remaining.map { max(limit - $0, 0) }
             windows.append(UsageWindow(
                 title: L10n.t("Monthly plan", "月度套餐"),
-                usedPercent: Double(used) / Double(limit) * 100,
-                detail: "\(QuotaFormat.dollars(cents: used)) / \(QuotaFormat.dollars(cents: limit))",
+                usedPercent: used.map { Double($0) / Double(limit) * 100 },
+                detail: used.map { "\(QuotaFormat.dollars(cents: $0)) / \(QuotaFormat.dollars(cents: limit))" },
                 resetsAt: resetsAt))
         }
 
@@ -858,13 +858,13 @@ public struct KimiProvider: QuotaProvider {
         for usage in usages.usages ?? [] {
             guard let detail = usage.detail else { continue }
             let limit = Double(detail.limit ?? "").flatMap { $0.isFinite ? $0 : nil } ?? 0
-            let used = Double(detail.used ?? "").flatMap { $0.isFinite ? $0 : nil } ?? 0
+            let used = Double(detail.used ?? "").flatMap { $0.isFinite ? $0 : nil }
             let reset = Dates.parseAny(detail.resetTime) ?? Dates.parseAny(detail.resetAt)
-            let percent: Double? = limit > 0 ? used / limit * 100 : nil
+            let percent: Double? = limit > 0 ? used.map { $0 / limit * 100 } : nil
             windows.append(UsageWindow(
                 title: usage.scope ?? L10n.t("Usage", "用量"),
                 usedPercent: percent,
-                detail: limit > 0 ? countDetail(used: used, limit: limit) : nil,
+                detail: limit > 0 ? used.flatMap { countDetail(used: $0, limit: limit) } : nil,
                 resetsAt: reset))
         }
 

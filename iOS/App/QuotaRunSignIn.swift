@@ -1,6 +1,7 @@
 import QuotaModel
 import QuotaRelay
 import SafariServices
+import Security
 import SwiftUI
 import UIKit
 
@@ -21,6 +22,7 @@ final class QuotaRunSession {
         case failed(String)
     }
 
+    private(set) var needsReconnect = false
     private(set) var account: QuotaRunAccount?
     private(set) var macs: [RelayMac]
     private(set) var phase: Phase = .idle
@@ -41,6 +43,7 @@ final class QuotaRunSession {
         account = QuotaRunStore.account
         macs = RelayCache.load().macs
         safetyCode = account != nil ? QuotaRunStore.loadKeys()?.safetyCode : nil
+        needsReconnect = account != nil && QuotaRunStore.keychainStatus == errSecItemNotFound
     }
 
     /// After a fetch: the Macs and whether this phone is still signed in.
@@ -48,13 +51,14 @@ final class QuotaRunSession {
         account = QuotaRunStore.account
         macs = account != nil ? RelayCache.load().macs : []
         safetyCode = account != nil ? QuotaRunStore.loadKeys()?.safetyCode : nil
+        needsReconnect = account != nil && QuotaRunStore.keychainStatus == errSecItemNotFound
     }
 
     /// Macs on the account that have not allowed this phone yet.
     var waitingMacs: [RelayMac] { macs.filter { $0.state == .waiting || $0.state == .unreadable } }
 
     func signIn(then approved: @escaping @MainActor () async -> Void) {
-        guard account == nil, phase == .idle || isFailed else { return }
+        guard account == nil || needsReconnect, phase == .idle || isFailed else { return }
         attempt &+= 1
         let current = attempt
         phase = .starting
@@ -230,8 +234,15 @@ struct QuotaRunSection: View {
                         Text(code).monospacedDigit()
                     }
                 }
-                ForEach(session.macs) { mac in
-                    RelayMacRow(mac: mac)
+                if session.needsReconnect {
+                    Text(L10n.t("This phone's login key is missing. Reconnect Quota Run, then allow this phone on your Mac again.", "这台手机的登录密钥已缺失。请重新连接 Quota Run，再在 Mac 上核对安全码并允许这台手机。"))
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                    SignInButton(model: model)
+                } else {
+                    ForEach(session.macs) { mac in
+                        RelayMacRow(mac: mac)
+                    }
                 }
                 Button(L10n.t("Sign out", "退出登录"), role: .destructive) { confirmsSignOut = true }
                     .disabled(session.isSigningOut)
@@ -328,6 +339,7 @@ struct SignInButton: View {
 
     private var label: String {
         if case .waiting = session.phase { return L10n.t("Open the approval page again", "重新打开确认页面") }
+        if session.needsReconnect { return L10n.t("Reconnect Quota Run", "重新连接 Quota Run") }
         return L10n.t("Sign in to Quota Run", "登录 Quota Run")
     }
 

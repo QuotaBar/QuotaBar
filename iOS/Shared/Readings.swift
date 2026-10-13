@@ -133,8 +133,15 @@ enum ReadingsSync {
     /// Nil inside when the phone is not signed in to Quota Run.
     private static func fetchRelay() async -> Result<[CloudReadings]?, Error> {
         do {
-            return .success(try await RelaySync.fetch())
+            let devices = try await RelaySync.fetch()
+            #if DEBUG
+            Diagnostics.relay(devices: devices, error: nil)
+            #endif
+            return .success(devices)
         } catch {
+            #if DEBUG
+            Diagnostics.relay(devices: nil, error: error)
+            #endif
             return .failure(error)
         }
     }
@@ -160,6 +167,19 @@ enum ReadingsSync {
 /// checked with `devicectl device copy from --domain-type appDataContainer`,
 /// which cannot reach the app group. Debug builds only.
 enum Diagnostics {
+    static func relay(devices: [CloudReadings]?, error: Error?) {
+        var lines = ["at \(Date())", "account \(QuotaRunStore.account != nil)",
+            "keys \(QuotaRunStore.loadKeys() != nil)", "keychainStatus \(QuotaRunStore.keychainStatus)",
+            "sharedContainer \(FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: ReadingsCache.appGroup) != nil)"]
+        if let error { lines.append("error \(error.localizedDescription)") }
+        for device in devices ?? [] {
+            lines.append("Mac \(device.deviceName) updated \(device.updatedAt) providers \(device.providers.count)")
+        }
+        lines.append("readableMacs \(devices?.count ?? -1)")
+        guard let folder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        try? lines.joined(separator: "\n").write(to: folder.appendingPathComponent("relay-fetch.txt"), atomically: true, encoding: .utf8)
+    }
+
     static func note(devices: [CloudReadings]?, error: Error?, extra: String? = nil) {
         var lines = ["at \(Date())"]
         if let extra { lines.append(extra) }
@@ -250,6 +270,10 @@ extension CloudReadings {
                         credits: [ResetCredit(expiresAt: now.addingTimeInterval(5 * 86_400)), ResetCredit(expiresAt: now.addingTimeInterval(18 * 86_400))])),
                     spend: spend(6_000_000, models: [("gpt-5.6-sol", 0.9), ("gpt-5.6-mini", 0.1)]),
                     links: CloudLinks(console: URL(string: "https://chatgpt.com/codex/settings/usage"))),
+                .init(id: ProviderID.deepseek.rawValue,
+                      snapshot: UsageSnapshot(windows: [], fetchedAt: now, balance: BalanceSheet(
+                        balances: [AccountBalance(currency: "USD", total: 42.50, paid: 40, granted: 2.50)],
+                        canCallAPI: true))),
             ])
     }
 
@@ -294,13 +318,5 @@ enum WindowChoice: String, CaseIterable, Codable, Sendable {
         case .short: return fullest(own.filter { $0.horizon == .short }) ?? snapshot.headlineWindow
         case .long: return fullest(own.filter { $0.horizon == .long }) ?? snapshot.headlineWindow
         }
-    }
-}
-
-extension UsageWindow {
-    /// The figure to draw now: a window past its reset is back at zero,
-    /// whatever the Mac last read before it.
-    func usedNow(at date: Date = .now) -> Double? {
-        hasReset(now: date) ? 0 : usedPercent
     }
 }

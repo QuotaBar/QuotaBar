@@ -9,6 +9,18 @@ struct QuotaBarPhoneApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var model = ReadingsModel()
     @Environment(\.scenePhase) private var scenePhase
+    @State private var tab = ProcessInfo.processInfo.arguments.contains("-QuotaBarUsage") ? 1 : 0
+
+    private var pages: some View {
+        TabView(selection: $tab) {
+            ContentView(model: model)
+                .tabItem { Label(L10n.t("Quota", "额度"), systemImage: "gauge.with.dots.needle.33percent") }
+                .tag(0)
+            UsageView(model: model)
+                .tabItem { Label(L10n.t("Usage", "用量"), systemImage: "chart.bar.xaxis") }
+                .tag(1)
+        }
+    }
 
     @ViewBuilder
     private var root: some View {
@@ -16,10 +28,10 @@ struct QuotaBarPhoneApp: App {
         if ProcessInfo.processInfo.arguments.contains("-QuotaBarWidgetGallery") {
             WidgetGallery()
         } else {
-            ContentView(model: model)
+            pages
         }
         #else
-        ContentView(model: model)
+        pages
         #endif
     }
 

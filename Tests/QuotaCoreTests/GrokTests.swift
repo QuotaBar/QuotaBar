@@ -83,9 +83,9 @@ final class GrokBillingTests: XCTestCase {
         XCTAssertNil(credits.scope)
     }
 
-    /// Recorded live, October 2026: a week with nothing used yet. Protobuf
-    /// JSON leaves the zero out, so there is no `creditUsagePercent`.
-    func testAWeekWithNothingUsedReadsAsZero() throws {
+    /// Same-account API response verified against the official webpage:
+    /// complete unified weekly period with omitted zero-percent scalar.
+    func testVerifiedUnifiedZeroMatchesTheOfficialUsagePage() throws {
         let unused = """
         {"config":{"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY",
           "start":"2026-09-30T18:04:26.137506+00:00","end":"2026-10-07T18:04:26.137506+00:00"},
@@ -94,12 +94,83 @@ final class GrokBillingTests: XCTestCase {
           "billingPeriodStart":"2026-09-30T18:04:26.137506+00:00","billingPeriodEnd":"2026-10-07T18:04:26.137506+00:00"}}
         """
         let snapshot = try GrokProvider.parse(Data(unused.utf8))
-        XCTAssertEqual(snapshot.windows.count, 1)
         XCTAssertEqual(snapshot.windows.first?.usedPercent, 0)
-        XCTAssertEqual(snapshot.windows.first?.windowSeconds, 7 * 86_400)
         XCTAssertNotNil(snapshot.windows.first?.resetsAt)
+        let unknown = unused.replacingOccurrences(of: "\"isUnifiedBillingUser\":true,", with: "")
+        XCTAssertThrowsError(try GrokProvider.parse(Data(unknown.utf8)))
+        let explicitNull = unused.replacingOccurrences(of: "\"isUnifiedBillingUser\":true,", with: "\"isUnifiedBillingUser\":true,\"creditUsagePercent\":null,")
+        XCTAssertThrowsError(try GrokProvider.parse(Data(explicitNull.utf8)))
         XCTAssertThrowsError(try GrokProvider.parse(Data(#"{"config":{"onDemandCap":{"val":0}}}"#.utf8)),
                              "no period and no figure is still nothing to show")
+    }
+
+    func testPartialOrUnsupportedUnifiedPeriodIsNotAssumedZero() {
+        for period in [#"{"type":"USAGE_PERIOD_TYPE_WEEKLY"}"#, #"{"type":"UNKNOWN","start":"2026-10-01T00:00:00Z","end":"2026-10-08T00:00:00Z"}"#] {
+            let data = Data("{\"config\":{\"isUnifiedBillingUser\":true,\"currentPeriod\":\(period)}}".utf8)
+            XCTAssertThrowsError(try GrokProvider.parse(data))
+        }
+    }
+
+    func testLegacyCreditsUseRealUsedAndLimitAmounts() throws {
+        let legacy = Data(#"{"config":{"monthlyLimit":{"val":1000},"used":{"val":250},"billingPeriodEnd":"2026-11-01T00:00:00Z"}}"#.utf8)
+        XCTAssertEqual(try GrokProvider.parse(legacy).windows.first?.usedPercent, 25)
+        let zero = Data(#"{"config":{"monthlyLimit":{"val":1000},"used":{}}}"#.utf8)
+        XCTAssertEqual(try GrokProvider.parse(zero).windows.first?.usedPercent, 0)
+        XCTAssertThrowsError(try GrokProvider.parse(Data(#"{"config":{"monthlyLimit":{"val":1000}}}"#.utf8)))
+    }
+
+    func testMissingAggregateDoesNotInventZeroWhenProductsReportUsage() throws {
+        let data = Data(#"{"config":{"isUnifiedBillingUser":true,"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","start":"2026-10-01T00:00:00Z","end":"2026-10-08T00:00:00Z"},"productUsage":[{"product":"GrokBuild","usagePercent":25}]}}"#.utf8)
+        let snapshot = try GrokProvider.parse(data)
+        XCTAssertEqual(snapshot.windows.count, 1)
+        XCTAssertEqual(snapshot.windows.first?.usedPercent, 25)
+        XCTAssertEqual(snapshot.windows.first?.scope, "Grok Build")
+    }
+
+    func testRepeatedFetchesReplaceZeroWithIncreasingActualUsage() async throws {
+        actor Replies {
+            var count = 0
+            func next() -> Data {
+                let values = ["", ",\"creditUsagePercent\":12.5", ",\"creditUsagePercent\":28.4"]
+                let value = values[min(count, values.count - 1)]
+                count += 1
+                return Data("{\"config\":{\"isUnifiedBillingUser\":true,\"currentPeriod\":{\"type\":\"USAGE_PERIOD_TYPE_WEEKLY\",\"start\":\"2026-10-07T18:04:26Z\",\"end\":\"2026-10-14T18:04:26Z\"}\(value)}}".utf8)
+            }
+        }
+        let replies = Replies()
+        let send: HTTPSend = { method, url, _, body, _ in
+            XCTAssertEqual(method, "GET")
+            XCTAssertEqual(url.host, "cli-chat-proxy.grok.com")
+            XCTAssertNil(body)
+            return HTTPResponse(status: 200, data: await replies.next())
+        }
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("grok-growth-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let cache = SnapshotCache(fileURL: file)
+        for expected in [0.0, 12.5, 28.4] {
+            let snapshot = try await GrokProvider.credits(token: "test", email: "test@example.com", send: send)
+            XCTAssertEqual(snapshot.windows.first?.usedPercent, expected)
+            XCTAssertEqual(snapshot.account, "test@example.com")
+            cache.store(snapshot, for: .grok)
+            XCTAssertEqual(cache.snapshot(for: .grok)?.windows.first?.usedPercent, expected)
+        }
+        let calls = await replies.count
+        XCTAssertEqual(calls, 3, "each refresh must read the server again")
+        XCTAssertEqual(SnapshotCache(fileURL: file).snapshot(for: .grok)?.windows.first?.usedPercent, 28.4)
+    }
+
+    func testExplicitZeroRemainsAValidReading() throws {
+        let zero = body.replacingOccurrences(of: "\"creditUsagePercent\":11.0", with: "\"creditUsagePercent\":0")
+        XCTAssertEqual(try GrokProvider.parse(Data(zero.utf8)).windows.first?.usedPercent, 0)
+    }
+
+    func testUnreportedCreditsKeepLoginConfirmationWithoutKeepingOldQuota() {
+        XCTAssertThrowsError(try GrokProvider.withoutCredits(.usageUnavailable("not reported"), bot: .onCursorCard)) { error in
+            let phase = ProviderPhase.failure(error, previous: .loaded(UsageSnapshot(windows: [UsageWindow(title: "old", usedPercent: 0)])))
+            guard case .notice = phase else { return XCTFail("Expected a signed-in, quota-unavailable notice") }
+            XCTAssertNil(phase.snapshot)
+            XCTAssertNil(phase.errorMessage)
+        }
     }
 
     func testEachProductBecomesAScopedWindowWithItsOwnId() throws {

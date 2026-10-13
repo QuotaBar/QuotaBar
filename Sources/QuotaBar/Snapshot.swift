@@ -950,6 +950,35 @@ enum Snapshot {
             .padding(Design.space4)
     }
 
+    /// The exact dock card, with a private cache fixture: unknown and zero
+    /// survive serialization separately without changing any account data.
+    static func missingUsagePreview(directory: String) {
+        let url = URL(fileURLWithPath: directory, isDirectory: true)
+        do { try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true) }
+        catch { print("Could not create display preview directory"); return }
+        L10n.override = .zhHans
+        let file = url.appendingPathComponent("display-fixture.json")
+        if !FileManager.default.fileExists(atPath: file.path) {
+            let sample = UsageSnapshot(planName: "显示验证样本", windows: [
+                UsageWindow(title: "未提供的用量", usedPercent: nil),
+                UsageWindow(title: "明确返回的零用量", usedPercent: 0),
+            ])
+            SnapshotCache(fileURL: file).store(sample, for: .cursor)
+        }
+        guard let cached = SnapshotCache(fileURL: file).snapshot(for: .cursor) else {
+            print("Could not restore display preview fixture"); return
+        }
+        let store = UsageStore.preview(enabled: [.cursor], states: [.cursor: .loaded(cached)])
+        store.meterMode = .used
+        store.experience.cardWindows = [:]
+        store.experience.hiddenWindows = [:]
+        render(VStack(alignment: .leading, spacing: 12) {
+            Text("独立验证样本，不是真实账号数据").font(.system(size: 12)).foregroundStyle(.white)
+            ProviderCallout(store: store, id: .cursor)
+        }.padding(20).environment(\.colorScheme, .dark),
+               to: url, name: "sidebar-missing-and-zero", backing: Color(hex: "303840"))
+    }
+
     static func run(directory: String) {
         let base = URL(fileURLWithPath: directory)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)

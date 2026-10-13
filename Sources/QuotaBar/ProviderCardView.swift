@@ -137,6 +137,19 @@ struct ProviderCardView: View {
             }
         case let .failed(message):
             failure(message)
+        case let .notice(message):
+            Label(message, systemImage: "info.circle")
+                .font(.system(size: 11))
+                .foregroundStyle(.white.opacity(0.6))
+                .fixedSize(horizontal: false, vertical: true)
+            if id == .claude, !forExport {
+                ClaudeSignInRecovery(store: store, signIns: store.claudeSignIns)
+            }
+        case let .redirected(_, message):
+            Label(message, systemImage: "arrow.turn.down.right")
+                .font(.system(size: 11))
+                .foregroundStyle(.white.opacity(0.6))
+                .fixedSize(horizontal: false, vertical: true)
         case let .loaded(snapshot), let .stale(snapshot, _):
             VStack(alignment: .leading, spacing: compact ? 8 : 11) {
                 if let error = phase?.errorMessage {
@@ -372,6 +385,9 @@ struct ProviderCardView: View {
         Button(L10n.t("Copy as Image", "复制为图片")) { copyImage() }
         Divider()
         ProviderQuickMenus(store: store, id: id)
+        if id == .claude {
+            Button(L10n.t("Manage Claude accounts…", "管理 Claude 账号…")) { SettingsWindow.open(provider: .claude) }
+        }
         if id == .codex {
             CodexAccountsMenu(store: store, accounts: store.codexAccounts)
         }

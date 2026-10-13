@@ -412,12 +412,9 @@ private struct CredentialEditor: View {
                     GlassSegmented(
                         options: ClaudeSource.allCases.map { (value: $0, label: $0.displayName) },
                         selection: store.experience.claudeSource,
-                        onSelect: { value in
-                            store.updateExperience { $0.claudeSource = value }
-                            store.refresh(.claude)
-                        })
+                        onSelect: { store.setClaudeSource($0) })
                 }
-                SettingRow(L10n.t("Other sign-ins", "其他登录")) {
+                SettingRow(L10n.t("Accounts", "账号")) {
                     ClaudeSignInsSettings(store: store, signIns: store.claudeSignIns)
                 }
             }
@@ -541,8 +538,8 @@ private struct CredentialEditor: View {
 
     private func clear() {
         store.setCredential("", for: id)
-        saved = ""
-        credential = ""
+        saved = ConfigStore.shared.credential(for: id) ?? ""
+        credential = saved
         testPhase = .idle
     }
 

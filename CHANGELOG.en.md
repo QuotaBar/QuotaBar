@@ -3,7 +3,24 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
-## Unreleased
+## 0.5.30 · 2026-10-13
+
+### 2026-10-13
+
+#### Added
+
+- iOS adds a Usage tab with today, yesterday and 30-day totals, trends, and provider and model breakdowns, with clear empty-data states.
+- iOS adds balance widgets for the Home Screen and Lock Screen, keeping currencies separate and showing data freshness.
+- Claude account management identifies the current sign-in before adding another account, updates account details and quotas after browser sign-in, and keeps the selected account across restarts.
+
+#### Fixed
+
+- Grok reads its own plan usage correctly. Grok Bot quotas billed through Cursor appear only in Cursor, without duplicate cached quotas or misleading refresh failures.
+- Missing usage fields in parts of Cursor, Alibaba Coding Plan, MiMo, Qoder, Windsurf, Kiro, Kimi and Claude responses no longer become 0%. Explicit zero usage remains visible.
+- Unconfigured, signed-out, unavailable and redirected providers discard inapplicable cached quotas. Late requests cannot overwrite results after an account or source change.
+- Missing Claude login directories and removed accounts prompt re-adding the account. Duplicate sign-ins are identified and expired sign-ins no longer misleadingly promise repeated renewal.
+- iOS quota pages and widgets show unknown usage as a dash and a gray meter, instead of 100% remaining. Expired cached windows wait for a new Mac reading instead of inferring zero usage.
+- An iPhone that retains its Quota Run account but lacks its device login key now prompts reconnection instead of reporting normal reception or only suggesting the Mac is asleep.
 
 ### 2026-10-07
 

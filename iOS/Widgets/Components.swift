@@ -13,9 +13,9 @@ extension UsageSnapshot {
         ownWindows.filter { $0.horizon == horizon }.max { ($0.usedPercent ?? 0) < ($1.usedPercent ?? 0) }
     }
 
-    /// The plan's own windows with a figure, short first.
+    /// The plan's limits, including unknown counters, short first.
     var shownWindows: [UsageWindow] {
-        ownWindows.sorted { ($0.windowSeconds ?? .max) < ($1.windowSeconds ?? .max) }
+        windows.filter { $0.credit == nil && (!$0.extra || $0.inUse) }.sorted { ($0.windowSeconds ?? .max) < ($1.windowSeconds ?? .max) }
     }
 }
 
@@ -38,12 +38,14 @@ struct LeftFigure: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 1) {
-            Text(used.map { "\(Int((100 - $0).rounded()))" } ?? "–")
+            Text(used.map { "\(Int((100 - $0).rounded()))" } ?? "—")
                 .font(.system(size: size, weight: .semibold, design: .rounded).monospacedDigit())
                 .contentTransition(.numericText())
-            Text("%")
-                .font(.system(size: size * 0.45, weight: .medium, design: .rounded))
-                .foregroundStyle(.secondary)
+            if used != nil {
+                Text("%")
+                    .font(.system(size: size * 0.45, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
         }
         .foregroundStyle(tinted && used != nil ? Color.usage(used ?? 0) : Color.primary)
         .lineLimit(1)
@@ -132,7 +134,7 @@ struct WindowBarRow: View {
     var compact = false
 
     var body: some View {
-        let used = window.usedNow(at: date) ?? 0
+        let used = window.usedNow(at: date)
         VStack(alignment: .leading, spacing: compact ? 2 : 3) {
             HStack(spacing: 6) {
                 Text(label)
@@ -145,11 +147,11 @@ struct WindowBarRow: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: 4)
-                Text("\(Int((100 - used).rounded()))%")
+                Text(used.map { "\(Int((100 - $0).rounded()))%" } ?? "—")
                     .font(.caption.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(Color.usage(used))
+                    .foregroundStyle(used.map { Color.usage($0) } ?? .secondary)
             }
-            SteppedMeter(fill: 100 - used, tint: Color.usage(used), height: compact ? 4 : 5)
+            SteppedMeter(fill: used.map { 100 - $0 }, tint: used.map { Color.usage($0) } ?? .secondary, height: compact ? 4 : 5)
             if showsReset && !compact {
                 ResetLine(window: window, date: date, quiet: quiet)
                     .font(.caption2)

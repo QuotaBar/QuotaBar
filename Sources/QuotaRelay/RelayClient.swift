@@ -127,6 +127,11 @@ public struct RelayClient: Sendable {
             "PUT", "/sync/grants/\(phoneID)", body: Body(wrapped: Base64URL.encode(wrapped), agreementKey: agreementKey))
     }
 
+    /// Remove a stale phone membership, rather than only its sync grant.
+    public func removePhone(_ phoneID: String) async throws {
+        let _: Ignored? = try await callAllowingEmpty("DELETE", "/devices/\(phoneID)")
+    }
+
     public func revoke(_ phoneID: String) async throws {
         let _: Ignored? = try await callAllowingEmpty("DELETE", "/sync/grants/\(phoneID)")
     }

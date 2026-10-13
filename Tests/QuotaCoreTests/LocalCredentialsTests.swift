@@ -104,7 +104,7 @@ final class LocalCredentialsClaudeTests: XCTestCase {
     func testEachStateIsSaidAsItIs() {
         L10n.override = .en
         defer { L10n.override = .system }
-        guard case let .sessionExpired(message) = ClaudeProvider.credentialError(for: .signedOut) else {
+        guard case let .signedOut(message) = ClaudeProvider.credentialError(for: .signedOut) else {
             return XCTFail("signed out is a session to sign in to again")
         }
         XCTAssertTrue(message.contains("signed out"), message)

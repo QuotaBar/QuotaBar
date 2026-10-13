@@ -155,16 +155,8 @@ struct ProviderDetail: View {
         Section(L10n.t("Limits", "额度")) {
             VStack(alignment: .leading, spacing: 14) {
                 // Balances have a section of their own below.
-                ForEach(snapshot.windows.filter { $0.usedPercent != nil && $0.credit == nil }) { window in
+                ForEach(snapshot.windows.filter { $0.credit == nil }) { window in
                     WindowRow(window: window, pace: .always)
-                }
-                ForEach(snapshot.windows.filter { $0.usedPercent == nil && $0.detail != nil && $0.credit == nil }) { window in
-                    HStack {
-                        Text(window.displayName).foregroundStyle(.secondary)
-                        Spacer()
-                        Text(window.detail ?? "").monospacedDigit()
-                    }
-                    .font(.subheadline)
                 }
             }
         }

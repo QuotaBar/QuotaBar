@@ -359,6 +359,9 @@ public final class ConfigStore: @unchecked Sendable {
     /// whenever macOS decides to ask the user to authorize access, so it must
     /// not be hit once per refresh — let alone once per SwiftUI render.
     private var credentialCache: [ProviderID: String?] = [:]
+    /// A keychain read may finish after a credential was saved or cleared.
+    /// Its earlier value must not overwrite the new memoized account.
+    private var credentialCacheGeneration: UInt64 = 0
     public let fileURL: URL
     /// No config file existed when this store was created: a first launch.
     public let wasFreshInstall: Bool
@@ -481,37 +484,51 @@ public final class ConfigStore: @unchecked Sendable {
     // MARK: Credentials (keychain-backed)
 
     public func credential(for id: ProviderID) -> String? {
-        lock.lock()
-        if let cached = credentialCache[id] {
+        while true {
+            lock.lock()
+            if let cached = credentialCache[id] {
+                lock.unlock()
+                return cached
+            }
+            let generation = credentialCacheGeneration
             lock.unlock()
-            return cached
+
+            let read = credentials.read(account: id.rawValue)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let value = (read?.isEmpty == false) ? read : nil
+
+            lock.lock()
+            guard credentialCacheGeneration == generation else {
+                lock.unlock()
+                continue
+            }
+            credentialCache.updateValue(value, forKey: id)
+            lock.unlock()
+            return value
         }
-        lock.unlock()
-
-        let read = credentials.read(account: id.rawValue)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let value = (read?.isEmpty == false) ? read : nil
-
-        lock.lock()
-        credentialCache[id] = value
-        lock.unlock()
-        return value
     }
 
-    public func setCredential(_ value: String?, for id: ProviderID) {
+    @discardableResult
+    public func setCredential(_ value: String?, for id: ProviderID) -> Bool {
         let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let saved: Bool
         if trimmed.isEmpty {
-            lastCredentialError = credentials.delete(account: id.rawValue)
+            saved = credentials.delete(account: id.rawValue)
+            lastCredentialError = saved
                 ? nil
                 : L10n.t("Could not remove the credential from the keychain.", "无法从钥匙串中删除该凭据。")
         } else {
-            lastCredentialError = credentials.write(trimmed, account: id.rawValue)
+            saved = credentials.write(trimmed, account: id.rawValue)
+            lastCredentialError = saved
                 ? nil
                 : L10n.t("Could not save the credential to the keychain.", "无法将该凭据写入钥匙串。")
         }
+        guard saved else { return false }
         lock.lock()
-        credentialCache[id] = trimmed.isEmpty ? String?.none : trimmed
+        credentialCacheGeneration &+= 1
+        credentialCache.updateValue(trimmed.isEmpty ? nil : trimmed, forKey: id)
         lock.unlock()
+        return true
     }
 
     /// Keychain accounts of providers since removed: `moonshot`, the Kimi open
@@ -527,6 +544,7 @@ public final class ConfigStore: @unchecked Sendable {
     /// Drops the memoized reads so the next lookup goes back to the keychain.
     public func invalidateCredentialCache() {
         lock.lock()
+        credentialCacheGeneration &+= 1
         credentialCache.removeAll()
         lock.unlock()
     }

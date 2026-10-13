@@ -87,7 +87,8 @@ final class GrokBotTests: XCTestCase {
 
     func testGrokBotAloneSaysWhereElseItIs() {
         XCTAssertThrowsError(try GrokProvider.botOnly(.onCursorCard)) { error in
-            guard case let ProviderError.notConfigured(hint) = error else { return XCTFail("\(error)") }
+            guard case let ProviderError.usageOnOtherProvider(provider, hint) = error else { return XCTFail("\(error)") }
+            XCTAssertEqual(provider, .cursor)
             XCTAssertEqual(hint, GrokBot.onCursorCardHint)
         }
         XCTAssertThrowsError(try GrokProvider.botOnly(.needsAuthorization)) { error in

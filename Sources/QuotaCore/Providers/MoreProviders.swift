@@ -235,11 +235,11 @@ public struct AlibabaCodingPlanProvider: QuotaProvider {
         }
         func window(_ title: String, _ used: [String], _ total: [String], _ reset: [String], seconds: Int) -> UsageWindow? {
             guard let totalValue = total.lazy.compactMap({ QwenProvider.number(quota[$0]) }).first, totalValue > 0 else { return nil }
-            let usedValue = used.lazy.compactMap { QwenProvider.number(quota[$0]) }.first ?? 0
+            let usedValue = used.lazy.compactMap { QwenProvider.number(quota[$0]) }.first
             return UsageWindow(
                 title: title,
-                usedPercent: ProviderJSON.percent(used: usedValue, total: totalValue),
-                detail: L10n.t("\(Int(usedValue)) / \(Int(totalValue)) requests", "\(Int(usedValue)) / \(Int(totalValue)) 次请求"),
+                usedPercent: usedValue.flatMap { ProviderJSON.percent(used: $0, total: totalValue) },
+                detail: usedValue.map { L10n.t("\(Int($0)) / \(Int(totalValue)) requests", "\(Int($0)) / \(Int(totalValue)) 次请求") },
                 resetsAt: reset.lazy.compactMap { QwenProvider.date(quota[$0]) }.first,
                 windowSeconds: seconds)
         }
@@ -352,7 +352,7 @@ public struct CopilotProvider: QuotaProvider {
             "X-Github-Api-Version": "2025-04-01",
         ])
         if response.status == 404 {
-            throw ProviderError.notConfigured(hint: L10n.t("This GitHub account has no Copilot.", "这个 GitHub 账号没有 Copilot。"))
+            throw ProviderError.noPlan(L10n.t("This GitHub account has no Copilot.", "这个 GitHub 账号没有 Copilot。"))
         }
         return try Self.parse(try response.requireOK().data)
     }
@@ -584,11 +584,11 @@ public struct MiMoProvider: QuotaProvider {
            let item = (month["items"] as? [[String: Any]])?.first,
            let limit = QwenProvider.number(item["limit"]), limit > 0
         {
-            let used = QwenProvider.number(item["used"]) ?? 0
+            let used = QwenProvider.number(item["used"])
             windows.append(UsageWindow(
                 title: L10n.t("Token Plan · month", "Token Plan · 本月"),
-                usedPercent: ProviderJSON.percent(used: used, total: limit),
-                detail: "\(QuotaFormat.compact(Int(used))) / \(QuotaFormat.compact(Int(limit)))",
+                usedPercent: used.flatMap { ProviderJSON.percent(used: $0, total: limit) },
+                detail: used.map { "\(QuotaFormat.compact(Int($0))) / \(QuotaFormat.compact(Int(limit)))" },
                 windowSeconds: 2_592_000))
         }
         let balanceWindow = UsageWindow(
@@ -640,7 +640,7 @@ public struct QoderProvider: QuotaProvider {
 
     /// One bucket of credits as the reply describes it.
     struct Bucket {
-        var used: Double
+        var used: Double?
         var limit: Double
         /// The percentage the console itself reports, where it does.
         var percent: Double?
@@ -659,17 +659,20 @@ public struct QoderProvider: QuotaProvider {
                 "Signed in, but this account has no Qoder credits to read.",
                 "已登录，但这个账号没有可读的 Qoder 额度。"))
         }
-        let used = counted.reduce(0) { $0 + $1.used }
+        let knownUsed = counted.map { bucket in
+            bucket.used ?? bucket.percent.map { $0 / 100 * bucket.limit }
+        }
+        let used: Double? = knownUsed.allSatisfy { $0 != nil } ? knownUsed.compactMap { $0 }.reduce(0, +) : nil
         let limit = counted.reduce(0) { $0 + $1.limit }
         // One bucket answers with the console's own percentage; several are
         // one pool between them, so they are summed.
         let percent = counted.count == 1
-            ? (counted[0].percent ?? ProviderJSON.percent(used: used, total: limit))
-            : ProviderJSON.percent(used: used, total: limit)
+            ? (counted[0].percent ?? used.flatMap { ProviderJSON.percent(used: $0, total: limit) })
+            : used.flatMap { ProviderJSON.percent(used: $0, total: limit) }
         return UsageSnapshot(windows: [UsageWindow(
             title: L10n.t("Credits", "额度"),
             usedPercent: percent.map { min(max($0, 0), 100) },
-            detail: L10n.t("\(Int(used)) / \(Int(limit)) credits", "\(Int(used)) / \(Int(limit)) 点"),
+            detail: used.map { L10n.t("\(Int($0)) / \(Int(limit)) credits", "\(Int($0)) / \(Int(limit)) 点") },
             resetsAt: QwenProvider.date(root["nextResetAt"] ?? root["next_reset_at"]))])
     }
 
@@ -684,7 +687,7 @@ public struct QoderProvider: QuotaProvider {
             guard let child = object[key] as? [String: Any] else { continue }
             if let summary = (child["quotaSummary"] ?? child["quota_summary"]) as? [String: Any] {
                 found.append(Bucket(
-                    used: QwenProvider.number(summary["usedValue"] ?? summary["used_value"]) ?? 0,
+                    used: QwenProvider.number(summary["usedValue"] ?? summary["used_value"]),
                     limit: QwenProvider.number(summary["limitValue"] ?? summary["limit_value"]) ?? 0,
                     percent: QwenProvider.number(summary["usagePercentage"] ?? summary["usage_percentage"])))
             } else {
@@ -736,11 +739,11 @@ public struct WindsurfProvider: QuotaProvider {
             ] {
                 guard let totalValue = QwenProvider.number(usage[total]), totalValue > 0 else { continue }
                 let usedValue = QwenProvider.number(usage[used])
-                    ?? QwenProvider.number(usage[remaining]).map { totalValue - $0 } ?? 0
+                    ?? QwenProvider.number(usage[remaining]).map { totalValue - $0 }
                 windows.append(UsageWindow(
                     title: title,
-                    usedPercent: ProviderJSON.percent(used: usedValue, total: totalValue),
-                    detail: "\(Int(usedValue)) / \(Int(totalValue))",
+                    usedPercent: usedValue.flatMap { ProviderJSON.percent(used: $0, total: totalValue) },
+                    detail: usedValue.map { "\(Int($0)) / \(Int(totalValue))" },
                     resetsAt: end))
             }
         }
@@ -788,13 +791,13 @@ public struct KiroProvider: QuotaProvider {
               let credit = (root["usageBreakdownList"] as? [[String: Any]])?.first(where: { ($0["resourceType"] as? String) == "CREDIT" })
         else { throw ProviderError.badResponse }
         let limit = QwenProvider.number(credit["usageLimitWithPrecision"]) ?? 0
-        let used = QwenProvider.number(credit["currentUsageWithPrecision"]) ?? 0
+        let used = QwenProvider.number(credit["currentUsageWithPrecision"])
         guard limit > 0 else { throw ProviderError.badResponse }
         let reset = QwenProvider.date(credit["nextDateReset"] ?? root["nextDateReset"])
         return UsageSnapshot(windows: [UsageWindow(
             title: L10n.t("Monthly credits", "每月额度"),
-            usedPercent: ProviderJSON.percent(used: used, total: limit),
-            detail: L10n.t("\(String(format: "%.1f", used)) / \(String(format: "%.0f", limit)) credits", "\(String(format: "%.1f", used)) / \(String(format: "%.0f", limit)) 点"),
+            usedPercent: used.flatMap { ProviderJSON.percent(used: $0, total: limit) },
+            detail: used.map { L10n.t("\(String(format: "%.1f", $0)) / \(String(format: "%.0f", limit)) credits", "\(String(format: "%.1f", $0)) / \(String(format: "%.0f", limit)) 点") },
             resetsAt: reset)])
     }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import QuotaCore
 
 /// Work and personal (#8): the profile in use decides which Claude sign-in
@@ -91,7 +92,7 @@ extension UsageStore {
     /// item, or the Codex account (the CLI's own when nothing picked one).
     func profileAccountKey(_ id: ProviderID) -> String {
         switch id {
-        case .claude: return "claude|\(claudeCardService)"
+        case .claude: return "claude|\(claudeCardService)|\(experience.claudeSource.rawValue)"
         case .codex: return "codex|\(codexCardAccount ?? "cli")"
         default: return id.rawValue
         }
@@ -132,7 +133,73 @@ extension UsageStore {
         updateProfiles { $0.append(AccountProfile(name: name)) }
     }
 
+    func removeClaudeSignIn(_ service: String) {
+        guard service != LocalCredentials.claudeService else { return }
+        claudeLoginTasks.removeValue(forKey: service)?.cancel()
+        claudeLoginsPending.remove(service)
+        changeAccounts { updateExperience { $0.forgetClaudeSignIn(service) } }
+        claudeSignIns.forget(service)
+        accountReadings = accountReadings.filter { !$0.key.hasPrefix("claude|\(service)|") }
+        Task { await readClaudeSignIns(force: true) }
+        flashNotice(L10n.t("Removed from QuotaBar", "已从 QuotaBar 移除"))
+    }
+
+    func reconnectClaudeAccount(_ service: String) -> String? {
+        do {
+            let before = ClaudeAccountSetup.loginStamp(service: service)
+            let command = try ClaudeAccountSetup.loginCommand(service: service)
+            guard NSWorkspace.shared.open(command) else { return L10n.t("Could not open the login window.", "无法打开登录窗口。") }
+            watchClaudeLogin(service, before: before)
+            return nil
+        } catch { return error.localizedDescription }
+    }
+
+    @discardableResult
+    func addClaudeAccount(name: String = "", replacing oldService: String? = nil) -> String? {
+        do {
+            let prepared = try ClaudeAccountSetup.prepare()
+            updateExperience { prefs in
+                prefs.claudeAccountNames[prepared.service] = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            guard NSWorkspace.shared.open(prepared.command) else {
+                return L10n.t("Could not open the login window. Try again from Settings.", "无法打开登录窗口，请在设置中重试。")
+            }
+            if let oldService { removeClaudeSignIn(oldService) }
+            watchClaudeLogin(prepared.service, before: .init())
+            Task { await readClaudeSignIns(force: true) }
+            return nil
+        } catch { return error.localizedDescription }
+    }
+
+    private func watchClaudeLogin(_ service: String, before: ClaudeAccountSetup.LoginStamp) {
+        claudeLoginTasks.removeValue(forKey: service)?.cancel()
+        claudeLoginsPending.insert(service)
+        claudeLoginTasks[service] = Task { [weak self] in
+            // Poll only while an explicitly opened login is in progress.
+            for _ in 0..<300 {
+                do { try await Task.sleep(for: .seconds(2)) } catch { return }
+                let stamp = await Task.detached(priority: .utility) { ClaudeAccountSetup.loginStamp(service: service) }.value
+                guard !Task.isCancelled, let self else { return }
+                if stamp.completed(since: before) {
+                    self.accountReadings = self.accountReadings.filter { !$0.key.hasPrefix("claude|\(service)|") }
+                    self.claudeSignIns.invalidateReading(service)
+                    LocalCredentials.invalidateClaudeToken()
+                    if self.claudeCardService == service { self.switchAccount(.claude, showing: nil) }
+                    await self.readClaudeSignIns(force: true)
+                    self.refreshConfigured()
+                    self.claudeLoginsPending.remove(service)
+                    self.claudeLoginTasks[service] = nil
+                    self.flashNotice(L10n.t("Claude login updated", "Claude 登录已更新"))
+                    return
+                }
+            }
+            guard let self, !Task.isCancelled else { return }
+            self.claudeLoginsPending.remove(service)
+            self.claudeLoginTasks[service] = nil
+        }
+    }
+
     func readClaudeSignIns(force: Bool = false) async {
-        await claudeSignIns.read(cardService: claudeCardService, force: force)
+        await claudeSignIns.read(cardService: claudeCardService, force: force, hidden: experience.hiddenClaudeSignIns, names: experience.claudeAccountNames)
     }
 }

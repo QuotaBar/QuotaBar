@@ -110,6 +110,48 @@ struct OverviewWidgetIntent: WidgetConfigurationIntent {
 
 // MARK: - The timeline
 
+struct BalanceProviderEntity: AppEntity {
+    let id: String
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Balance provider"
+    static let defaultQuery = BalanceProviderQuery()
+    var displayRepresentation: DisplayRepresentation {
+        DisplayRepresentation(title: "\(ProviderID(stored: id)?.displayName ?? id)")
+    }
+}
+
+struct BalanceProviderQuery: EntityQuery {
+    func entities(for identifiers: [String]) async throws -> [BalanceProviderEntity] {
+        identifiers.map(BalanceProviderEntity.init(id:))
+    }
+    func suggestedEntities() async throws -> [BalanceProviderEntity] {
+        ReadingsCache.merged.items.filter { $0.snapshot?.balance?.balances.isEmpty == false }
+            .map { BalanceProviderEntity(id: $0.provider.rawValue) }
+    }
+    func defaultResult() async -> BalanceProviderEntity? {
+        try? await suggestedEntities().first
+    }
+}
+
+struct BalanceWidgetIntent: WidgetConfigurationIntent {
+    static let title: LocalizedStringResource = "Balance"
+    static let description = IntentDescription("A service's account balance, in its original currency.")
+    @Parameter(title: "Provider") var provider: BalanceProviderEntity?
+}
+
+struct BalanceTimeline: AppIntentTimelineProvider {
+    func placeholder(in context: Context) -> ReadingsEntry { ReadingsTimeline.placeholder }
+    func snapshot(for configuration: BalanceWidgetIntent, in context: Context) async -> ReadingsEntry {
+        makeEntry(.now, ReadingsTimeline.snapshotReadings(isPreview: context.isPreview), configuration)
+    }
+    func timeline(for configuration: BalanceWidgetIntent, in context: Context) async -> Timeline<ReadingsEntry> {
+        let readings = await ReadingsTimeline.readings()
+        return ReadingsTimeline.entries { makeEntry($0, readings, configuration) }
+    }
+    private func makeEntry(_ date: Date, _ readings: MergedReadings, _ configuration: BalanceWidgetIntent) -> ReadingsEntry {
+        ReadingsEntry(date: date, readings: readings, provider: configuration.provider.flatMap { ProviderID(stored: $0.id) })
+    }
+}
+
 struct ReadingsEntry: TimelineEntry {
     let date: Date
     let readings: MergedReadings

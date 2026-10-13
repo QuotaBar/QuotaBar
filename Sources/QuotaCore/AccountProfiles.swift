@@ -39,12 +39,26 @@ extension ExperiencePrefs {
     /// The Claude Code item the card reads: the profile in use, else what the
     /// arrow chose, else the default sign-in.
     public var claudeItem: String {
-        if let profile = activeProfile { return profile.claudeItem }
-        return claudeSignInChoice ?? LocalCredentials.claudeService
+        let selected = activeProfile?.claudeItem ?? claudeSignInChoice ?? LocalCredentials.claudeService
+        return hiddenClaudeSignIns.contains(selected) ? LocalCredentials.claudeService : selected
     }
 
     /// The kept Codex account the card reads; nil follows the CLI.
     public var codexAccountPin: String? {
         activeProfile != nil ? activeProfile?.codexAccountID : codexAccountChoice
+    }
+}
+
+
+extension ExperiencePrefs {
+    /// Forget only QuotaBar's references, leaving Claude Code's login intact.
+    public mutating func forgetClaudeSignIn(_ service: String) {
+        guard service != LocalCredentials.claudeService else { return }
+        if !hiddenClaudeSignIns.contains(service) { hiddenClaudeSignIns.append(service) }
+        claudeAccountNames.removeValue(forKey: service)
+        if claudeSignInChoice == service { claudeSignInChoice = nil }
+        for index in accountProfiles.indices where accountProfiles[index].claudeService == service {
+            accountProfiles[index].claudeService = nil
+        }
     }
 }

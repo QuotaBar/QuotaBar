@@ -75,6 +75,16 @@ final class ClaudeWebSessionTests: XCTestCase {
 
     /// A config dir is found from its keychain item's name, and its address
     /// read from the `.claude.json` inside.
+    func testRegularFileCannotBeUsedAsAConfigDirectory() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let file = home.appendingPathComponent(".claude-old")
+        try Data().write(to: file)
+        let hash = SHA256.hash(data: Data(file.path.utf8)).map { String(format: "%02x", $0) }.joined().prefix(8)
+        XCTAssertNil(LocalCredentials.claudeConfigDir(service: "Claude Code-credentials-\(hash)", home: home))
+    }
+
     func testConfigDirIdentityFromItsHash() throws {
         let home = FileManager.default.temporaryDirectory.appendingPathComponent("qb-home-\(UUID().uuidString)")
         let dir = home.appendingPathComponent(".claude-second")

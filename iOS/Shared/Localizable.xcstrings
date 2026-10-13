@@ -151,6 +151,36 @@
           }
         }
       }
+    },
+    "Balance": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "账户余额"
+          }
+        }
+      }
+    },
+    "Balance provider": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "余额服务商"
+          }
+        }
+      }
+    },
+    "A service's account balance, in its original currency.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务的账户余额，按原币种显示。"
+          }
+        }
+      }
     }
   }
 }

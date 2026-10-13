@@ -16,6 +16,17 @@ public enum ClaudeSignIns {
         public var plan: String?
         public var snapshot: UsageSnapshot?
         public var error: String?
+        public var discardsCachedReading = false
+        public var needsAuthorization = false
+
+        public func preserving(_ previous: Reading?) -> Reading {
+            var result = self
+            let changedAccount = identity?.accountID != nil && previous?.identity?.accountID != nil &&
+                (identity?.accountID != previous?.identity?.accountID || identity?.organizationID != previous?.identity?.organizationID)
+            if !discardsCachedReading, !changedAccount, result.snapshot == nil { result.snapshot = previous?.snapshot }
+            if result.identity == nil { result.identity = previous?.identity }
+            return result
+        }
 
         public init(
             id: String,
@@ -39,14 +50,14 @@ public enum ClaudeSignIns {
         let token = service == LocalCredentials.claudeService
             ? LocalCredentials.claudeOAuthToken()
             : LocalCredentials.claudeLookup(service: service).token
-        guard let token else { return nil }
-        return await ClaudeProvider.profile(token: token)
+        guard let token else { return LocalCredentials.claudeConfigIdentity(service: service) }
+        return await ClaudeProvider.profile(token: token) ?? ClaudeProvider.cachedProfile(token: token) ?? LocalCredentials.claudeConfigIdentity(service: service)
     }
 
     /// Every other sign-in, read side by side — the default one among them
     /// while a profile (#8) has the card read another.
-    public static func readOthers(card cardService: String = LocalCredentials.claudeService, now: Date = .now) async -> [Reading] {
-        let extras = LocalCredentials.claudeExtraServices()
+    public static func readOthers(card cardService: String = LocalCredentials.claudeService, now: Date = .now, excluding: [String] = [], registered: [String] = [], deduplicate: Bool = true) async -> [Reading] {
+        let extras = visibleServices(extras: LocalCredentials.claudeExtraServices(), registered: registered, excluding: excluding)
         guard !extras.isEmpty else { return [] }
         let services = ([LocalCredentials.claudeService] + extras).filter { $0 != cardService }
         let card = await cardIdentity(service: cardService)
@@ -57,7 +68,17 @@ public enum ClaudeSignIns {
             }
             for await reading in group { readings.append(reading) }
         }
-        return arranged(readings, card: card)
+        return deduplicate ? arranged(readings, card: card) : readings
+    }
+
+    public static func sameAccount(_ first: ClaudeProvider.Identity?, _ second: ClaudeProvider.Identity?) -> Bool {
+        guard let account = first?.accountID, let organization = first?.organizationID,
+              let otherAccount = second?.accountID, let otherOrganization = second?.organizationID else { return false }
+        return account == otherAccount && organization == otherOrganization
+    }
+
+    static func visibleServices(extras: [String], registered: [String], excluding: [String]) -> [String] {
+        Array(Set(extras + registered)).filter { !excluding.contains($0) }.sorted()
     }
 
     /// The same account in the same organization twice — a config dir that
@@ -101,20 +122,23 @@ public enum ClaudeSignIns {
         var lookup = LocalCredentials.claudeLookup(service: service)
         // Off the card, a sign-in is still Claude Code's to renew: it is
         // started for it, with the sign-in's own config dir.
-        if let expiry = lookup.expiresAt, expiry <= now.addingTimeInterval(60),
-           await ClaudeCodeRenewal.renewIfExpired(service: service) == .renewed
-        {
-            lookup = LocalCredentials.readClaudeNow(service: service)
+        var renewal: ClaudeCodeRenewal.Outcome?
+        if let expiry = lookup.expiresAt, expiry <= now.addingTimeInterval(60) {
+            renewal = await ClaudeCodeRenewal.renewIfExpired(service: service)
+            if renewal == .renewed { lookup = LocalCredentials.readClaudeNow(service: service) }
         }
         var reading = Reading(id: service, plan: lookup.plan)
         switch lookup.state {
         case .needsAuthorization:
+            reading.needsAuthorization = true
             reading.error = needsAuthorizationMessage
             return reading
         case .signedOut:
+            reading.discardsCachedReading = true
             reading.error = signedOutMessage
             return reading
         case .missing:
+            reading.discardsCachedReading = true
             reading.error = missingMessage
             return reading
         case .available:
@@ -125,14 +149,18 @@ public enum ClaudeSignIns {
         reading.identity = ClaudeProvider.cachedProfile(token: token)
             ?? LocalCredentials.claudeConfigIdentity(service: service)
         if let expiry = lookup.expiresAt, expiry <= now {
-            reading.error = expiredMessage
+            let error = renewalError(service: service, outcome: renewal)
+            reading.discardsCachedReading = ProviderPhase.failure(error, previous: nil).discardsCachedReading
+            reading.error = error.localizedDescription
             return reading
         }
         do {
             reading.snapshot = try await ClaudeProvider.usage(token: token, plan: lookup.plan)
             reading.identity = await ClaudeProvider.profile(token: token)
         } catch ProviderError.unauthorized {
-            reading.error = expiredMessage
+            let error = renewalError(service: service, outcome: renewal)
+            reading.discardsCachedReading = ProviderPhase.failure(error, previous: nil).discardsCachedReading
+            reading.error = error.localizedDescription
         } catch {
             reading.error = error.localizedDescription
         }
@@ -153,6 +181,20 @@ public enum ClaudeSignIns {
 
     static var missingMessage: String {
         L10n.t("No sign-in in this keychain item.", "这个钥匙串项里没有登录信息。")
+    }
+
+    public static func directoryMissing(service: String) -> Bool {
+        service != LocalCredentials.claudeService && LocalCredentials.claudeConfigDir(service: service) == nil
+    }
+
+    static func renewalError(service: String, outcome: ClaudeCodeRenewal.Outcome?, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> ProviderError {
+        if service != LocalCredentials.claudeService,
+           LocalCredentials.claudeConfigDir(service: service, home: home) == nil {
+            return .notConfigured(hint: L10n.t(
+                "This sign-in's folder could not be found. Add it again, or remove it to stop showing this notice.",
+                "找不到这个登录的目录，需要重新添加。也可以移除它，停止提示。"))
+        }
+        return .sessionExpired(ClaudeProvider.expiredMessage(outcome))
     }
 
     public static var expiredMessage: String {

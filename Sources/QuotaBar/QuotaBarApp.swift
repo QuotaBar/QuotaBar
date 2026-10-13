@@ -112,6 +112,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let index = arguments.firstIndex(of: "--lang"), index + 1 < arguments.count {
             L10n.override = arguments[index + 1].hasPrefix("zh") ? .zhHans : .en
         }
+        if arguments.contains("--phone-connections") {
+            Task {
+                await PhoneConnectionTool.run(arguments: arguments)
+                NSApp.terminate(nil)
+            }
+            return
+        }
+        if let index = arguments.firstIndex(of: "--usage-display-preview"), index + 1 < arguments.count {
+            Snapshot.missingUsagePreview(directory: arguments[index + 1])
+            NSApp.terminate(nil)
+        }
         if let index = arguments.firstIndex(of: "--snapshot") {
             let directory = index + 1 < arguments.count ? arguments[index + 1] : "./snapshots"
             Snapshot.run(directory: directory)

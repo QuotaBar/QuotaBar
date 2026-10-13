@@ -472,17 +472,12 @@ public struct GrokProvider: QuotaProvider {
         var snapshot: UsageSnapshot
         do {
             snapshot = try await Self.credits(token: token, email: local?.email)
-        } catch ProviderError.noPlan(let message) {
-            // Signed in to xAI without a plan, while SuperGrok pays for Grok
-            // Bot on another account: the row is still worth the card.
-            if case let .row(window, plan, account)? = try? await bot.value {
-                return UsageSnapshot(planName: plan, account: account, windows: [window])
-            }
-            throw ProviderError.noPlan(message)
+        } catch let error as ProviderError where Self.hasNoQuota(error) {
+            return try Self.withoutCredits(error, bot: try? await bot.value)
         } catch ProviderError.unauthorized where config.credential(for: .grok) == nil && local != nil {
             throw ProviderError.sessionExpired(Self.expiredMessage(renewal))
         }
-        if snapshot.planName == nil { snapshot.planName = LocalCredentials.grokPlanName() }
+        if snapshot.planName == nil, config.credential(for: .grok) == nil { snapshot.planName = LocalCredentials.grokPlanName() }
         // Beside the credits, Grok Bot is best effort: its sign-in failing
         // must not cost the card what it showed before.
         if case let .row(window, _, _)? = try? await bot.value {
@@ -515,7 +510,7 @@ public struct GrokProvider: QuotaProvider {
         case let .row(window, plan, account):
             return UsageSnapshot(planName: plan, account: account, windows: [window])
         case .onCursorCard:
-            throw ProviderError.notConfigured(hint: GrokBot.onCursorCardHint)
+            throw ProviderError.usageOnOtherProvider(provider: .cursor, hint: GrokBot.onCursorCardHint)
         case .needsAuthorization:
             throw ProviderError.needsAuthorization(hint: GrokBot.authorizationHint)
         case .nothing:
@@ -523,14 +518,37 @@ public struct GrokProvider: QuotaProvider {
         }
     }
 
-    static func credits(token: String, email: String?) async throws -> UsageSnapshot {
+    static func hasNoQuota(_ error: ProviderError) -> Bool {
+        switch error {
+        case .noPlan, .usageUnavailable: return true
+        default: return false
+        }
+    }
+
+    static func withoutCredits(_ error: ProviderError, bot: GrokBot.Reading?) throws -> UsageSnapshot {
+        switch bot {
+        case let .row(window, plan, account)?:
+            return UsageSnapshot(planName: plan, account: account, windows: [window])
+        case .onCursorCard?:
+            if case .usageUnavailable = error {
+                throw ProviderError.usageUnavailable(L10n.t(
+                    "Grok is signed in. Its quota data is currently unavailable because the billing response did not report a usage percentage. Grok Bot usage is available on the Cursor card.",
+                    "Grok 已登录。额度数据暂不可用：接口未返回用量百分比。Grok Bot 用量可在 Cursor 卡片查看。"))
+            }
+            throw ProviderError.usageOnOtherProvider(provider: .cursor, hint: GrokBot.onCursorCardHint)
+        default:
+            throw error
+        }
+    }
+
+    static func credits(token: String, email: String?, send: HTTPSend = HTTP.live) async throws -> UsageSnapshot {
         let url = URL(string: "https://cli-chat-proxy.grok.com/v1/billing?format=credits")!
-        let response = try await HTTP.get(url, headers: [
+        let response = try await send("GET", url, [
             "Authorization": "Bearer \(token)",
             "x-xai-token-auth": "xai-grok-cli",
             "Accept": "application/json",
             "User-Agent": "QuotaBar",
-        ]).requireOK()
+        ], nil, 20).requireOK()
         var snapshot = try parse(response.data)
         // The billing response carries no identity; the CLI's auth entry does.
         if snapshot.account == nil { snapshot.account = email }
@@ -541,6 +559,7 @@ public struct GrokProvider: QuotaProvider {
 
     struct Amount: Decodable { let val: Double? }
     struct Period: Decodable {
+        let start: String?
         let type: String?
         let end: String?
     }
@@ -550,6 +569,9 @@ public struct GrokProvider: QuotaProvider {
     }
     struct Config: Decodable {
         let creditUsagePercent: Double?
+        let isUnifiedBillingUser: Bool?
+        let monthlyLimit: Amount?
+        let used: Amount?
         let currentPeriod: Period?
         let billingPeriodEnd: String?
         let onDemandCap: Amount?
@@ -574,15 +596,28 @@ public struct GrokProvider: QuotaProvider {
 
         let periodEnd = Dates.parseISO(configBody.currentPeriod?.end)
             ?? Dates.parseISO(configBody.billingPeriodEnd)
-        let (title, seconds) = periodLabel(configBody.currentPeriod?.type)
+        let legacyPercent: Double?
+        if let limit = configBody.monthlyLimit?.val, limit > 0, let used = configBody.used {
+            // xAI's Cent messages omit a zero-valued `val` in proto3 JSON.
+            legacyPercent = (used.val ?? 0) / limit * 100
+        } else { legacyPercent = nil }
+        let (title, seconds) = periodLabel(configBody.currentPeriod?.type ?? (legacyPercent != nil ? "USAGE_PERIOD_TYPE_MONTHLY" : nil))
 
+        // Verified against this account's official Usage page: unified
+        // billing omits the scalar at 0%. Require its complete typed period,
+        // not merely a date or an empty config, before adopting that zero.
+        let reportedKeys = (ProviderJSON.object(data) as? [String: Any])?["config"] as? [String: Any]
+        let period = configBody.currentPeriod
+        let knownType = ["USAGE_PERIOD_TYPE_WEEKLY", "USAGE_PERIOD_TYPE_MONTHLY", "USAGE_PERIOD_TYPE_DAILY"].contains(period?.type ?? "")
+        let validPeriod = Dates.parseISO(period?.start).flatMap { start in
+            Dates.parseISO(period?.end).map { $0 > start }
+        } ?? false
+        let hasProductUsage = (configBody.productUsage ?? []).contains { ($0.usagePercent ?? 0) > 0 }
+        let omittedUnifiedZero = configBody.isUnifiedBillingUser == true && knownType && validPeriod &&
+            reportedKeys?["creditUsagePercent"] == nil && !hasProductUsage
+        let aggregatePercent = configBody.creditUsagePercent ?? legacyPercent ?? (omittedUnifiedZero ? 0 : nil)
         var windows: [UsageWindow] = []
-        // The reply is protobuf JSON, which leaves out a number that is zero:
-        // a week with nothing used yet comes with its period and no
-        // `creditUsagePercent` at all (seen on a unified-billing account,
-        // October 2026). A period with no figure is a period at 0%.
-        let percent = configBody.creditUsagePercent ?? (configBody.currentPeriod?.type != nil ? 0 : nil)
-        if let percent {
+        if let percent = aggregatePercent {
             windows.append(UsageWindow(
                 title: title,
                 usedPercent: percent,
@@ -597,7 +632,7 @@ public struct GrokProvider: QuotaProvider {
             // Judged on the figure as shown, rounded: 53.4% and 53.1% draw two
             // rows both reading "53%" with the same reset, which is what a
             // reporter on 0.5.13 saw; only a 0.05 difference was caught before.
-            if let total = configBody.creditUsagePercent,
+            if let total = aggregatePercent,
                Int(percent.rounded()) == Int(total.rounded()) { continue }
             let name = productName(raw)
             // `UsageWindow.id` is the title, so a scoped window needs its own.
@@ -619,6 +654,11 @@ public struct GrokProvider: QuotaProvider {
         // no plan that carries credits. Said as it is, not as a reply that
         // would not parse.
         guard !windows.isEmpty else {
+            if configBody.currentPeriod != nil {
+                throw ProviderError.usageUnavailable(L10n.t(
+                    "Grok is connected, but its billing response did not include a verifiable quota. No percentage is shown.",
+                    "Grok 已登录，但接口未提供可核验的额度，暂不显示百分比。"))
+            }
             throw ProviderError.noPlan(L10n.t(
                 "This xAI account has no Grok plan with credits to read.",
                 "这个 xAI 账号没有带额度的 Grok 套餐可读。"))

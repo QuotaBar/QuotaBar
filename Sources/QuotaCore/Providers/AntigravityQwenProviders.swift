@@ -37,7 +37,7 @@ public struct AntigravityProvider: QuotaProvider {
             if LocalCredentials.antigravityToken() == nil {
                 throw ProviderError.notConfigured(hint: ProviderID.antigravity.setupHint)
             }
-            throw ProviderError.notConfigured(hint: Self.expiredTokenHint(local))
+            throw ProviderError.sessionExpired(Self.expiredTokenHint(local))
         }
         let headers = [
             "Authorization": "Bearer \(token.accessToken)",

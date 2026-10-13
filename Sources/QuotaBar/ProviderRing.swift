@@ -266,6 +266,16 @@ struct ProviderCallout: View {
                 .font(.caption)
                 .foregroundStyle(Color(hex: "FF9F0A"))
                 .fixedSize(horizontal: false, vertical: true)
+        case let .notice(message):
+            Label(message, systemImage: "info.circle")
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.6))
+                .fixedSize(horizontal: false, vertical: true)
+        case let .redirected(_, message):
+            Label(message, systemImage: "arrow.turn.down.right")
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.6))
+                .fixedSize(horizontal: false, vertical: true)
         case let .loaded(snapshot), let .stale(snapshot, _):
             VStack(alignment: .leading, spacing: Design.space3) {
                 if let reason = phase?.errorMessage {

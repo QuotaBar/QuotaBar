@@ -89,6 +89,12 @@ enum QuotaRunStore {
         ]
     }
 
+    static var keychainStatus: OSStatus {
+        var query = keychainQuery
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        return SecItemCopyMatching(query as CFDictionary, nil)
+    }
+
     static func loadKeys() -> Keys? {
         var query = keychainQuery
         query[kSecReturnData as String] = true
@@ -187,10 +193,20 @@ enum RelayCache {
 }
 
 enum RelaySync {
+    private enum ConnectionError: LocalizedError {
+        case missingKey
+        var errorDescription: String? {
+            L10n.t("This phone's login key is unavailable. Reconnect Quota Run to restore sync.", "无法读取这台手机的登录密钥，请重新连接 Quota Run 以恢复同步。")
+        }
+    }
+
     /// Every Mac's readings this phone may open. Nil when the phone is not
     /// signed in; throws when quota.run could not be reached.
     static func fetch() async throws -> [CloudReadings]? {
-        guard let (client, account, keys) = QuotaRunStore.signedIn() else { return nil }
+        guard let (client, account, keys) = QuotaRunStore.signedIn() else {
+            if QuotaRunStore.account != nil { throw ConnectionError.missingKey }
+            return nil
+        }
         do {
             if !QuotaRunStore.agreementKeySent {
                 try await client.putAgreementKey(keys.agreement.publicKey.x963Representation)
