@@ -14,13 +14,103 @@ final class AntigravityParsingTests: XCTestCase {
           "gemini-2.5-flash":{"displayName":"Gemini 2.5 Flash"}}}
         """.utf8)
         let snapshot = try AntigravityProvider.parse(models: data, plan: "Google AI Pro")
-        XCTAssertEqual(snapshot.windows.map(\.title), ["Claude Sonnet 4.5", "Gemini 3 Pro"])
-        XCTAssertEqual(snapshot.windows[0].usedPercent!, 90, accuracy: 0.001)
-        XCTAssertEqual(snapshot.windows[1].usedPercent!, 40, accuracy: 0.001)
-        XCTAssertEqual(snapshot.windows[0].scope, "Claude Sonnet 4.5")
+        XCTAssertEqual(snapshot.windows.map(\.title), ["Gemini 3 Pro", "Claude Sonnet 4.5"])
+        XCTAssertEqual(snapshot.windows[0].usedPercent!, 40, accuracy: 0.001)
+        XCTAssertEqual(snapshot.windows[1].usedPercent!, 90, accuracy: 0.001)
+        XCTAssertEqual(snapshot.windows[1].scope, "Claude Sonnet 4.5")
         XCTAssertEqual(snapshot.planName, "Google AI Pro")
         XCTAssertEqual(snapshot.headlinePercent!, 90, accuracy: 0.001)
         XCTAssertNotNil(snapshot.windows[0].resetsAt)
+    }
+
+    /// Trimmed from Antigravity 2.28.0's `fetchAvailableModels`, 2026-10-29:
+    /// tab-completion and tier plumbing with no name, four ids answering as
+    /// one model, and each family resetting together.
+    static let recordedModels = """
+    {"models":{
+      "chat_20706":{"quotaInfo":{"remainingFraction":1},"isInternal":true,"modelProvider":"MODEL_PROVIDER_GOOGLE"},
+      "chat_23310":{"quotaInfo":{"remainingFraction":1},"isInternal":true,"modelProvider":"MODEL_PROVIDER_GOOGLE"},
+      "tab_flash_lite_preview":{"quotaInfo":{"remainingFraction":1},"modelProvider":"MODEL_PROVIDER_GOOGLE"},
+      "tab_jump_flash_lite_preview":{"quotaInfo":{"remainingFraction":1},"modelProvider":"MODEL_PROVIDER_GOOGLE"},
+      "gemini-3.8-flash-tiered":{"quotaInfo":{"remainingFraction":1,"resetTime":"2026-10-29T22:20:17Z"},"modelProvider":"MODEL_PROVIDER_GOOGLE"},
+      "claude-opus-4-6-thinking":{"displayName":"Claude Opus 4.6 (Thinking)","quotaInfo":{"remainingFraction":1,"resetTime":"2026-10-29T22:29:12Z"},"modelProvider":"MODEL_PROVIDER_ANTHROPIC"},
+      "claude-sonnet-4-6":{"displayName":"Claude Sonnet 4.6 (Thinking)","quotaInfo":{"remainingFraction":1,"resetTime":"2026-10-29T22:29:12Z"},"modelProvider":"MODEL_PROVIDER_ANTHROPIC"},
+      "gpt-oss-120b-medium":{"displayName":"GPT-OSS 120B (Medium)","quotaInfo":{"remainingFraction":1,"resetTime":"2026-10-29T22:29:12Z"},"modelProvider":"MODEL_PROVIDER_OPENAI"},
+      "gemini-2.5-pro":{"displayName":"Gemini 2.5 Pro","quotaInfo":{"remainingFraction":GEMINI_PRO,"resetTime":"2026-10-29T22:20:17Z"},"modelProvider":"MODEL_PROVIDER_GOOGLE"},
+      "gemini-3-flash":{"displayName":"Gemini 3 Flash","quotaInfo":{"remainingFraction":1,"resetTime":"2026-10-29T22:20:17Z"},"modelProvider":"MODEL_PROVIDER_GOOGLE"},
+      "gemini-3.1-flash-image":{"displayName":"Gemini 3.1 Flash Image","quotaInfo":{"remainingFraction":1,"resetTime":"2026-10-29T22:20:17Z"},"modelProvider":"MODEL_PROVIDER_GOOGLE"},
+      "gemini-3.1-flash-lite":{"displayName":"Gemini 3.1 Flash Lite","quotaInfo":{"remainingFraction":1,"resetTime":"2026-10-29T22:20:17Z"},"modelProvider":"MODEL_PROVIDER_GOOGLE"},
+      "gemini-2.5-flash-thinking":{"displayName":"Gemini 3.5 Flash Lite","quotaInfo":{"remainingFraction":1,"resetTime":"2026-10-29T22:20:17Z"},"modelProvider":"MODEL_PROVIDER_GOOGLE"},
+      "gemini-2.5-flash":{"displayName":"Gemini 3.5 Flash Lite","quotaInfo":{"remainingFraction":1,"resetTime":"2026-10-29T22:20:17Z"},"modelProvider":"MODEL_PROVIDER_GOOGLE"},
+      "gemini-2.5-flash-lite":{"displayName":"Gemini 3.5 Flash Lite","quotaInfo":{"remainingFraction":1,"resetTime":"2026-10-29T22:20:17Z"},"modelProvider":"MODEL_PROVIDER_GOOGLE"},
+      "gemini-3.5-flash-lite":{"displayName":"Gemini 3.5 Flash Lite","quotaInfo":{"remainingFraction":1,"resetTime":"2026-10-29T22:20:17Z"},"modelProvider":"MODEL_PROVIDER_GOOGLE"}},
+     "tabModelIds":["chat_20706","chat_23310"]}
+    """
+
+    func testPlumbingAndAliasesAreLeftOutAndFamiliesShareAWindow() throws {
+        let data = Data(Self.recordedModels.replacingOccurrences(of: "GEMINI_PRO", with: "1").utf8)
+        let snapshot = try AntigravityProvider.parse(models: data, plan: "Antigravity")
+        XCTAssertEqual(snapshot.windows.map(\.title), ["Gemini", "Claude and GPT"])
+        XCTAssertEqual(snapshot.windows.map(\.usedPercent), [0, 0])
+        XCTAssertEqual(
+            snapshot.windows[0].note,
+            "Gemini 2.5 Pro, Gemini 3 Flash, Gemini 3.1 Flash Image, Gemini 3.1 Flash Lite, Gemini 3.5 Flash Lite")
+        XCTAssertEqual(snapshot.windows[1].note, "Claude Opus 4.6 (Thinking), Claude Sonnet 4.6 (Thinking), GPT-OSS 120B (Medium)")
+        XCTAssertEqual(snapshot.windows[0].resetsAt, Dates.parseISO("2026-10-29T22:20:17Z"))
+        // Nothing used: the first window is the figure, and it is Gemini's.
+        XCTAssertEqual(snapshot.headlineWindow?.title, "Gemini")
+    }
+
+    /// A client that names no version gets the Claude and GPT group alone;
+    /// Gemini then comes from the model list, still first.
+    func testASummaryWithoutGeminiTakesGeminiFromTheModelList() throws {
+        let summary = """
+        {"groups":[{"displayName":"Claude and GPT models","buckets":[
+          {"bucketId":"3p-weekly","window":"weekly","remainingFraction":0.6,"resetTime":"2026-11-05T17:36:48Z"},
+          {"bucketId":"3p-5h","window":"5h","remainingFraction":1,"resetTime":"2026-10-29T22:36:48Z"}]}]}
+        """
+        let models = Self.recordedModels.replacingOccurrences(of: "GEMINI_PRO", with: "1")
+        let snapshot = try AntigravityProvider.parse(summary: Data(summary.utf8), models: Data(models.utf8), plan: "Google AI Pro")
+        XCTAssertEqual(snapshot.windows.map(\.scope), ["Gemini", "Claude and GPT", "Claude and GPT"])
+        XCTAssertEqual(snapshot.windows.map(\.windowSeconds), [nil, 18_000, 604_800])
+        XCTAssertEqual(snapshot.windows[2].usedPercent!, 40, accuracy: 0.001)
+        XCTAssertEqual(snapshot.headlineWindow?.scope, "Claude and GPT")
+    }
+
+    func testAFullSummaryNeedsNoModelList() throws {
+        let summary = """
+        {"groups":[
+          {"displayName":"Gemini Models","buckets":[{"bucketId":"gemini-5h","window":"5h","remainingFraction":1}]},
+          {"displayName":"Claude and GPT models","buckets":[{"bucketId":"3p-5h","window":"5h","remainingFraction":1}]}]}
+        """
+        let snapshot = try AntigravityProvider.parse(summary: Data(summary.utf8), models: Data(#"{"models":{}}"#.utf8))
+        XCTAssertEqual(snapshot.windows.map(\.scope), ["Gemini", "Claude and GPT"])
+    }
+
+    func testTheUserAgentNamesTheInstalledVersion() {
+        XCTAssertEqual(AntigravityProvider.userAgent(version: nil), "antigravity")
+        XCTAssertEqual(AntigravityProvider.userAgent(version: ""), "antigravity")
+        XCTAssertTrue(AntigravityProvider.userAgent(version: "2.28.0").hasPrefix("antigravity/2.28.0 darwin/"))
+    }
+
+    func testThePlanIsTheSubscriptionNotTheCodeAssistTier() throws {
+        let both = #"{"currentTier":{"id":"free-tier","name":"Antigravity"},"paidTier":{"id":"g1-pro-tier","name":"Google AI Pro"},"cloudaicompanionProject":"aicode-consumers"}"#
+        let assist = try JSONDecoder().decode(AntigravityProvider.CodeAssist.self, from: Data(both.utf8))
+        XCTAssertEqual(assist.planName, "Google AI Pro")
+        XCTAssertEqual(assist.projectID, "aicode-consumers")
+        let free = #"{"currentTier":{"id":"free-tier","name":"Antigravity"}}"#
+        XCTAssertEqual(try JSONDecoder().decode(AntigravityProvider.CodeAssist.self, from: Data(free.utf8)).planName, "Antigravity")
+    }
+
+    func testAFamilyWhoseModelsPartWaysShowsEachModel() throws {
+        let data = Data(Self.recordedModels.replacingOccurrences(of: "GEMINI_PRO", with: "0.25").utf8)
+        let snapshot = try AntigravityProvider.parse(models: data)
+        XCTAssertEqual(snapshot.windows.map(\.title), [
+            "Gemini 2.5 Pro", "Gemini 3 Flash", "Gemini 3.1 Flash Image", "Gemini 3.1 Flash Lite", "Gemini 3.5 Flash Lite",
+            "Claude and GPT",
+        ])
+        XCTAssertEqual(snapshot.windows[0].usedPercent!, 75, accuracy: 0.001)
+        XCTAssertEqual(snapshot.headlineWindow?.title, "Gemini 2.5 Pro")
     }
 
     func testBucketsKeepTheEmptiestPerModel() throws {

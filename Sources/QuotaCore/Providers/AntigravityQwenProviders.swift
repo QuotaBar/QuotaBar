@@ -4,8 +4,9 @@ import Foundation
 
 /// Google's Antigravity IDE keeps a standalone OAuth token on disk and
 /// asks the Cloud Code companion API for its model quotas. The same
-/// calls, with the same token: `loadCodeAssist` for the project and tier,
-/// `fetchAvailableModels` for each model's remaining fraction, and
+/// calls, with the same token: `loadCodeAssist` for the project and plan,
+/// `retrieveUserQuotaSummary` for each model family's 5-hour and weekly
+/// limit, `fetchAvailableModels` for a family the summary leaves out, and
 /// `retrieveUserQuota` when the model list carries no fractions. Request
 /// shapes follow CodexBar's, which follow the app's.
 public struct AntigravityProvider: QuotaProvider {
@@ -39,15 +40,32 @@ public struct AntigravityProvider: QuotaProvider {
             }
             throw ProviderError.sessionExpired(Self.expiredTokenHint(local))
         }
+        return try await Self.readCloud(accessToken: token.accessToken)
+    }
+
+    /// The quota from Google's Cloud Code API, with the token the app saved.
+    static func readCloud(accessToken: String) async throws -> UsageSnapshot {
         let headers = [
-            "Authorization": "Bearer \(token.accessToken)",
+            "Authorization": "Bearer \(accessToken)",
             "Accept": "application/json",
-            "User-Agent": "antigravity",
+            "User-Agent": Self.userAgent(version: AntigravityLocal.installedVersion),
         ]
         let metadata = #"{"metadata":{"ideType":"ANTIGRAVITY","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}}"#
         let assist = try? await HTTP.post(URL(string: "\(Self.base):loadCodeAssist")!, headers: headers, jsonBody: metadata)
             .requireOK().json(CodeAssist.self)
         let projectBody = assist?.projectID.map { #"{"project":"\#($0)"}"# } ?? "{}"
+        let plan = assist?.planName
+
+        // The summary the app itself shows: each family with its 5-hour and
+        // weekly limit. The model list below has the 5-hour share alone, so
+        // a week half spent read as 0%.
+        let summary = (try? await HTTP.post(URL(string: "\(Self.base):retrieveUserQuotaSummary")!, headers: headers, jsonBody: projectBody)
+            .requireOK())
+            .flatMap { try? AntigravityLocal.parseSummary($0.data) }?.windows ?? []
+        let covered = Set(summary.compactMap(\.scope))
+        if Family.allCases.allSatisfy({ covered.contains($0.name) }) {
+            return UsageSnapshot(planName: plan, windows: summary)
+        }
 
         var quotas: [ModelQuota] = []
         if let models = try? await HTTP.post(URL(string: "\(Self.base):fetchAvailableModels")!, headers: headers, jsonBody: projectBody)
@@ -55,12 +73,26 @@ public struct AntigravityProvider: QuotaProvider {
         {
             quotas = Self.quotas(from: models)
         }
-        if !quotas.contains(where: { $0.remainingFraction != nil }) {
+        if !quotas.contains(where: { $0.remainingFraction != nil }), summary.isEmpty {
             let response = try await HTTP.post(URL(string: "\(Self.base):retrieveUserQuota")!, headers: headers, jsonBody: projectBody)
                 .requireOK()
             quotas = Self.quotas(from: try response.json(UserQuota.self))
         }
-        return try Self.snapshot(quotas, plan: assist?.currentTier?.name)
+        return try Self.snapshot(summary: summary, quotas: quotas, plan: plan)
+    }
+
+    /// The app's own, with the installed app's version: Google's quota
+    /// summary leaves the Gemini group out for a client that names no
+    /// version — `antigravity` alone got Claude and GPT and nothing else,
+    /// `antigravity/2.28.0 darwin/arm64` got both. Measured 2026-10-29.
+    static func userAgent(version: String?) -> String {
+        guard let version = version?.nilIfEmpty else { return "antigravity" }
+        #if arch(arm64)
+        let arch = "arm64"
+        #else
+        let arch = "amd64"
+        #endif
+        return "antigravity/\(version) darwin/\(arch)"
     }
 
     /// Said when the language server gave nothing and the saved token has
@@ -83,11 +115,18 @@ public struct AntigravityProvider: QuotaProvider {
     struct CodeAssist: Decodable {
         struct Tier: Decodable { let id: String?; let name: String? }
         let currentTier: Tier?
+        /// The subscription — "Google AI Pro" — where `currentTier` is the
+        /// Code Assist tier under it, named just "Antigravity".
+        let paidTier: Tier?
         /// A string, or an object with an id — the API has sent both.
         let cloudaicompanionProject: Project?
 
         var projectID: String? {
             cloudaicompanionProject?.id?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        }
+
+        var planName: String? {
+            paidTier?.name?.nilIfEmpty ?? currentTier?.name?.nilIfEmpty
         }
 
         struct Project: Decodable {
@@ -110,8 +149,13 @@ public struct AntigravityProvider: QuotaProvider {
             let displayName: String?
             let label: String?
             let quotaInfo: QuotaInfo?
+            let isInternal: Bool?
+            /// `MODEL_PROVIDER_GOOGLE`, `MODEL_PROVIDER_ANTHROPIC`, …
+            let modelProvider: String?
         }
         let models: [String: Model]?
+        /// The models behind tab completion, not ones anyone picks.
+        let tabModelIds: [String]?
     }
 
     struct QuotaInfo: Decodable {
@@ -131,21 +175,94 @@ public struct AntigravityProvider: QuotaProvider {
     struct ModelQuota: Equatable {
         let modelID: String
         let label: String
+        let family: Family?
         let remainingFraction: Double?
         let resetsAt: Date?
+
+        init(modelID: String, label: String, provider: String? = nil, remainingFraction: Double?, resetsAt: Date?) {
+            self.modelID = modelID
+            self.label = label
+            family = Family(modelID: modelID, label: label, provider: provider)
+            self.remainingFraction = remainingFraction
+            self.resetsAt = resetsAt
+        }
+
+        /// Reads the same as `other`: the same share left and the same reset,
+        /// or no reset yet on one side. Models on one allowance always do.
+        func readsLike(_ other: ModelQuota) -> Bool {
+            guard remainingFraction == other.remainingFraction else { return false }
+            guard let mine = resetsAt, let theirs = other.resetsAt else { return true }
+            return abs(mine.timeIntervalSince(theirs)) < 60
+        }
+
+        /// Of two readings for one model, the one that binds: less left, then
+        /// the sooner reset, then the id, so the pick does not hang on the
+        /// order the answer listed them in.
+        func binds(before other: ModelQuota) -> Bool {
+            let left = (remainingFraction ?? .greatestFiniteMagnitude, other.remainingFraction ?? .greatestFiniteMagnitude)
+            if left.0 != left.1 { return left.0 < left.1 }
+            let reset = (resetsAt ?? .distantFuture, other.resetsAt ?? .distantFuture)
+            if reset.0 != reset.1 { return reset.0 < reset.1 }
+            return modelID < other.modelID
+        }
     }
 
+    /// The groups Antigravity's own quota summary uses, named the way
+    /// `AntigravityLocal.groupName` reads them. Each shares one allowance:
+    /// every Gemini model resets at the same moment, and every Claude and GPT
+    /// one at another. Gemini first, since Antigravity is Google's.
+    enum Family: Int, CaseIterable, Hashable {
+        case gemini, claudeAndGPT
+
+        var name: String {
+            switch self {
+            case .gemini: "Gemini"
+            case .claudeAndGPT: "Claude and GPT"
+            }
+        }
+
+        init?(modelID: String, label: String, provider: String?) {
+            switch provider {
+            case "MODEL_PROVIDER_GOOGLE": self = .gemini
+            case "MODEL_PROVIDER_ANTHROPIC", "MODEL_PROVIDER_OPENAI": self = .claudeAndGPT
+            default:
+                let names = [modelID.lowercased(), label.lowercased()]
+                if names.contains(where: { $0.hasPrefix("gemini") }) {
+                    self = .gemini
+                } else if names.contains(where: { $0.hasPrefix("claude") || $0.hasPrefix("gpt") }) {
+                    self = .claudeAndGPT
+                } else {
+                    return nil
+                }
+            }
+        }
+    }
+
+    /// The models a person picks from. The answer also lists the plumbing —
+    /// `chat_20706` and `tab_flash_lite_preview` behind tab completion,
+    /// `gemini-3.8-flash-tiered` behind the tiers — with no name of their
+    /// own, and it gives several ids one name: `gemini-2.5-flash`,
+    /// `gemini-2.5-flash-lite` and two more all answer as "Gemini 3.5 Flash
+    /// Lite". A model with no name, marked internal or used for tab
+    /// completion is left out, and one name is one model. Measured against
+    /// Antigravity 2.28.0, 2026-10-29: 17 entries, 8 models.
     static func quotas(from response: AvailableModels) -> [ModelQuota] {
-        (response.models ?? [:]).compactMap { modelID, model in
-            guard let info = model.quotaInfo else { return nil }
-            let label = model.displayName?.nilIfEmpty ?? model.label?.nilIfEmpty ?? modelID
-            return ModelQuota(
+        let tab = Set(response.tabModelIds ?? [])
+        var byLabel: [String: ModelQuota] = [:]
+        for (modelID, model) in response.models ?? [:] {
+            guard let info = model.quotaInfo, model.isInternal != true, !tab.contains(modelID),
+                  let label = model.displayName?.nilIfEmpty ?? model.label?.nilIfEmpty
+            else { continue }
+            let next = ModelQuota(
                 modelID: modelID,
                 label: label,
+                provider: model.modelProvider,
                 remainingFraction: info.remainingFraction,
                 resetsAt: LocalCredentials.parseFlexibleISO(info.resetTime))
+            if let existing = byLabel[label], existing.binds(before: next) { continue }
+            byLabel[label] = next
         }
-        .sorted { $0.label < $1.label }
+        return byLabel.values.sorted(by: ordered)
     }
 
     /// Several buckets can name one model; the emptiest one is the binding.
@@ -158,41 +275,82 @@ public struct AntigravityProvider: QuotaProvider {
                 label: modelID,
                 remainingFraction: bucket.remainingFraction,
                 resetsAt: LocalCredentials.parseFlexibleISO(bucket.resetTime))
-            if let existing = byModel[modelID],
-               (existing.remainingFraction ?? .greatestFiniteMagnitude) <= (next.remainingFraction ?? .greatestFiniteMagnitude)
-            {
-                continue
-            }
+            if let existing = byModel[modelID], existing.binds(before: next) { continue }
             byModel[modelID] = next
         }
-        return byModel.values.sorted { $0.label < $1.label }
+        return byModel.values.sorted(by: ordered)
     }
 
-    /// One window per model, named for it. Antigravity quotas are per model
-    /// family rather than per time window, so the model is the scope.
-    static func snapshot(_ quotas: [ModelQuota], plan: String?) throws -> UsageSnapshot {
-        let windows = quotas.map { quota in
-            UsageWindow(
-                title: quota.label,
-                usedPercent: quota.remainingFraction.map { (1 - min(max($0, 0), 1)) * 100 },
-                resetsAt: quota.resetsAt,
-                scope: quota.label)
+    /// Gemini, then Claude and GPT, then anything else; by name within each.
+    static func ordered(_ a: ModelQuota, _ b: ModelQuota) -> Bool {
+        let last = Family.allCases.count
+        let rank = (a.family?.rawValue ?? last, b.family?.rawValue ?? last)
+        return rank.0 != rank.1 ? rank.0 < rank.1 : a.label < b.label
+    }
+
+    /// Each family from the summary when the summary has it, else from the
+    /// model list; Gemini first, since with nothing used the first window is
+    /// the one the menu bar shows. Groups the summary has beyond the two
+    /// families come last.
+    static func snapshot(summary: [UsageWindow] = [], quotas: [ModelQuota], plan: String?) throws -> UsageSnapshot {
+        let names = Set(Family.allCases.map(\.name))
+        let covered = Set(summary.compactMap(\.scope))
+        let byFamily = Dictionary(grouping: quotas) { $0.family }
+        var windows: [UsageWindow] = []
+        for family in Family.allCases.map(Optional.some) + [nil] {
+            if let family, covered.contains(family.name) {
+                windows += summary.filter { $0.scope == family.name }
+            } else {
+                windows += modelWindows((byFamily[family] ?? []).sorted(by: ordered), family: family)
+            }
         }
+        windows += summary.filter { !names.contains($0.scope ?? "") }
         guard !windows.isEmpty else { throw ProviderError.badResponse }
         return UsageSnapshot(planName: plan?.nilIfEmpty, windows: windows)
+    }
+
+    /// A family whose models all read alike is on one allowance, and is one
+    /// window named for the family, with its models in the hover. A family
+    /// whose models part ways keeps a window per model, so one that runs out
+    /// on its own still shows.
+    static func modelWindows(_ members: [ModelQuota], family: Family?) -> [UsageWindow] {
+        var rows: [(title: String, note: String?, quota: ModelQuota)] = []
+        if let family, members.count > 1, members.allSatisfy({ a in members.allSatisfy { a.readsLike($0) } }),
+           let binding = members.min(by: { $0.binds(before: $1) })
+        {
+            rows.append((family.name, members.map(\.label).joined(separator: ", "), binding))
+        } else {
+            rows = members.map { ($0.label, nil, $0) }
+        }
+        return rows.map { row in
+            UsageWindow(
+                title: row.title,
+                usedPercent: row.quota.remainingFraction.map { (1 - min(max($0, 0), 1)) * 100 },
+                resetsAt: row.quota.resetsAt,
+                scope: row.title,
+                note: row.note)
+        }
     }
 
     /// Pinned by the tests against recorded shapes.
     public static func parse(models data: Data, plan: String? = nil) throws -> UsageSnapshot {
         let response: AvailableModels
         do { response = try JSONDecoder().decode(AvailableModels.self, from: data) } catch { throw ProviderError.badResponse }
-        return try snapshot(quotas(from: response), plan: plan)
+        return try snapshot(quotas: quotas(from: response), plan: plan)
     }
 
     public static func parse(buckets data: Data, plan: String? = nil) throws -> UsageSnapshot {
         let response: UserQuota
         do { response = try JSONDecoder().decode(UserQuota.self, from: data) } catch { throw ProviderError.badResponse }
-        return try snapshot(quotas(from: response), plan: plan)
+        return try snapshot(quotas: quotas(from: response), plan: plan)
+    }
+
+    /// The summary and the model list together, as `fetch` puts them.
+    static func parse(summary: Data?, models: Data, plan: String? = nil) throws -> UsageSnapshot {
+        let windows = summary.flatMap { try? AntigravityLocal.parseSummary($0) }?.windows ?? []
+        let response: AvailableModels
+        do { response = try JSONDecoder().decode(AvailableModels.self, from: models) } catch { throw ProviderError.badResponse }
+        return try snapshot(summary: windows, quotas: quotas(from: response), plan: plan)
     }
 }
 

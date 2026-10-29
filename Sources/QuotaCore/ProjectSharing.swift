@@ -204,8 +204,10 @@ public enum RunUsagePlan {
                                 repo: archive.projects[key]?.repo)
             }
             .sorted { $0.id < $1.id }
-        let rows = days.flatMap { rows(day: $0, archive: archive, sharing: sharing) }
-        return RunUsageBody(timezone: timezone.identifier, days: days, rows: rows, projects: projects)
+        // Not `let rows`: Swift before 6.4 takes `rows(day:)` inside its own
+        // initial value for the variable being declared, and stops there.
+        let usageRows = days.flatMap { Self.rows(day: $0, archive: archive, sharing: sharing) }
+        return RunUsageBody(timezone: timezone.identifier, days: days, rows: usageRows, projects: projects)
     }
 
     /// Every day the archive holds that quota.run still takes, newest first.

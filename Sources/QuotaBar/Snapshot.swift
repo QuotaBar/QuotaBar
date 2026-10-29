@@ -27,69 +27,71 @@ enum Snapshot {
     /// serving stale numbers, and one that failed outright.
     private static func sampleStates() -> [ProviderID: ProviderPhase] {
         let now = referenceDate
-        return [
-            .codex: .loaded(UsageSnapshot(
-                planName: "Pro",
-                account: "dev@example.com",
-                windows: [
-                    UsageWindow(
-                        title: WindowTitle.forSeconds(604_800),
-                        usedPercent: 36,
-                        resetsAt: now.addingTimeInterval(524_721),
-                        isActive: true,
-                        windowSeconds: 604_800),
-                    UsageWindow(
-                        title: "GPT-5.3-Codex-Spark · \(WindowTitle.forSeconds(18_000))",
-                        usedPercent: 4,
-                        resetsAt: now.addingTimeInterval(18_000),
-                        windowSeconds: 18_000,
-                        scope: "GPT-5.3-Codex-Spark"),
-                ],
-                fetchedAt: now,
-                // Deadlines from the real clock: the card lists only those
-                // still ahead, and the reference date is long past.
-                resetCredits: ResetCredits(available: 3, applicable: 0, totalEarned: 5, credits: [
-                    ResetCredit(title: "Full reset (Weekly + 5 hr)", expiresAt: Date().addingTimeInterval(5 * 86_400 + 18 * 3600 + 60)),
-                    ResetCredit(title: "Full reset (Weekly + 5 hr)", expiresAt: Date().addingTimeInterval(18 * 86_400 + 23 * 3600 + 60)),
-                    ResetCredit(title: "Full reset (Weekly + 5 hr)", expiresAt: Date().addingTimeInterval(19 * 86_400 + 22 * 3600 + 60)),
-                ]))),
-            .claude: .loaded(UsageSnapshot(
-                windows: [
-                    UsageWindow(
-                        title: WindowTitle.forSeconds(18_000),
-                        usedPercent: 18,
-                        resetsAt: now.addingTimeInterval(9_000),
-                        isActive: true,
-                        windowSeconds: 18_000),
-                    UsageWindow(
-                        title: WindowTitle.forSeconds(604_800),
-                        usedPercent: 88,
-                        // Well ahead of pace with most of the window left —
-                        // the case the pace line exists for.
-                        resetsAt: now.addingTimeInterval(400_000),
-                        windowSeconds: 604_800),
-                    UsageWindow(
-                        title: "\(WindowTitle.forSeconds(604_800)) · Fable",
-                        usedPercent: 10,
-                        resetsAt: now.addingTimeInterval(320_000),
-                        windowSeconds: 604_800,
-                        scope: "Fable"),
-                ],
-                fetchedAt: now)),
-            .cursor: .stale(UsageSnapshot(
-                planName: "Pro",
-                windows: [
-                    UsageWindow(
-                        title: L10n.t("Monthly plan", "月度套餐"),
-                        usedPercent: 61,
-                        detail: "$12.30 / $20.00",
-                        resetsAt: now.addingTimeInterval(900_000)),
-                ],
-                fetchedAt: now.addingTimeInterval(-4_200)),
-                error: ProviderError.unauthorized.errorDescription ?? ""),
-            .zai: .failed(ProviderError.notConfigured(hint: ProviderID.zai.setupHint)
-                .errorDescription ?? ""),
-        ]
+        // One provider at a time: as a single dictionary literal this
+        // took Swift 6.2 longer to type-check than it allows.
+        var states: [ProviderID: ProviderPhase] = [:]
+        states[.codex] = .loaded(UsageSnapshot(
+            planName: "Pro",
+            account: "dev@example.com",
+            windows: [
+                UsageWindow(
+                    title: WindowTitle.forSeconds(604_800),
+                    usedPercent: 36,
+                    resetsAt: now.addingTimeInterval(524_721),
+                    isActive: true,
+                    windowSeconds: 604_800),
+                UsageWindow(
+                    title: "GPT-5.3-Codex-Spark · \(WindowTitle.forSeconds(18_000))",
+                    usedPercent: 4,
+                    resetsAt: now.addingTimeInterval(18_000),
+                    windowSeconds: 18_000,
+                    scope: "GPT-5.3-Codex-Spark"),
+            ],
+            fetchedAt: now,
+            // Deadlines from the real clock: the card lists only those
+            // still ahead, and the reference date is long past.
+            resetCredits: ResetCredits(available: 3, applicable: 0, totalEarned: 5, credits: [
+                ResetCredit(title: "Full reset (Weekly + 5 hr)", expiresAt: Date().addingTimeInterval(5 * 86_400 + 18 * 3600 + 60)),
+                ResetCredit(title: "Full reset (Weekly + 5 hr)", expiresAt: Date().addingTimeInterval(18 * 86_400 + 23 * 3600 + 60)),
+                ResetCredit(title: "Full reset (Weekly + 5 hr)", expiresAt: Date().addingTimeInterval(19 * 86_400 + 22 * 3600 + 60)),
+            ])))
+        states[.claude] = .loaded(UsageSnapshot(
+            windows: [
+                UsageWindow(
+                    title: WindowTitle.forSeconds(18_000),
+                    usedPercent: 18,
+                    resetsAt: now.addingTimeInterval(9_000),
+                    isActive: true,
+                    windowSeconds: 18_000),
+                UsageWindow(
+                    title: WindowTitle.forSeconds(604_800),
+                    usedPercent: 88,
+                    // Well ahead of pace with most of the window left —
+                    // the case the pace line exists for.
+                    resetsAt: now.addingTimeInterval(400_000),
+                    windowSeconds: 604_800),
+                UsageWindow(
+                    title: "\(WindowTitle.forSeconds(604_800)) · Fable",
+                    usedPercent: 10,
+                    resetsAt: now.addingTimeInterval(320_000),
+                    windowSeconds: 604_800,
+                    scope: "Fable"),
+            ],
+            fetchedAt: now))
+        states[.cursor] = .stale(UsageSnapshot(
+            planName: "Pro",
+            windows: [
+                UsageWindow(
+                    title: L10n.t("Monthly plan", "月度套餐"),
+                    usedPercent: 61,
+                    detail: "$12.30 / $20.00",
+                    resetsAt: now.addingTimeInterval(900_000)),
+            ],
+            fetchedAt: now.addingTimeInterval(-4_200)),
+            error: ProviderError.unauthorized.errorDescription ?? "")
+        states[.zai] = .failed(ProviderError.notConfigured(hint: ProviderID.zai.setupHint)
+            .errorDescription ?? "")
+        return states
     }
 
     private static func sampleCost() -> CostSummary {

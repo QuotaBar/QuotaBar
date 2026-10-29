@@ -11,8 +11,8 @@ import Foundation
 /// and refreshing it would take Antigravity's own OAuth client, which is not
 /// QuotaBar's to carry. The language server needs no token of ours, and it
 /// answers with the limits as the app groups them — Gemini, and Claude and
-/// GPT, each with a 5-hour and a weekly limit — where the cloud route lists
-/// every model on its own and no weekly figure at all.
+/// GPT, each with a 5-hour and a weekly limit. The cloud route asks Google
+/// for the same summary, with a token that lasts an hour.
 ///
 /// It is found by its command line: the `language_server` inside
 /// `Antigravity.app`, with the `--csrf_token` it checks on every call. Its
@@ -37,11 +37,23 @@ enum AntigravityLocal {
 
     static let service = "exa.language_server_pb.LanguageServerService"
 
+    static var appPaths: [String] {
+        ["/Applications/Antigravity.app", FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications/Antigravity.app").path]
+    }
+
     /// The app is on this Mac, signed in or not.
     static var isInstalled: Bool {
-        let fm = FileManager.default
-        return ["/Applications/Antigravity.app", fm.homeDirectoryForCurrentUser.appendingPathComponent("Applications/Antigravity.app").path]
-            .contains { fm.fileExists(atPath: $0) }
+        appPaths.contains { FileManager.default.fileExists(atPath: $0) }
+    }
+
+    /// The installed app's version, `2.28.0`.
+    static var installedVersion: String? {
+        appPaths.lazy.compactMap { path -> String? in
+            let plist = URL(fileURLWithPath: path).appendingPathComponent("Contents/Info.plist")
+            guard let info = NSDictionary(contentsOf: plist) else { return nil }
+            guard let version = info["CFBundleShortVersionString"] as? String, !version.isEmpty else { return nil }
+            return version
+        }.first
     }
 
     static func read() async -> Reading {
@@ -165,24 +177,33 @@ enum AntigravityLocal {
             let window: String?
             let remainingFraction: Double?
             let resetTime: String?
+            let disabled: Bool?
         }
+        /// The language server wraps Google's answer in `response`.
         let response: Response?
+        /// Google's own answer, as the cloud route gets it.
+        let groups: [Group]?
     }
 
     /// `{"response":{"groups":[{"displayName":"Gemini Models","buckets":[{"bucketId":"gemini-5h",
     /// "window":"5h","remainingFraction":1,"resetTime":"2026-09-16T14:42:11Z"}, …]}, …]}}`
+    /// from the language server, which passes on Google's
+    /// `retrieveUserQuotaSummary` as it is; the cloud route reads the same
+    /// answer without the `response` around it.
     ///
     /// One window per bucket, scoped to its group. The answer is protobuf's
     /// JSON, which leaves out a field at its zero value: a bucket with no
     /// `remainingFraction` has none left, not an unknown amount. A bucket
-    /// whose window cannot be read is left out rather than guessed at.
+    /// whose window cannot be read, or that is marked disabled, is left out
+    /// rather than guessed at.
     static func parseSummary(_ data: Data, plan: String? = nil, account: String? = nil) throws -> UsageSnapshot {
         guard let summary = try? JSONDecoder().decode(Summary.self, from: data) else { throw ProviderError.badResponse }
         var windows: [UsageWindow] = []
-        for group in summary.response?.groups ?? [] {
+        for group in summary.response?.groups ?? summary.groups ?? [] {
             let scope = groupName(group.displayName)
             let buckets = (group.buckets ?? []).compactMap { bucket -> (Int, Summary.Bucket)? in
-                windowSeconds(bucket.window ?? bucket.bucketId).map { ($0, bucket) }
+                guard bucket.disabled != true else { return nil }
+                return windowSeconds(bucket.window ?? bucket.bucketId).map { ($0, bucket) }
             }
             for (seconds, bucket) in buckets.sorted(by: { $0.0 < $1.0 }) {
                 let remaining = min(max(bucket.remainingFraction ?? 0, 0), 1)
