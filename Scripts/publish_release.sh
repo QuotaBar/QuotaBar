@@ -22,7 +22,7 @@ cd "$(dirname "$0")/.."
 
 REPO="${REPO:-QuotaBar/QuotaBar}"
 TAP="${TAP:-gentpan/homebrew-tap}"
-HOST="${SITE_HOST:-root@15.204.80.137}"
+HOST="${SITE_HOST:-root@166.0.22.243}"
 KEY="${SITE_KEY:-$HOME/.ssh/gentpan.pem}"
 ROOT="${SITE_ROOT:-/var/www/quota.bar}"
 DIST="${DIST:-dist}"
