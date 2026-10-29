@@ -613,14 +613,168 @@ public struct MiMoProvider: QuotaProvider {
 
 // MARK: - Qoder
 
-/// Qoder's big-model credits, by cookie from qoder.com or qoder.com.cn.
+/// Qoder's plan and credits.
+///
+/// Read from the Qoder desktop app's own sign-in when it is installed — the
+/// account's `center.qoder.sh` quota, signed with Qoder's "Cosy" scheme
+/// (`QoderApp`), so Qoder need not be open. A pasted qoder.com Cookie is used
+/// instead when one is saved, for an account without the app.
 public struct QoderProvider: QuotaProvider {
     public let id = ProviderID.qoder
 
-    public func isConfigured(config: ConfigStore) -> Bool { config.credential(for: id) != nil }
+    public func isConfigured(config: ConfigStore) -> Bool {
+        config.credential(for: id) != nil || QoderApp.isInstalled()
+    }
 
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
-        let cookie = try QwenProvider.cookieHeader(config.credential(for: id), for: id)
+        // The Qoder app's own sign-in is the reliable automatic source, so it
+        // comes first: a pasted qoder.com Cookie is only a fallback for an
+        // account without the app. Qoder's risk control turns that Cookie down
+        // outside a browser for many accounts, so a stale one must never shadow
+        // the app sign-in.
+        let lookup = QoderApp.lookup(interactive: false)
+        if lookup.state == .available, let signIn = lookup.signIn {
+            return try await Self.fetchApp(signIn)
+        }
+        if let raw = config.credential(for: id) {
+            return try await Self.fetchWeb(cookie: QwenProvider.cookieHeader(raw, for: id))
+        }
+        switch lookup.state {
+        case .needsAuthorization: throw ProviderError.needsAuthorization(hint: QoderApp.authorizationHint)
+        default: throw ProviderError.notConfigured(hint: id.setupHint)
+        }
+    }
+
+    public func sourceInfo(config: ConfigStore) -> ProviderSourceInfo? {
+        if QoderApp.isInstalled() {
+            return ProviderSourceInfo(
+                summary: L10n.t("Qoder app sign-in on this Mac", "Qoder 应用本机登录"),
+                note: config.credential(for: id) != nil
+                    ? L10n.t("A pasted Cookie is saved but the app's sign-in is used while Qoder is installed.",
+                             "已保存粘贴的 Cookie，但装有 Qoder 时优先用应用的登录。")
+                    : L10n.t("Read from Qoder's own sign-in, so Qoder does not need to be open.",
+                             "读取 Qoder 保存的登录，不需要打开 Qoder。"))
+        }
+        if config.credential(for: id) != nil {
+            return ProviderSourceInfo(summary: L10n.t("Pasted Cookie", "粘贴的 Cookie"))
+        }
+        return nil
+    }
+
+    // MARK: The app's own backend
+    //
+    // The access token in Qoder's sign-in is a plain bearer; no request
+    // signing. The quota comes from the same endpoint Qoder's own "My usage"
+    // panel reads — `openapi.qoder.sh/sash/api/v2/me/usage` — which carries the
+    // plan credits, the add-on pack and any resource packages (SOTA and the
+    // like), each with counts. `center.qoder.sh/api/v2/user/plan` names the tier.
+
+    static let appBase = "https://center.qoder.sh"
+    static let usageURL = "https://openapi.qoder.sh/sash/api/v2/me/usage"
+
+    static func fetchApp(_ signIn: QoderSignIn) async throws -> UsageSnapshot {
+        let usage = try await bearerGet(usageURL, token: signIn.token)
+        let plan = try? await bearerGet("\(appBase)/api/v2/user/plan", token: signIn.token)
+        return try parseApp(usage: usage, plan: plan, account: signIn.email ?? signIn.name)
+    }
+
+    static func bearerGet(_ urlString: String, token: String) async throws -> Data {
+        let url = URL(string: urlString)!
+        do {
+            return try await HTTP.get(url, headers: [
+                "Authorization": "Bearer \(token)", "Accept": "application/json",
+            ]).requireOK().data
+        } catch ProviderError.unauthorized {
+            throw ProviderError.sessionExpired(L10n.t(
+                "Qoder's sign-in is no longer accepted. Open Qoder and sign in again.",
+                "Qoder 的登录已失效。请打开 Qoder 重新登录。"))
+        }
+    }
+
+    /// The "My usage" reply. `qoderUsage` carries the plan credits
+    /// (`userQuota`, reset at `expiresAt`), the add-on pack (`addOnQuota`) and
+    /// any resource packages (`dedicatedResourcePackages`, each named by its
+    /// own localized label and expiring on its own date) — the same rows the
+    /// Qoder panel shows. `user/plan` names the tier (Pro).
+    static func parseApp(usage: Data, plan: Data?, account: String? = nil) throws -> UsageSnapshot {
+        guard let root = ProviderJSON.object(usage), let body = root as? [String: Any]
+        else { throw ProviderError.badResponse }
+        let q = (body["qoderUsage"] ?? body["enterpriseUsage"]) as? [String: Any] ?? body
+        let planReset = QwenProvider.date(q["expiresAt"] ?? q["nextResetAt"])
+
+        var windows: [UsageWindow] = []
+        func add(_ title: String, _ value: Any?, resetsAt: Date?) {
+            guard let b = bucket(value), b.total > 0 else { return }
+            windows.append(UsageWindow(
+                title: title,
+                usedPercent: ProviderJSON.percent(used: b.used, total: b.total),
+                detail: L10n.t("\(Int(b.used)) / \(Int(b.total)) credits", "\(Int(b.used)) / \(Int(b.total)) 点"),
+                resetsAt: resetsAt))
+        }
+        // Plan credits reset with the billing cycle; the add-on pack does not.
+        add(L10n.t("Plan Credits", "套餐内 Credits"), q["userQuota"], resetsAt: planReset)
+        add(L10n.t("Resource pack", "资源包"), q["addOnQuota"], resetsAt: nil)
+        for pkg in (q["dedicatedResourcePackages"] as? [[String: Any]] ?? []) {
+            if let available = pkg["available"] as? Bool, !available { continue }
+            add(packageTitle(pkg), pkg, resetsAt: QwenProvider.date(pkg["expiresAt"]))
+        }
+        add(L10n.t("Organization", "组织额度"), q["orgResourcePackage"], resetsAt: planReset)
+
+        let name = planName(status: q, plan: plan)
+        if windows.isEmpty {
+            // No credit counts (an unmetered plan): show the plan period and
+            // whether the quota is spent, not an invented percentage.
+            let exceeded = (q["isQuotaExceeded"] as? Bool) ?? false
+            windows.append(UsageWindow(
+                title: name ?? L10n.t("Plan", "套餐"),
+                usedPercent: exceeded ? 100 : nil,
+                detail: exceeded ? L10n.t("Quota used up", "额度已用完") : L10n.t("Active", "订阅中"),
+                resetsAt: planReset))
+        }
+        return UsageSnapshot(planName: name, account: account, windows: windows)
+    }
+
+    /// A resource package's own name, from its localized `displayLabels`
+    /// (the `title` dimension), else its `name`.
+    static func packageTitle(_ pkg: [String: Any]) -> String {
+        if let labels = pkg["displayLabels"] as? [[String: Any]] {
+            for label in labels where (label["dimension"] as? String) == "title" {
+                if let i18n = label["valueI18n"] as? [String: Any],
+                   let en = ProviderJSON.string(i18n["en-US"]) {
+                    return L10n.t(en, ProviderJSON.string(i18n["zh-CN"]) ?? en)
+                }
+                if let value = ProviderJSON.string(label["value"]) { return value }
+            }
+        }
+        return ProviderJSON.string(pkg["name"]) ?? L10n.t("Resource pack", "资源包")
+    }
+
+    struct AppBucket { var used: Double; var total: Double; var percent: Double? }
+
+    static func bucket(_ value: Any?) -> AppBucket? {
+        guard let object = value as? [String: Any] else { return nil }
+        let total = QwenProvider.number(object["total"] ?? object["totalQuota"] ?? object["limit"]) ?? 0
+        let used = QwenProvider.number(object["used"] ?? object["usedQuota"] ?? object["usage"]) ?? 0
+        let percent = QwenProvider.number(object["percentage"] ?? object["usagePercentage"])
+        return AppBucket(used: used, total: total, percent: percent)
+    }
+
+    /// The plan's name: user/plan's `plan_tier_name`, the status's `userTag`,
+    /// else the user type, tidied.
+    static func planName(status: [String: Any], plan: Data?) -> String? {
+        if let plan, let root = ProviderJSON.object(plan),
+           let name = ProviderJSON.string(ProviderJSON.first(
+               ["plan_tier_name", "planName", "planTierName", "name", "displayName"], in: root)) {
+            return name
+        }
+        if let tag = ProviderJSON.string(status["userTag"]), !tag.isEmpty { return tag }
+        guard let type = ProviderJSON.string(status["userType"] ?? status["user_type"]), !type.isEmpty else { return nil }
+        return type.split(separator: "_").map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
+    }
+
+    // MARK: The qoder.com cookie path (for an account without the app)
+
+    static func fetchWeb(cookie: String) async throws -> UsageSnapshot {
         var lastError: Error = ProviderError.unauthorized
         for site in ["qoder.com.cn", "qoder.com"] {
             let origin = "https://\(site)"

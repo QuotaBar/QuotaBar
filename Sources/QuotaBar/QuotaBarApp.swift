@@ -78,10 +78,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// the request's own 30 seconds, and a little more.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let renewal = KimiCodeRenewal.shared
+        // MiniMax Code's sign-in is renewed the same way, and quits the same way.
+        let miniMax = MiniMaxCodeRenewal.shared
         renewal.stop()
-        guard renewal.hasRequestOut else { return .terminateNow }
+        miniMax.stop()
+        guard renewal.hasRequestOut || miniMax.hasRequestOut else { return .terminateNow }
         Task.detached {
             await renewal.waitForRequests(timeout: 35)
+            await miniMax.waitForRequests(timeout: 35)
             await MainActor.run { NSApp.reply(toApplicationShouldTerminate: true) }
         }
         return .terminateLater
@@ -215,6 +219,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if arguments.contains("--grok-bot-keychain") {
             print(GrokBot.probeKeychain())
+            NSApp.terminate(nil)
+        }
+        if arguments.contains("--qoder-keychain") {
+            print(QoderApp.probeKeychain())
             NSApp.terminate(nil)
         }
         if arguments.contains("--claude-renewal") {

@@ -16,7 +16,7 @@
 [![License](https://img.shields.io/badge/license-MIT-black)](LICENSE)
 
 QuotaBar 是一款 macOS 菜单栏应用，显示每个 AI 编码服务的额度用了多少、各个窗口何时重置、
-大约花了多少钱。支持 22 个服务商，全部在你自己的 Mac 上读取和计算。无需注册账号，没有任何统计上报。
+大约花了多少钱。支持 21 个服务商，全部在你自己的 Mac 上读取和计算。无需注册账号，没有任何统计上报。
 
 [下载](https://github.com/QuotaBar/QuotaBar/releases/latest) ·
 [官网](https://quota.bar) ·
@@ -49,10 +49,26 @@ Gatekeeper 可以直接打开。
 <!-- changelog:start -->
 <!-- 由 Scripts/sync_changelog.py 从 CHANGELOG.md 生成，请勿手改。 -->
 
-最新版本 **0.5.31**（2026-10-13） · 开发中 **2** 项改动尚未发布 · [完整更新日志](CHANGELOG.md)
+最新版本 **0.6.0**（2026-10-30） · [完整更新日志](CHANGELOG.md)
 
 <details open>
-<summary><b>2026-10-29</b> · 未发布 · 修复 2</summary>
+<summary><b>2026-10-30</b> · 0.6.0 · 新增 4 · 修复 1</summary>
+
+**新增**
+
+- z.ai 在本机登录了 ZCode 时自动读取额度，不用粘贴 API Key，也不用打开 ZCode；卡片显示套餐名（如 Lite），用量百分比按实际用量算到小数。
+- MiniMax 在本机登录了 MiniMax Code 时自动读取额度、套餐名（如 Go）和账号（没有邮箱的账号显示账号名），国际版、国内版均可。它的登录每小时过期一次，QuotaBar 运行时会按 MiniMax Code 自己的方式续期并写回，所以 MiniMax Code 关着也能一直读到最新额度。
+- Antigravity 关着时也能一直读到额度：它保存的登录令牌一小时后过期，之后由 QuotaBar 用其中的刷新令牌自己续期，新令牌只存在 QuotaBar 内存里，不改动 Antigravity 的登录，也不会把它挤下线；卡片照常显示登录的账号。
+- Qoder 在本机登录了 Qoder 应用时自动读取套餐和额度，不用粘贴 Cookie，也不用打开 Qoder。它的登录用钥匙串里的密钥加密，首次读取时 macOS 会询问一次，在设置或卡片上点「授权钥匙串访问」并选「始终允许」即可。仍可在设置里粘贴 qoder.com 的 Cookie 给没有装应用的账号用。
+
+**修复**
+
+- MiniMax 粘贴 API Key 后读不出额度：改为按接口实际返回的字段解析，剩余次数不再被当成已用次数显示。
+
+</details>
+
+<details>
+<summary><b>2026-10-29</b> · 0.6.0 · 修复 2</summary>
 
 **修复**
 
@@ -80,26 +96,6 @@ Gatekeeper 可以直接打开。
 
 </details>
 
-<details>
-<summary><b>2026-10-13</b> · 0.5.30 · 新增 3 · 修复 6</summary>
-
-**新增**
-
-- iOS 新增独立用量页，汇总今日、昨日和近 30 天的用量、趋势以及服务商和模型明细；没有数据时明确提示。
-- iOS 新增账户余额小组件，支持主屏幕与锁屏，分别显示不同币种和数据更新时间。
-- Claude 账号管理可识别当前登录，再添加独立账号；浏览器登录完成后自动读取账号和额度。卡片切换选择会在重启后保留。
-
-**修复**
-
-- Grok 正确读取自身套餐的真实额度；经 Cursor 付费的 Grok Bot 额度只显示在 Cursor，不再重复保留旧额度或误报更新失败。
-- Cursor、阿里云百炼、MiMo、Qoder、Windsurf、Kiro、Kimi 和 Claude 的部分接口缺少用量字段时，不再当作 0%；已确认的零用量仍正常显示。
-- 未配置、退出登录、无可用额度或额度归属其他服务商时，清理不适用的旧缓存并显示对应提示；切换账号或数据来源后，迟到的旧请求不会覆盖新结果。
-- Claude 本地登录目录缺失或账号被移除时，提示重新添加；相同账号的重复登录记录不再混淆卡片显示，失效登录不再反复误报自动续期。
-- iOS 额度页与各尺寸小组件用「—」和灰色进度条显示未知用量，不再误显示剩余 100%。旧缓存超过重置时间后等待 Mac 确认，不自动推断已用 0%。
-- iOS 换机后只有账号记录、缺少本机登录密钥时，明确提示重新连接 Quota Run，不再误报为正常接收或只提示 Mac 可能睡眠。
-
-</details>
-
 <!-- changelog:end -->
 
 ## 项目动态
@@ -117,41 +113,18 @@ Gatekeeper 可以直接打开。
   </a>
 </p>
 
-## 服务商
+## 支持的服务
 
-| 服务商 | 数据来源 | 凭据 |
-|---|---|---|
-| Codex | `~/.codex/auth.json` OAuth → `chatgpt.com/backend-api/wham/usage` | 自动 |
-| Claude | Claude Code 钥匙串项，以及每个 `CLAUDE_CONFIG_DIR` 各自的一项 → `api.anthropic.com/api/oauth/usage` | 自动 |
-| Grok | `~/.grok/auth.json` → `cli-chat-proxy.grok.com/v1/billing` | 自动 / 手动 |
-| Antigravity | 正在运行的应用的语言服务，其次 `~/.gemini/jetski-standalone-oauth-token`，再次 Gemini CLI 的 `~/.gemini/oauth_creds.json` → `cloudcode-pa.googleapis.com` | 自动 |
-| Cursor | Cursor 自己的 `state.vscdb` 会话 → `cursor.com/api/usage-summary` | 自动 / 手动 |
-| OpenCode Go | `~/.local/share/opencode/auth.json` → `opencode.ai/zen/go/v1/usage` | 自动 / 手动 |
-| Kimi Code | Kimi Code 应用 / CLI 登录（`~/.kimi-code/credentials`）→ `api.kimi.com` / `api.kimi.ai` `/coding/v1/usages`，或用 `kimi-auth` JWT 读 `kimi.com` 计费网关 | 自动 / 手动 |
-| z.ai | `api.z.ai/api/monitor/usage/quota/limit` | 手动填写 API Key |
-| MiniMax | `api.minimax.io` 编码套餐余量 | 手动填写 token / Cookie |
-| Manus | `api.manus.im` 额度 | 手动填写会话 token |
-| DeepSeek | `api.deepseek.com/user/balance` | 手动填写 API Key |
-| 千问 | `home.qwencloud.com` 控制台 → token 套餐用量 | 手动填写 Cookie 请求头 |
-| GitHub Copilot | GitHub CLI 登录 (`gh auth token`) → `api.github.com/copilot_internal/user` | 自动 / 手动 |
-| 阿里云百炼 Coding Plan *（实验性）* | 百炼控制台网关 → 编码套餐额度 | Cookie 请求头 / 应用内登录 |
-| 火山方舟 *（实验性）* | `arkcli usage plan --format json` | 自动（arkcli 登录） |
-| 智谱 GLM *（实验性）* | `open.bigmodel.cn/api/monitor/usage/quota/limit` | 手动填写 API Key |
-| OpenRouter *（实验性）* | `openrouter.ai/api/v1/credits` + `/key` | 手动填写 API Key |
-| 小米 MiMo *（实验性）* | `platform.xiaomimimo.com/api/v1` 余额 + token 套餐 | Cookie 请求头 / 应用内登录 |
-| Qoder *（实验性）* | `qoder.com/api/v2/me/usages/big_model_credits` | 手动填写 Cookie 请求头 |
-| Windsurf *（实验性）* | Windsurf 自己的 `state.vscdb` 缓存套餐 | 自动 |
-| Kiro *（实验性）* | `kiro-cli` 会话 → AWS `GetUsageLimits` | 自动 |
+<p align="center">
+  <img src="Assets/readme/providers-zh.png" alt="QuotaBar 支持读取的服务" width="820">
+</p>
 
-标为*实验性*的服务商按各家控制台和命令行工具的接口实现，但还没有用真实账号验证过，
-设置里会同样标注。
+QuotaBar 用你已有的登录读取每个服务，显示你真正关心的信息：套餐、每个窗口用了多少、什么时候重置、以及估算花费——全部在本机读取和计算。
 
-**正常情况下不会弹窗。** Claude 是唯一一个把登录会话存放在*另一个应用*钥匙串项里的服务商。
-QuotaBar 和 Claude Code 自己一样，通过 `/usr/bin/security` 读取；该工具写入的每个钥匙串项都信任它，
-所以无论安装包用什么签名，macOS 都不需要询问。只有这次读取被拒绝时，才会出现
-**允许访问钥匙串** 按钮；后台刷新从不弹出系统对话框，只有点这个按钮时才会。
-用 `CLAUDE_CONFIG_DIR=<目录> claude` 登录的其他组织或账号，会按钥匙串项的名称自动找到，用同样的方式读取，
-逐个列在 Claude 卡片展开后的列表里。
+- **已登录的 CLI 和应用会自动读取**，不用粘贴任何东西：Codex、Claude、Cursor、Grok、Antigravity、OpenCode Go、Kimi Code、z.ai（经 ZCode）、MiniMax（经 MiniMax Code）、Qoder、GitHub Copilot、Windsurf、Kiro。其中少数——Qoder 和 Grok Bot 的登录——用钥匙串里的密钥加密，macOS 会询问一次：点**允许访问钥匙串**并选「始终允许」即可。
+- **粘贴密钥或 Cookie**：没有本机登录的服务——DeepSeek、OpenRouter、Manus、千问、阿里云百炼、火山方舟、智谱 GLM、小米 MiMo。
+
+标注为*实验性*的服务按各家自己的控制台和命令行实现，尚未在真实账号上验证，设置里会标明。
 
 ## 在哪里看额度
 

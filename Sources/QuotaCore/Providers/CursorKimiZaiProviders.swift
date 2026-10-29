@@ -903,20 +903,62 @@ public struct KimiProvider: QuotaProvider {
     }
 }
 
-// MARK: - z.ai (API key → api.z.ai quota/limit)
+// MARK: - z.ai (ZCode's sign-in, or an API key → api.z.ai quota/limit)
 
 public struct ZaiProvider: QuotaProvider {
     public let id = ProviderID.zai
+    /// ZCode's sign-in, read from its file; tests pass their own.
+    var localSignIn: @Sendable () -> ZCodeSignIn? = { ZCode.signIn(family: .zai) }
+
+    public init() {}
+
+    init(localSignIn: @escaping @Sendable () -> ZCodeSignIn?) {
+        self.localSignIn = localSignIn
+    }
 
     public func isConfigured(config: ConfigStore) -> Bool {
-        config.credential(for: .zai) != nil
+        config.credential(for: .zai) != nil || localSignIn() != nil
     }
 
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
-        guard let key = config.credential(for: .zai) else {
+        // Something pasted is used before the sign-in on this Mac.
+        if let key = config.credential(for: .zai) {
+            return try await Self.fetchQuota(host: "https://api.z.ai", key: key)
+        }
+        guard let signIn = localSignIn() else {
             throw ProviderError.notConfigured(hint: ProviderID.zai.setupHint)
         }
-        return try await Self.fetchQuota(host: "https://api.z.ai", key: key)
+        // ZCode keeps no refresh token for z.ai: a sign-in that has run out
+        // comes back only by signing in to ZCode again.
+        guard !signIn.isExpired() else { throw ProviderError.sessionExpired(Self.zcodeExpiredHint) }
+        do {
+            return try await Self.fetchQuota(host: "https://api.z.ai", key: signIn.token)
+        } catch ProviderError.unauthorized {
+            throw ProviderError.sessionExpired(Self.zcodeExpiredHint)
+        }
+    }
+
+    static var zcodeExpiredHint: String {
+        L10n.t(
+            "ZCode's z.ai sign-in is no longer accepted. Open ZCode and sign in again, or paste an API key.",
+            "ZCode 的 z.ai 登录已失效。请打开 ZCode 重新登录，或者粘贴 API Key。")
+    }
+
+    /// For Settings: the pasted key or ZCode's sign-in.
+    public func sourceInfo(config: ConfigStore) -> ProviderSourceInfo? {
+        let signIn = localSignIn()
+        if config.credential(for: .zai) != nil {
+            return ProviderSourceInfo(
+                summary: L10n.t("Pasted API key", "粘贴的 API Key"),
+                note: signIn == nil ? nil : L10n.t(
+                    "Clear it to use ZCode's sign-in on this Mac.", "清除后改用本机 ZCode 的登录。"))
+        }
+        guard signIn != nil else { return nil }
+        return ProviderSourceInfo(
+            summary: L10n.t("ZCode sign-in on this Mac", "ZCode 本机登录"),
+            note: L10n.t(
+                "Read from ZCode's own sign-in, so ZCode does not need to be open.",
+                "读取 ZCode 保存的登录，不需要打开 ZCode。"))
     }
 
     /// The GLM Coding Plan quota endpoint, on z.ai or on bigmodel.cn.
@@ -933,7 +975,10 @@ public struct ZaiProvider: QuotaProvider {
         struct Limit: Decodable {
             let type: String?
             let percentage: Double?
+            /// The window's whole allowance, despite the name.
             let usage: Int?
+            /// What has been used of it.
+            let currentValue: Int?
             let remaining: Int?
             let nextResetTime: Double?
             let unit: Int?
@@ -941,6 +986,8 @@ public struct ZaiProvider: QuotaProvider {
         }
         struct DataBody: Decodable {
             let limits: [Limit]?
+            /// The plan: "lite", "pro", "max".
+            let level: String?
         }
         struct Body: Decodable {
             let data: DataBody?
@@ -977,15 +1024,21 @@ public struct ZaiProvider: QuotaProvider {
             let title = isMCP
                 ? L10n.t("MCP calls", "MCP 调用")
                 : minutes > 0 ? WindowTitle.forMinutes(minutes) : (limit.type ?? L10n.t("Quota", "额度"))
+            // The reported percentage is whole; the counts, when there are
+            // some, say it more finely.
+            let counted = limit.usage.flatMap { total in
+                limit.currentValue.flatMap { total > 0 ? Double($0) / Double(total) * 100 : nil }
+            }
             windows.append(UsageWindow(
                 title: title,
-                usedPercent: limit.percentage,
+                usedPercent: counted ?? limit.percentage,
                 detail: limit.usage.flatMap { usage in
                     limit.remaining.map { L10n.t("\($0) left of \(usage)", "剩余 \($0) / 共 \(usage)") }
                 },
                 resetsAt: Dates.parseEpoch(limit.nextResetTime),
                 windowSeconds: minutes > 0 ? minutes * 60 : nil))
         }
-        return UsageSnapshot(windows: windows)
+        let plan = body.data?.level?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return UsageSnapshot(planName: plan.flatMap { $0.isEmpty ? nil : $0.prefix(1).uppercased() + $0.dropFirst() }, windows: windows)
     }
 }

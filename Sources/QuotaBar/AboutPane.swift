@@ -99,17 +99,6 @@ struct AboutPane: View {
             }
         }
 
-        SettingsCard(L10n.t("Acknowledgements", "开源致谢")) {
-            SettingFootnote(L10n.t(
-                "QuotaBar builds on these open-source projects and this typeface. Thank you.",
-                "QuotaBar 参考或使用了以下开源项目和字体，在此致谢。"))
-            VStack(spacing: Design.space1) {
-                ForEach(Self.credits, id: \.name) { credit in
-                    CreditRow(credit: credit)
-                }
-            }
-        }
-
         // The providers' names and marks appear all over the app; say whose they are.
         SettingFootnote(L10n.t(
             "QuotaBar is an independent app. It is not affiliated with, endorsed or sponsored by Anthropic, OpenAI, Cursor, Google, xAI, GitHub, X or any other company it mentions. Their names and logos belong to their respective owners.",
@@ -142,36 +131,6 @@ struct AboutPane: View {
                    "GitHub，连不上 quota.bar 时检查和下载更新，以及获取模型价目表；"),
             L10n.t("Quota Run at quota.run, only after you sign in there in your browser: the readings, token counts and profile its consent screen lists.",
                    "quota.run 上的 Quota Run，仅在你通过浏览器在 quota.run 登录之后：上传登录前同意页面列出的读数、token 数量和个人资料。"),
-        ]
-    }
-
-    fileprivate struct Credit {
-        let name: String
-        let author: String
-        let license: String
-        let use: String
-        let url: String
-    }
-
-    /// The projects QuotaBar borrowed from or ships, with the licences that
-    /// ask for the notice, and the wordmark's typeface.
-    private static var credits: [Credit] {
-        [
-            Credit(name: "codex-island", author: "Eric Park", license: "MIT",
-                   use: L10n.t("The notch island's look", "刘海岛的样式与动效"),
-                   url: "https://github.com/ericjypark/codex-island"),
-            Credit(name: "OpenUsage", author: "Robin Ebers", license: "MIT",
-                   use: L10n.t("The menu panel, pace hints and the share card", "下拉面板、用量节奏提示与分享卡片"),
-                   url: "https://github.com/robinebers/openusage"),
-            Credit(name: "CodexBar", author: "Peter Steinberger", license: "MIT",
-                   use: L10n.t("How providers report their usage", "各服务商用量的读取方式"),
-                   url: "https://github.com/steipete/CodexBar"),
-            Credit(name: "theSVG", author: "thesvg.org", license: "MIT",
-                   use: L10n.t("The vector masters of the provider logos", "服务商标志的矢量原图"),
-                   url: "https://github.com/GLINCKER/thesvg"),
-            Credit(name: "Instrument Sans", author: "The Instrument Sans Project Authors", license: "SIL OFL 1.1",
-                   use: L10n.t("The typeface of the QuotaBar wordmark", "QuotaBar 字标所用的字体"),
-                   url: "https://github.com/Instrument/instrument-sans"),
         ]
     }
 
@@ -227,43 +186,6 @@ private struct TextLink: View {
     }
 }
 
-/// One acknowledged project: what it is, whose, under which licence, and
-/// what QuotaBar took from it.
-private struct CreditRow: View {
-    let credit: AboutPane.Credit
-
-    var body: some View {
-        Button {
-            if let url = URL(string: credit.url) { NSWorkspace.shared.open(url) }
-        } label: {
-            HStack(spacing: Design.space2) {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(alignment: .firstTextBaseline, spacing: Design.space2) {
-                        Text(credit.name)
-                            .font(.system(size: 12, weight: .medium))
-                        Text("\(credit.author) · \(credit.license)")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                    Text(credit.use)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-                // No arrow, as the links above have none; hovering shows
-                // where it goes.
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, Design.space3)
-            .padding(.vertical, Design.space2)
-            .background(
-                RoundedRectangle(cornerRadius: Design.radiusTile, style: .continuous)
-                    .fill(Design.surfaceStrong))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(credit.url)
-    }
-}
 
 /// One of the About card's links: the mark and where it goes. The name is
 /// what VoiceOver reads; on screen the mark already says it.

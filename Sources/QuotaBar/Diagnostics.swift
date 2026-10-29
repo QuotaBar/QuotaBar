@@ -261,6 +261,20 @@ enum Diagnostics {
             out += "Kimi     missing\n"
         }
         out += "Grok Bot \(GrokBot.sessionDescription())\n"
+        out += "Qoder    \(QoderApp.sessionDescription())\n"
+        if let zcode = ZCode.signIn(family: .zai) {
+            out += "z.ai     ZCode sign-in \(zcode.isExpired() ? "expired" : "available") · ~/.zcode/v2/credentials.json\n"
+        } else {
+            out += "z.ai     no ZCode sign-in\n"
+        }
+        if let miniMax = MiniMaxCode.signIn() {
+            let seconds = Int(miniMax.expiresAt.timeIntervalSinceNow)
+            let left = seconds > 0 ? "\(seconds / 60)m \(seconds % 60)s left" : "expired \(-seconds / 60)m ago"
+            out += "MiniMax  MiniMax Code sign-in \(miniMax.status) (\(left)) · \(miniMax.region.rawValue) edition · generation \(miniMax.generation)"
+                + " · renewable by QuotaBar: \(miniMax.hasRefreshToken ? "yes, while the app runs" : "no")\n"
+        } else {
+            out += "MiniMax  no MiniMax Code sign-in\n"
+        }
         FileHandle.standardOutput.write(Data(out.utf8))
     }
 

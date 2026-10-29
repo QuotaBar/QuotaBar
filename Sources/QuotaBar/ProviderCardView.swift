@@ -23,11 +23,11 @@ struct ProviderCardView: View {
     private var compact: Bool { store.experience.panelDensity == .compact }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: compact ? 8 : 10) {
+        VStack(alignment: .leading, spacing: compact ? 6 : 9) {
             header
             content
         }
-        .padding(compact ? 10 : 12)
+        .padding(compact ? 8 : 10)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color.white.opacity(forExport ? 0.06 : 0.05)))
@@ -151,7 +151,7 @@ struct ProviderCardView: View {
                 .foregroundStyle(.white.opacity(0.6))
                 .fixedSize(horizontal: false, vertical: true)
         case let .loaded(snapshot), let .stale(snapshot, _):
-            VStack(alignment: .leading, spacing: compact ? 8 : 11) {
+            VStack(alignment: .leading, spacing: compact ? 6 : 9) {
                 if let error = phase?.errorMessage {
                     StaleReadingNote(reason: error, fetchedAt: snapshot.fetchedAt)
                 }
@@ -238,7 +238,7 @@ struct ProviderCardView: View {
 
     @ViewBuilder
     private func more(_ snapshot: UsageSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: compact ? 8 : 11) {
+        VStack(alignment: .leading, spacing: compact ? 6 : 9) {
             ForEach(rest(snapshot)) { window in
                 QuotaRowView(store: store, id: id, window: window, compact: compact)
             }
