@@ -54,6 +54,25 @@ final class AntigravityLocalTests: XCTestCase {
         XCTAssertEqual(Set(snapshot.windows.map(\.id)).count, 4)
     }
 
+    /// Google's answer as the cloud route gets it: no `response` around it.
+    func testTheCloudSummaryReadsTheSameWithoutTheWrapper() throws {
+        let cloud = """
+        {"groups":[
+          {"displayName":"Gemini Models","buckets":[
+            {"bucketId":"gemini-weekly","window":"weekly","remainingFraction":0.4998864,"resetTime":"2026-11-04T13:42:42Z"},
+            {"bucketId":"gemini-5h","window":"5h","remainingFraction":1,"resetTime":"2026-10-29T22:20:17Z"}]},
+          {"displayName":"Claude and GPT models","buckets":[
+            {"bucketId":"3p-weekly","window":"weekly","remainingFraction":1,"resetTime":"2026-11-05T17:36:48Z"},
+            {"bucketId":"3p-5h","window":"5h","remainingFraction":1,"resetTime":"2026-10-29T22:36:48Z"},
+            {"bucketId":"3p-daily","window":"daily","disabled":true}]}],
+         "description":"Within each group, models share a weekly limit and a 5-hour limit."}
+        """
+        let snapshot = try AntigravityLocal.parseSummary(Data(cloud.utf8))
+        XCTAssertEqual(snapshot.windows.map(\.scope), ["Gemini", "Gemini", "Claude and GPT", "Claude and GPT"])
+        XCTAssertEqual(snapshot.windows.map(\.windowSeconds), [18_000, 604_800, 18_000, 604_800], "a disabled bucket is left out")
+        XCTAssertEqual(snapshot.windows[1].usedPercent!, 50.01, accuracy: 0.01)
+    }
+
     func testAnAnswerWithNoLimitsIsNotAQuota() {
         XCTAssertThrowsError(try AntigravityLocal.parseSummary(Data(#"{"response":{"groups":[]}}"#.utf8)))
         XCTAssertThrowsError(try AntigravityLocal.parseSummary(Data("404 page not found".utf8)))

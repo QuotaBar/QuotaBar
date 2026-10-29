@@ -22,16 +22,21 @@ struct AccountChoiceBar: View {
         if choices.count > 1 {
             HStack(spacing: 4) {
                 ForEach(choices) { choice in
+                    // Typed apart from the chain, which older Swift could
+                    // not type-check in time with the choices inline.
                     let on = selected == choice.id
+                    let weight: Font.Weight = on ? .semibold : .medium
+                    let ink: Color = on ? .black : .white.opacity(0.75)
+                    let fill: Color = on ? .white : .clear
                     Pressable(action: { onSelect(choice.id) }) {
                         Text(choice.label)
-                            .font(.system(size: 11, weight: on ? .semibold : .medium))
+                            .font(.system(size: 11, weight: weight))
                             .lineLimit(1)
                             .truncationMode(.middle)
-                            .foregroundStyle(on ? Color.black : Color.white.opacity(0.75))
+                            .foregroundStyle(ink)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 5)
-                            .background(Capsule().fill(on ? Color.white : Color.clear))
+                            .background(Capsule().fill(fill))
                             .contentShape(Capsule())
                     }
                 }

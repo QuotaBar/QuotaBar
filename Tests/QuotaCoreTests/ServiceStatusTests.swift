@@ -190,7 +190,8 @@ final class ServiceStatusTests: XCTestCase {
         XCTAssertEqual(days.map(\.level), [.critical, .operational, .major])
         XCTAssertEqual(days[2].events, ["Slow API"])
         // (7082 + 6529) seconds over three days.
-        XCTAssertEqual(UptimeDay.uptimePercent(days), 100 - 13_611.0 / (3 * 86_400) * 100, accuracy: 0.001)
+        let expected: Double = 100 - 13_611.0 / 259_200.0 * 100
+        XCTAssertEqual(UptimeDay.uptimePercent(days), expected, accuracy: 0.001)
         XCTAssertThrowsError(try StatusPages.parseUptime(Data(#"{"months":[]}"#.utf8)))
     }
 
