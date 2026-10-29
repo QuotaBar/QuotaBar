@@ -363,14 +363,19 @@ struct ProviderCallout: View {
     }
 
     private func pinChip(_ label: String, on: Bool, action: @escaping () -> Void) -> some View {
-        Text(label)
-            .font(.system(size: 10, weight: on ? .semibold : .medium))
-            .foregroundStyle(on ? Color.black : Color.white.opacity(0.7))
+        // Typed apart from the chain, which older Swift could not type-check
+        // in time with the choices inline.
+        let weight: Font.Weight = on ? .semibold : .medium
+        let ink: Color = on ? .black : .white.opacity(0.7)
+        let fill: Color = .white.opacity(on ? 0.92 : 0.08)
+        return Text(label)
+            .font(.system(size: 10, weight: weight))
+            .foregroundStyle(ink)
             .padding(.horizontal, 7)
             .padding(.vertical, 4)
             .background(
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(on ? Color.white.opacity(0.92) : Color.white.opacity(0.08)))
+                    .fill(fill))
             .contentShape(Rectangle())
             .onTapGesture(perform: action)
             .animation(.easeOut(duration: 0.15), value: on)
