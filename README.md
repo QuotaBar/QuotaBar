@@ -381,3 +381,11 @@ mentions. Their names and logos belong to their respective owners.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+### Vertical Classic desktop widgets
+
+Right-click a Classic desktop card in Small or Medium size and choose
+**Orientation → Vertical**. The setting is saved per card; existing cards stay
+horizontal. Vertical cards center their rings in a compact column (62 points of
+content plus 28 points of padding), with the update time below the title.
+Horizontal and Large/detailed layouts retain their existing presentation.
