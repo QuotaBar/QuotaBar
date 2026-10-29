@@ -85,6 +85,7 @@ public struct DeskCard: Codable, Equatable, Identifiable, Sendable {
     /// Position as fractions of the visible screen, 0,0 top-left.
     public var x: Double
     public var y: Double
+    public var vertical: Bool = false
 
     public init(
         id: String = UUID().uuidString,
@@ -104,10 +105,11 @@ public struct DeskCard: Codable, Equatable, Identifiable, Sendable {
         self.y = min(max(y, 0), 1)
     }
 
-    private enum CodingKeys: String, CodingKey { case id, style, size, provider, source, x, y }
+    private enum CodingKeys: String, CodingKey { case id, style, size, provider, source, x, y, vertical }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        vertical = (try? c.decode(Bool.self, forKey: .vertical)) ?? false
         id = (try? c.decode(String.self, forKey: .id)) ?? UUID().uuidString
         style = (try? c.decode(String.self, forKey: .style)).flatMap(DeskCardStyle.init(rawValue:)) ?? .focus
         size = (try? c.decode(String.self, forKey: .size)).flatMap(DeskCardSize.init(rawValue:)) ?? .medium

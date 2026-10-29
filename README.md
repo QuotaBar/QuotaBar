@@ -50,10 +50,14 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.31** (2026-10-13) · **2** changes in development · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.31** (2026-10-13) · **3** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
-<summary><b>2026-10-29</b> · Unreleased · 2 fixed</summary>
+<summary><b>2026-10-29</b> · Unreleased · 1 added · 2 fixed</summary>
+
+**Added**
+
+- Classic Small and Medium desktop widgets can use a compact vertical column. Orientation is saved per card; existing cards remain horizontal.
 
 **Fixed**
 
@@ -371,6 +375,14 @@ QuotaBar builds on these open-source projects and this typeface. Thank you.
 QuotaBar is an independent third-party app. It is not affiliated with, endorsed by, or
 sponsored by Anthropic, OpenAI, Cursor, Google, xAI, GitHub, X or any other company it
 mentions. Their names and logos belong to their respective owners.
+
+### Vertical Classic desktop widgets
+
+Right-click a Classic desktop card in Small or Medium size and choose
+**Orientation → Vertical**. The setting is saved per card; existing cards stay
+horizontal. Vertical cards center their rings in a compact column (62 points of
+content plus 28 points of padding), with the update time below the title.
+Horizontal and Large/detailed layouts retain their existing presentation.
 
 ## License
 
