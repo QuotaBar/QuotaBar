@@ -7,6 +7,10 @@ Server moves, the website, and build or release scripts don't change the app its
 
 ### 2026-10-29
 
+#### Added
+
+- Classic Small and Medium desktop widgets can use a compact vertical column. Orientation is saved per card; existing cards remain horizontal.
+
 #### Fixed
 
 - With Antigravity closed, the card no longer lists a dozen internal models and repeated model names. It shows the app's own two groups, Gemini and Claude and GPT, each with its 5-hour and weekly limit, Gemini first, and the menu bar no longer leads with Claude.
