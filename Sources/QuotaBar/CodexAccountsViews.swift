@@ -13,7 +13,7 @@ struct CodexAccountsSection: View {
 
     var body: some View {
         // One account is already the address under the card's name.
-        if accounts.saved.count > 1 {
+        if accounts.available.count > 1 {
             VStack(alignment: .leading, spacing: compact ? 6 : 8) {
                 Text(L10n.t("Accounts", "账号"))
                     .font(.system(size: 11, weight: .medium))
@@ -64,7 +64,7 @@ struct CodexAccountsSection: View {
                     Text(L10n.t("In use", "使用中"))
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(Color(hex: ProviderID.codex.accentHex))
-                } else {
+                } else if account.authFilePath == nil {
                     Pressable(action: { store.switchCodexAccount(account.id) }) {
                         Text(L10n.t("Switch", "切换"))
                             .font(.system(size: 10, weight: .semibold))
@@ -81,10 +81,10 @@ struct CodexAccountsSection: View {
             }
             if !active {
                 Group {
-                    if let window = reading?.snapshot?.headlineWindow, let used = window.usedPercent {
-                        Text(figure(window, used: used))
-                    } else if let error = reading?.error {
+                    if let error = reading?.error {
                         Text(error).foregroundStyle(Palette.amber)
+                    } else if let window = reading?.snapshot?.headlineWindow, let used = window.usedPercent {
+                        Text(figure(window, used: used))
                     } else {
                         Text(L10n.t("Reading…", "读取中…"))
                     }
@@ -121,9 +121,9 @@ struct CodexAccountPicker: View {
     let account: String
 
     var body: some View {
-        if accounts.saved.count > 1 {
+        if accounts.available.count > 1 {
             Menu {
-                ForEach(accounts.saved) { saved in
+                ForEach(accounts.available) { saved in
                     Toggle(accounts.label(saved, masked: store.isPrivacyMasked), isOn: Binding(
                         get: { store.codexCardAccount == saved.id },
                         set: { on in if on { store.useCodexAccount(saved.id) } }))
@@ -162,7 +162,7 @@ struct CodexAccountsMenu: View {
                 Toggle(accounts.label(account, masked: store.isPrivacyMasked), isOn: Binding(
                     get: { accounts.activeID == account.id },
                     set: { on in if on { store.switchCodexAccount(account.id) } }))
-                    .disabled(accounts.working)
+                    .disabled(accounts.working || account.authFilePath != nil)
             }
             if !accounts.saved.isEmpty { Divider() }
             Button(accounts.isActiveSaved
@@ -199,7 +199,7 @@ struct CodexAccountsSettings: View {
                         Text(L10n.t("In use", "使用中"))
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(.secondary)
-                    } else {
+                    } else if account.authFilePath == nil {
                         Button(L10n.t("Switch", "切换")) { store.switchCodexAccount(account.id) }
                             .glassAction(compact: true)
                             .disabled(accounts.working)
@@ -212,6 +212,8 @@ struct CodexAccountsSettings: View {
                             "在 QuotaBar 里忘掉这个账号。如果它正是 Codex CLI 当前登录的账号，CLI 那边不受影响。"))
                 }
             }
+            Button("Link independent profile (read-only)…") { store.linkCodexProfile() }
+                .disabled(accounts.working)
             HStack(spacing: Design.space2) {
                 Button(accounts.isActiveSaved
                     ? L10n.t("Update Saved Copy", "更新保存副本")

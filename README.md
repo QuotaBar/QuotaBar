@@ -381,3 +381,20 @@ mentions. Their names and logos belong to their respective owners.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+### Independent Codex profiles (macOS)
+
+In Settings → Providers → Codex, choose **Link independent profile (read-only)…**
+and select the `auth.json` created by a separately authenticated Codex profile.
+QuotaBar stores a local path and account identity, not a copy of that profile's
+credentials. The file must be user-owned, private, regular and no larger than 1 MiB.
+The owning Codex profile remains responsible for sign-in and token renewal.
+If that profile changes to another account, QuotaBar reports an identity error
+instead of silently displaying the new account. Linked profiles cannot use Switch.
+Removing a link does not remove its file or sign out Codex.
+
+Classic Small/Medium desktop widgets show a separate ring for each available
+Codex account. Saved accounts retain their stored order; an unsaved active account
+is included first. Link both profiles to keep both visible when the main login
+changes. This does not add drag-to-reorder controls. No profile credentials or
+account list are added to the shared usage model or iCloud sync.

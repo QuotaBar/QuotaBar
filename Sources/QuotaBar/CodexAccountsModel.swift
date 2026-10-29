@@ -21,6 +21,12 @@ final class CodexAccountsModel: ObservableObject {
     /// A switch or a save in progress; the buttons wait for it.
     @Published private(set) var working = false
 
+    @Published private(set) var currentAccount: CodexAccount?
+    var available: [CodexAccount] {
+        guard let currentAccount, !saved.contains(where: { $0.id == currentAccount.id }) else { return saved }
+        return [currentAccount] + saved
+    }
+
     let vault: CodexAccountVault
 
     init(vault: CodexAccountVault = .shared) {
@@ -37,14 +43,16 @@ final class CodexAccountsModel: ObservableObject {
 
     func reload() async {
         saved = await vault.accounts()
-        activeID = await vault.live()?.accountID
+        let live = await vault.live()
+        activeID = live?.accountID
+        currentAccount = live.map { CodexAccount(id: $0.accountID, email: $0.email, plan: $0.plan, savedAt: .now) }
     }
 
     /// Every kept account but the active one, read with its own tokens. A
     /// failure keeps the last good reading beside the reason.
     func readOthers() async {
         await reload()
-        let ids = others.map(\.id)
+        let ids = available.count > 1 ? available.map(\.id) : others.map(\.id)
         guard !ids.isEmpty else {
             readings = [:]
             return
@@ -81,6 +89,13 @@ final class CodexAccountsModel: ObservableObject {
         return account
     }
 
+    func linkProfile(at url: URL) async throws {
+        working = true
+        defer { working = false }
+        _ = try await vault.linkProfile(at: url)
+        await readOthers()
+    }
+
     func remove(_ id: String) async {
         await vault.remove(id)
         readings[id] = nil
@@ -104,7 +119,7 @@ final class CodexAccountsModel: ObservableObject {
     /// "a@example.com", or which account it is when the address is not to be shown.
     func label(_ account: CodexAccount, masked: Bool) -> String {
         guard !masked, let email = account.email, !email.isEmpty else {
-            let index = (saved.firstIndex { $0.id == account.id } ?? 0) + 1
+            let index = (available.firstIndex { $0.id == account.id } ?? 0) + 1
             return L10n.t("Account \(index)", "账号 \(index)")
         }
         return email
@@ -162,5 +177,23 @@ extension UsageStore {
 
     func removeCodexAccount(_ id: String) {
         Task { await codexAccounts.remove(id) }
+    }
+}
+
+extension UsageStore {
+    func linkCodexProfile() {
+        let panel = NSOpenPanel()
+        panel.title = "Link a Codex profile (read-only)"
+        panel.message = "Choose auth.json in the separate Codex profile. No credentials are copied and the main session stays unchanged."
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.showsHiddenFiles = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task {
+            do {
+                try await codexAccounts.linkProfile(at: url)
+                codexSwitchNotice = "Read-only profile linked. The CLI owns sign-in and renewal."
+            } catch { codexSwitchNotice = error.localizedDescription }
+        }
     }
 }
