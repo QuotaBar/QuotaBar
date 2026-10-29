@@ -50,9 +50,9 @@ final class CodexAccountsModel: ObservableObject {
 
     /// Every kept account but the active one, read with its own tokens. A
     /// failure keeps the last good reading beside the reason.
-    func readOthers() async {
+    func readOthers(excluding cardID: String? = nil) async {
         await reload()
-        let ids = available.count > 1 ? available.map(\.id) : others.map(\.id)
+        let ids = available.filter { $0.id != (cardID ?? activeID) }.map(\.id)
         guard !ids.isEmpty else {
             readings = [:]
             return
@@ -89,11 +89,11 @@ final class CodexAccountsModel: ObservableObject {
         return account
     }
 
-    func linkProfile(at url: URL) async throws {
+    func linkProfile(at url: URL, excluding cardID: String? = nil) async throws {
         working = true
         defer { working = false }
         _ = try await vault.linkProfile(at: url)
-        await readOthers()
+        await readOthers(excluding: cardID)
     }
 
     func remove(_ id: String) async {
@@ -183,16 +183,16 @@ extension UsageStore {
 extension UsageStore {
     func linkCodexProfile() {
         let panel = NSOpenPanel()
-        panel.title = "Link a Codex profile (read-only)"
-        panel.message = "Choose auth.json in the separate Codex profile. No credentials are copied and the main session stays unchanged."
+        panel.title = L10n.t("Link a Codex profile (read-only)", "链接 Codex 配置（只读）")
+        panel.message = L10n.t("Choose auth.json in the separate Codex profile. No credentials are copied and the main session stays unchanged.", "请选择独立 Codex 配置中的 auth.json。不会复制凭据，也不会更改主会话。")
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         panel.showsHiddenFiles = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Task {
             do {
-                try await codexAccounts.linkProfile(at: url)
-                codexSwitchNotice = "Read-only profile linked. The CLI owns sign-in and renewal."
+                try await codexAccounts.linkProfile(at: url, excluding: codexCardAccount)
+                codexSwitchNotice = L10n.t("Read-only profile linked. The CLI owns sign-in and renewal.", "已链接只读配置。登录和续期由 CLI 管理。")
             } catch { codexSwitchNotice = error.localizedDescription }
         }
     }

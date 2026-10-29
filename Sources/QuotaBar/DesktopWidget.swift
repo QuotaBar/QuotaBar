@@ -1,5 +1,4 @@
 import AppKit
-import Combine
 import SwiftUI
 import QuotaCore
 
@@ -13,18 +12,9 @@ import QuotaCore
 final class DesktopWidgetCoordinator {
     private var panels: [String: NSPanel] = [:]
     private weak var store: UsageStore?
-    private var accountsObserver: AnyCancellable?
 
     func sync(store: UsageStore) {
         self.store = store
-        if accountsObserver == nil {
-            accountsObserver = store.codexAccounts.objectWillChange
-                .debounce(for: .milliseconds(50), scheduler: RunLoop.main)
-                .sink { [weak self, weak store] _ in
-                    guard let store else { return }
-                    self?.sync(store: store)
-                }
-        }
         migrateIfNeeded(store)
         guard store.widgetEnabled else { return hide() }
         let cards = store.experience.deskCards
@@ -105,7 +95,14 @@ final class DesktopWidgetCoordinator {
     func resize(_ card: DeskCard, to size: CGSize) {
         guard size.width > 0, size.height > 0, let panel = panels[card.id],
               abs(panel.frame.width - size.width) > 0.5 || abs(panel.frame.height - size.height) > 0.5 else { return }
-        place(panel, card: card, measuredSize: size)
+        guard let screen = panel.screen ?? EdgeDockCoordinator.hostScreen else { return }
+        let visible = screen.visibleFrame
+        let width = max(40, min(size.width, visible.width))
+        let height = max(40, min(size.height, visible.height))
+        let origin = NSPoint(
+            x: min(max(panel.frame.minX, visible.minX), visible.maxX - width),
+            y: min(max(panel.frame.minY, visible.minY), visible.maxY - height))
+        panel.setFrame(NSRect(origin: origin, size: NSSize(width: width, height: height)), display: true)
     }
 
     func move(_ cardID: String, by translation: CGSize) {
@@ -278,7 +275,7 @@ struct DesktopWidgetView: View {
     private var content: some View {
         switch density {
         case .compact, .standard:
-            HStack(alignment: .top, spacing: Design.space4 - 2) {
+            HStack(alignment: .top, spacing: density == .compact ? Design.space3 : Design.space4 - 2) {
                 ForEach(providers) { id in
                     if id == .codex && accounts.available.count > 1 {
                         ForEach(accounts.available) { account in
@@ -321,8 +318,12 @@ struct DesktopWidgetView: View {
 
     private func accountRing(_ account: CodexAccount) -> some View {
         let reading = accounts.readings[account.id]
-        let window = reading?.error == nil ? reading?.snapshot?.headlineWindow : nil
-        let label = CodexProvider.planName(account.plan) ?? "Codex"
+        let window = account.id == store.codexCardAccount
+            ? store.headlineWindow(for: .codex) : reading?.snapshot?.headlineWindow
+        let plan = CodexProvider.planName(account.plan) ?? "Codex"
+        let samePlan = accounts.available.filter { (CodexProvider.planName($0.plan) ?? "Codex") == plan }
+        let index = (accounts.available.firstIndex { $0.id == account.id } ?? 0) + 1
+        let label = samePlan.count > 1 ? "\(plan) · \(index)" : plan
         return VStack(spacing: 3) {
             ProviderRing(id: .codex, percent: window?.usedPercent, mode: store.meterMode,
                          diameter: density == .compact ? 34 : 40, showsLabel: true)
@@ -333,7 +334,7 @@ struct DesktopWidgetView: View {
                 .font(.system(size: 9, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.45))
         }
-        .help(accounts.label(account, masked: store.isPrivacyMasked))
+        .help([accounts.label(account, masked: store.isPrivacyMasked), reading?.error].compactMap { $0 }.joined(separator: " · "))
         .accessibilityLabel("Codex " + label + " " + accounts.label(account, masked: store.isPrivacyMasked))
     }
 

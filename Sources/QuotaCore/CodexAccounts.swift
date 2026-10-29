@@ -90,6 +90,8 @@ public enum CodexAccountError: LocalizedError, Equatable {
     case notSignedIn
     case notSaved
     case unsafeProfile
+    case liveProfile
+    case alreadySaved
     case profileIdentityChanged
     case readOnlyProfile
     case keychain
@@ -102,11 +104,15 @@ public enum CodexAccountError: LocalizedError, Equatable {
         case .notSignedIn:
             L10n.t("Codex isn't signed in on this Mac. Run `codex login` first.", "这台 Mac 上的 Codex 没有登录。先运行 `codex login`。")
         case .unsafeProfile:
-            "Choose a private, owner-only auth.json file from a signed-in Codex profile."
+            L10n.t("Choose a private, owner-only auth.json file from a signed-in Codex profile.", "请选择已登录 Codex 配置中仅所有者可访问的私有 auth.json 文件。")
+        case .liveProfile:
+            L10n.t("The main Codex session cannot be linked. Use Save Current Account or choose a separate profile.", "不能链接 Codex 主会话。请保存当前账号或选择独立配置。")
+        case .alreadySaved:
+            L10n.t("That account is already saved. Remove it from QuotaBar before linking a different profile.", "该账号已保存。请先从 QuotaBar 移除，再链接其他配置。")
         case .profileIdentityChanged:
-            "The linked profile changed account. Remove and link it again."
+            L10n.t("The linked profile changed account. Remove and link it again.", "链接的配置已更换账号。请移除后重新链接。")
         case .readOnlyProfile:
-            "This profile is read-only. It cannot replace the main Codex session."
+            L10n.t("This profile is read-only. It cannot replace the main Codex session.", "此配置为只读，不能替换 Codex 主会话。")
         case .notSaved:
             L10n.t("That account isn't saved in QuotaBar.", "QuotaBar 里没有保存这个账号。")
         case .keychain:
@@ -220,7 +226,6 @@ public actor CodexAccountVault {
     @discardableResult
     public func saveCurrent(now: Date = .now) throws -> CodexAccount {
         guard let live = live() else { throw CodexAccountError.notSignedIn }
-        if let linked = accounts().first(where: { $0.id == live.accountID }), linked.authFilePath != nil { return linked }
         return try keep(live, now: now)
     }
 
@@ -228,12 +233,15 @@ public actor CodexAccountVault {
     @discardableResult
     public func linkProfile(at url: URL) throws -> CodexAccount {
         let path = url.standardizedFileURL.resolvingSymlinksInPath().path
+        guard path != liveURL.standardizedFileURL.resolvingSymlinksInPath().path else {
+            throw CodexAccountError.liveProfile
+        }
         let file = try readProfile(path)
         guard refreshing[file.accountID] == nil else { throw CodexAccountError.unsafeProfile }
         var list = accounts()
         // Do not silently replace an existing stored account's refresh ownership.
         if let existing = list.first(where: { $0.id == file.accountID }),
-           existing.authFilePath != path { throw CodexAccountError.unsafeProfile }
+           existing.authFilePath != path { throw CodexAccountError.alreadySaved }
         var summary = file.summary
         summary.authFilePath = path
         list.removeAll { $0.id == summary.id }
@@ -334,9 +342,6 @@ public actor CodexAccountVault {
 
     @discardableResult
     private func keep(_ file: CodexAuthFile, now: Date) throws -> CodexAccount {
-        if let linked = accounts().first(where: { $0.id == file.accountID }), linked.authFilePath != nil {
-            return linked
-        }
         guard storage.write(String(decoding: file.data, as: UTF8.self), account: Self.blobKey(file.accountID)) else {
             throw CodexAccountError.keychain
         }

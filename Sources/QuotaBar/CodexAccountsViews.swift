@@ -81,10 +81,12 @@ struct CodexAccountsSection: View {
             }
             if !active {
                 Group {
-                    if let error = reading?.error {
-                        Text(error).foregroundStyle(Palette.amber)
-                    } else if let window = reading?.snapshot?.headlineWindow, let used = window.usedPercent {
+                    if let window = account.id == store.codexCardAccount
+                        ? store.headlineWindow(for: .codex) : reading?.snapshot?.headlineWindow,
+                       let used = window.usedPercent {
                         Text(figure(window, used: used))
+                    } else if let error = reading?.error {
+                        Text(error).foregroundStyle(Palette.amber)
                     } else {
                         Text(L10n.t("Reading…", "读取中…"))
                     }
@@ -93,6 +95,10 @@ struct CodexAccountsSection: View {
                 .foregroundStyle(.white.opacity(0.5))
                 .lineLimit(2)
                 .padding(.leading, 12)
+                if reading?.snapshot != nil, let error = reading?.error {
+                    Text(error).font(.system(size: 10)).foregroundStyle(Palette.amber)
+                        .lineLimit(2).padding(.leading, 12)
+                }
             }
         }
     }
@@ -212,7 +218,7 @@ struct CodexAccountsSettings: View {
                             "在 QuotaBar 里忘掉这个账号。如果它正是 Codex CLI 当前登录的账号，CLI 那边不受影响。"))
                 }
             }
-            Button("Link independent profile (read-only)…") { store.linkCodexProfile() }
+            Button(L10n.t("Link independent profile (read-only)…", "链接独立配置（只读）…")) { store.linkCodexProfile() }
                 .disabled(accounts.working)
             HStack(spacing: Design.space2) {
                 Button(accounts.isActiveSaved
