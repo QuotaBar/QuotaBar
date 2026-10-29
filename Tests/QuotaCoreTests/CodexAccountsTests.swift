@@ -51,6 +51,98 @@ final class CodexAccountsTests: XCTestCase {
         CodexAccountVault(liveURL: live, storage: storage, refresher: refresher)
     }
 
+    func testLinkedProfileReadsFreshWithoutSavingOrRefreshingTokens() async throws {
+        let path = directory.appendingPathComponent("second/auth.json")
+        try FileManager.default.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try authFile("acct-b", email: "b@example.com", expiresIn: 1).write(to: path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path.path)
+        let primary = authFile("acct-a", email: "a@example.com")
+        try primary.write(to: live)
+        let storage = MemoryCredentialStorage()
+        let v = vault(storage: storage)
+        let linked = try await v.linkProfile(at: path)
+        XCTAssertEqual(linked.authFilePath, path.resolvingSymlinksInPath().path)
+        XCTAssertNil(storage.read(account: CodexAccountVault.blobKey("acct-b")))
+        _ = try await v.credentials(for: "acct-b", now: now)
+        try authFile("acct-b", email: "b@example.com", refresh: "new-owner-token").write(to: path)
+        let refreshed = try await v.credentials(for: "acct-b", now: now)
+        XCTAssertEqual(refreshed.refreshToken, "new-owner-token")
+        do { try await v.switchTo("acct-b"); XCTFail("must not switch") }
+        catch { XCTAssertEqual(error as? CodexAccountError, .readOnlyProfile) }
+        XCTAssertEqual(try Data(contentsOf: live), primary)
+        try authFile("acct-c", email: "c@example.com").write(to: path)
+        do { _ = try await v.credentials(for: "acct-b"); XCTFail("identity must be pinned") }
+        catch { XCTAssertEqual(error as? CodexAccountError, .profileIdentityChanged) }
+        await v.remove("acct-b")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: path.path))
+    }
+
+    func testRejectsTheLiveProfileAndItsAliasWithoutChangingStorage() async throws {
+        let original = authFile("a", email: "a@example.com")
+        try original.write(to: live)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: live.path)
+        let alias = directory.appendingPathComponent("alias")
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: live)
+        let storage = MemoryCredentialStorage()
+        let v = vault(storage: storage)
+        for path in [live, alias] {
+            do { _ = try await v.linkProfile(at: path); XCTFail("must reject the live session") }
+            catch { XCTAssertEqual(error as? CodexAccountError, .liveProfile) }
+        }
+        let accounts = await v.accounts()
+        XCTAssertTrue(accounts.isEmpty)
+        XCTAssertEqual(try Data(contentsOf: live), original)
+        _ = try await v.saveCurrent()
+        XCTAssertNotNil(storage.read(account: CodexAccountVault.blobKey("a")))
+    }
+
+    func testAlreadySavedAccountHasDedicatedErrorAndKeepsOriginalCredentials() async throws {
+        try authFile("a", email: "a@example.com").write(to: live)
+        let storage = MemoryCredentialStorage()
+        let v = vault(storage: storage)
+        _ = try await v.saveCurrent()
+        let original = storage.read(account: CodexAccountVault.blobKey("a"))
+        let path = directory.appendingPathComponent("second/auth.json")
+        try FileManager.default.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try authFile("a", email: "a@example.com", refresh: "different-token").write(to: path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path.path)
+        do { _ = try await v.linkProfile(at: path); XCTFail("must not replace saved credentials") }
+        catch { XCTAssertEqual(error as? CodexAccountError, .alreadySaved) }
+        XCTAssertEqual(storage.read(account: CodexAccountVault.blobKey("a")), original)
+    }
+
+    func testSwitchingAwayKeepsLiveTokensEvenWhenItsIdentityHasAnIndependentLink() async throws {
+        let storage = MemoryCredentialStorage()
+        let v = vault(storage: storage)
+        let other = authFile("b", email: "b@example.com")
+        try other.write(to: live)
+        _ = try await v.saveCurrent()
+        let path = directory.appendingPathComponent("second/auth.json")
+        try FileManager.default.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let independent = authFile("a", email: "a@example.com", refresh: "independent-token")
+        try independent.write(to: path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path.path)
+        _ = try await v.linkProfile(at: path)
+        let current = authFile("a", email: "a@example.com", refresh: "live-token")
+        try current.write(to: live)
+        try await v.switchTo("b", now: now)
+        XCTAssertEqual(try Data(contentsOf: live), other)
+        let saved = try XCTUnwrap(storage.read(account: CodexAccountVault.blobKey("a")))
+        XCTAssertEqual(CodexAuthFile(Data(saved.utf8))?.refreshToken, "live-token")
+        try await v.switchTo("a", now: now)
+        XCTAssertEqual(try Data(contentsOf: live), current)
+        XCTAssertEqual(try Data(contentsOf: path), independent)
+    }
+
+    func testLinkedProfileRejectsPublicReadableFile() async throws {
+        let path = directory.appendingPathComponent("second/auth.json")
+        try FileManager.default.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try authFile("b", email: "b@example.com").write(to: path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: path.path)
+        do { _ = try await vault().linkProfile(at: path); XCTFail("unsafe file") }
+        catch { XCTAssertEqual(error as? CodexAccountError, .unsafeProfile) }
+    }
+
     // MARK: The file
 
     func testTheFileSaysWhoItIs() throws {

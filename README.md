@@ -50,10 +50,14 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.31** (2026-10-13) · **2** changes in development · [full changelog](CHANGELOG.en.md)
+Latest release **0.5.31** (2026-10-13) · **3** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
-<summary><b>2026-10-29</b> · Unreleased · 2 fixed</summary>
+<summary><b>2026-10-29</b> · Unreleased · 1 added · 2 fixed</summary>
+
+**Added**
+
+- macOS can link independently authenticated Codex profiles read-only and show each account in Classic Small/Medium desktop widgets. Profile credentials stay with their CLI; the main session cannot be linked, and equal plans have distinct labels.
 
 **Fixed**
 
@@ -208,6 +212,25 @@ With two screens, choose which one the island, dock and cards appear on.
   as a 1080-pixel PNG or copied.
 - **Service status.** The providers' own status pages, judged by the coding components —
   Claude Code, the Codex CLI — with 30 days of history in Settings.
+
+## Independent Codex profiles (macOS)
+
+In Settings → Providers → Codex, choose **Link independent profile (read-only)…**
+and select the `auth.json` created by a separately authenticated Codex profile.
+QuotaBar stores a local path and account identity, not a copy of that profile's
+credentials. The main live `~/.codex/auth.json` cannot be linked; use **Save Current Account** for it.
+An account already saved must be removed before linking a different profile.
+The file must be user-owned, private, regular and no larger than 1 MiB.
+The owning Codex profile remains responsible for sign-in and token renewal.
+If that profile changes to another account, QuotaBar reports an identity error
+instead of silently displaying the new account. Linked profiles cannot use Switch.
+Removing a link does not remove its file or sign out Codex.
+
+Classic Small/Medium desktop widgets show a separate ring for each available
+Codex account. Saved accounts retain their stored order; an unsaved active account
+is included first. Link both profiles to keep both visible when the main login
+changes. This does not add drag-to-reorder controls. No profile credentials or
+account list are added to the shared usage model or iCloud sync.
 
 ## Your data
 

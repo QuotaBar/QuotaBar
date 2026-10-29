@@ -7,6 +7,10 @@ Server moves, the website, and build or release scripts don't change the app its
 
 ### 2026-10-29
 
+#### Added
+
+- macOS can link independently authenticated Codex profiles read-only and show each account in Classic Small/Medium desktop widgets. Profile credentials stay with their CLI; the main session cannot be linked, and equal plans have distinct labels.
+
 #### Fixed
 
 - With Antigravity closed, the card no longer lists a dozen internal models and repeated model names. It shows the app's own two groups, Gemini and Claude and GPT, each with its 5-hour and weekly limit, Gemini first, and the menu bar no longer leads with Claude.

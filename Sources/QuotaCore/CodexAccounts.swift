@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 // MARK: - Codex accounts QuotaBar keeps (issue #6)
 
@@ -13,6 +14,8 @@ public struct CodexAccount: Codable, Sendable, Equatable, Identifiable {
     /// ChatGPT's plan id as the sign-in carries it: "plus", "pro".
     public var plan: String?
     public var savedAt: Date
+    /// Read-only reference. Tokens remain owned and refreshed by that CLI profile.
+    public var authFilePath: String? = nil
 
     public init(id: String, email: String?, plan: String?, savedAt: Date) {
         self.id = id
@@ -86,6 +89,11 @@ public enum CodexAccountError: LocalizedError, Equatable {
     /// No `~/.codex/auth.json`, or one without a signed-in account.
     case notSignedIn
     case notSaved
+    case unsafeProfile
+    case liveProfile
+    case alreadySaved
+    case profileIdentityChanged
+    case readOnlyProfile
     case keychain
     case writeFailed(String)
     /// The account's refresh token no longer works: it can only be signed in again.
@@ -95,6 +103,16 @@ public enum CodexAccountError: LocalizedError, Equatable {
         switch self {
         case .notSignedIn:
             L10n.t("Codex isn't signed in on this Mac. Run `codex login` first.", "这台 Mac 上的 Codex 没有登录。先运行 `codex login`。")
+        case .unsafeProfile:
+            L10n.t("Choose a private, owner-only auth.json file from a signed-in Codex profile.", "请选择已登录 Codex 配置中仅所有者可访问的私有 auth.json 文件。")
+        case .liveProfile:
+            L10n.t("The main Codex session cannot be linked. Use Save Current Account or choose a separate profile.", "不能链接 Codex 主会话。请保存当前账号或选择独立配置。")
+        case .alreadySaved:
+            L10n.t("That account is already saved. Remove it from QuotaBar before linking a different profile.", "该账号已保存。请先从 QuotaBar 移除，再链接其他配置。")
+        case .profileIdentityChanged:
+            L10n.t("The linked profile changed account. Remove and link it again.", "链接的配置已更换账号。请移除后重新链接。")
+        case .readOnlyProfile:
+            L10n.t("This profile is read-only. It cannot replace the main Codex session.", "此配置为只读，不能替换 Codex 主会话。")
         case .notSaved:
             L10n.t("That account isn't saved in QuotaBar.", "QuotaBar 里没有保存这个账号。")
         case .keychain:
@@ -211,6 +229,54 @@ public actor CodexAccountVault {
         return try keep(live, now: now)
     }
 
+    /// Link without copying credentials or refreshing them. The CLI owns rotation.
+    @discardableResult
+    public func linkProfile(at url: URL) throws -> CodexAccount {
+        let path = url.standardizedFileURL.resolvingSymlinksInPath().path
+        guard path != liveURL.standardizedFileURL.resolvingSymlinksInPath().path else {
+            throw CodexAccountError.liveProfile
+        }
+        let file = try readProfile(path)
+        guard refreshing[file.accountID] == nil else { throw CodexAccountError.unsafeProfile }
+        var list = accounts()
+        // Do not silently replace an existing stored account's refresh ownership.
+        if let existing = list.first(where: { $0.id == file.accountID }),
+           existing.authFilePath != path { throw CodexAccountError.alreadySaved }
+        var summary = file.summary
+        summary.authFilePath = path
+        list.removeAll { $0.id == summary.id }
+        list.append(summary)
+        let data = try JSONEncoder().encode(list)
+        guard storage.write(String(decoding: data, as: UTF8.self), account: Self.indexKey) else {
+            throw CodexAccountError.keychain
+        }
+        return summary
+    }
+
+    private func readProfile(_ path: String) throws -> CodexAuthFile {
+        let url = URL(fileURLWithPath: path)
+        guard url.lastPathComponent == "auth.json",
+              url.resolvingSymlinksInPath().path == path else { throw CodexAccountError.unsafeProfile }
+        let fd = open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
+        guard fd >= 0 else { throw CodexAccountError.unsafeProfile }
+        defer { Darwin.close(fd) }
+        var st = stat()
+        guard fstat(fd, &st) == 0, st.st_mode & S_IFMT == S_IFREG,
+              st.st_uid == getuid(), st.st_mode & 0o077 == 0,
+              st.st_size > 0, st.st_size <= 1_048_576 else { throw CodexAccountError.unsafeProfile }
+        if let acl = acl_get_fd_np(fd, ACL_TYPE_EXTENDED) {
+            defer { acl_free(UnsafeMutableRawPointer(acl)) }
+            var entry: acl_entry_t?
+            guard acl_get_entry(acl, Int32(ACL_FIRST_ENTRY.rawValue), &entry) != 0 else {
+                throw CodexAccountError.unsafeProfile
+            }
+        } else if errno != ENOENT { throw CodexAccountError.unsafeProfile }
+        var data = Data(count: Int(st.st_size))
+        let count = data.withUnsafeMutableBytes { Darwin.read(fd, $0.baseAddress, $0.count) }
+        guard count == data.count, let file = CodexAuthFile(data) else { throw CodexAccountError.unsafeProfile }
+        return file
+    }
+
     public func remove(_ id: String) {
         storage.delete(account: Self.blobKey(id))
         writeIndex(accounts().filter { $0.id != id })
@@ -221,6 +287,9 @@ public actor CodexAccountVault {
     /// file, so switching never loses one. The file it replaces is left
     /// beside it as `auth.json.quotabar-backup`.
     public func switchTo(_ id: String, now: Date = .now) async throws {
+        if accounts().first(where: { $0.id == id })?.authFilePath != nil {
+            throw CodexAccountError.readOnlyProfile
+        }
         // Its refresh first, so the CLI gets the tokens that came back.
         if let running = refreshing[id] { _ = try? await running.value }
         guard let target = stored(id) else { throw CodexAccountError.notSaved }
@@ -238,6 +307,11 @@ public actor CodexAccountVault {
     /// read from its file and left to the CLI to refresh; a kept one is
     /// refreshed here when it is near its end, and the new tokens kept.
     public func credentials(for id: String, now: Date = .now) async throws -> CodexAuthFile {
+        if let path = accounts().first(where: { $0.id == id })?.authFilePath {
+            let file = try readProfile(path)
+            guard file.accountID == id else { throw CodexAccountError.profileIdentityChanged }
+            return file
+        }
         if let live = live(), live.accountID == id { return live }
         if let running = refreshing[id] { return try await running.value }
         guard let file = stored(id) else { throw CodexAccountError.notSaved }
@@ -257,6 +331,9 @@ public actor CodexAccountVault {
             throw CodexAccountError.signInAgain(email: file.email)
         }
         guard let fresh = file.refreshed(with: tokens, now: now) else { throw ProviderError.badResponse }
+        guard accounts().contains(where: { $0.id == file.accountID && $0.authFilePath == nil }) else {
+            throw CodexAccountError.notSaved
+        }
         try keep(fresh, now: now)
         return fresh
     }

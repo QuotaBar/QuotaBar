@@ -593,7 +593,7 @@ final class UsageStore: ObservableObject {
     private func apply(_ id: ProviderID, _ result: Result<UsageSnapshot, Error>) {
         retrying.remove(id)
         // The other kept Codex accounts are read on the same beat.
-        if id == .codex { Task { await codexAccounts.readOthers() } }
+        if id == .codex { Task { await codexAccounts.readOthers(excluding: codexCardAccount) } }
         // And Claude Code's other config dirs' sign-ins.
         if id == .claude { Task { await readClaudeSignIns() } }
         switch result {
