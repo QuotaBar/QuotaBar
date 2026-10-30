@@ -564,7 +564,7 @@ selected ring is marked by a short white bar on the strip's inboard side
 (the halo round the ring and the block behind ring-plus-figure both read
 as decoration), the strip's vertical insets are 18/14 to make the visible
 margins even, and the callout heads with the provider name, a plan chip
-("PRO", "MAX 20X" — Claude's tier comes from `rateLimitTier` in Claude
+("PRO", "ULTRA" — Claude's tier comes from `rateLimitTier` in Claude
 Code's own keychain item) and the account when the provider reports one.
 
 ### The settings window

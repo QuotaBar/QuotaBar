@@ -360,7 +360,7 @@ enum Snapshot {
             // Signed out three hours ago: the last reading stands in, and
             // its 5-hour window has reset since.
             .claude: .stale(UsageSnapshot(
-                planName: "Max 20x",
+                planName: "Max",
                 windows: [
                     UsageWindow(
                         title: WindowTitle.forSeconds(18_000),
@@ -436,7 +436,7 @@ enum Snapshot {
                    {"kind":"weekly_all","percent":6,"resets_at":null,"is_active":true}]}
         """
         var claude = (try? ClaudeProvider.parse(Data(claudeJSON.utf8))) ?? UsageSnapshot(windows: [])
-        claude.planName = "Max 20x"
+        claude.planName = "Max"
         claude.account = "you@example.com"
         claude.resetCredits = ResetCredits(available: 1, applicable: 0, totalEarned: 1, credits: [
             ResetCredit(id: "launch", title: "Full reset", expiresAt: Date().addingTimeInterval(21 * 86_400)),

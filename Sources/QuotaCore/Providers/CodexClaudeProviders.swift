@@ -991,10 +991,14 @@ public struct ClaudeProvider: QuotaProvider {
             windows = limits.compactMap { convert($0, body: body) }
         }
         if windows.isEmpty {
-            // Older responses only carried the two top-level windows.
+            // Older responses only carried the two top-level windows. A
+            // 5-hour window without a figure is left out: a verified Ultra
+            // account has no 5-hour limit, and an empty bar there would read
+            // as "nothing used" rather than "no limit".
             windows = [
-                body.fiveHour.map {
-                    legacy($0, title: WindowTitle.forSeconds(18_000), seconds: 18_000, active: true)
+                body.fiveHour.flatMap {
+                    $0.utilization == nil ? nil
+                        : legacy($0, title: WindowTitle.forSeconds(18_000), seconds: 18_000, active: true)
                 },
                 body.sevenDay.map {
                     legacy($0, title: WindowTitle.forSeconds(604_800), seconds: 604_800, active: false)

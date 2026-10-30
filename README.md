@@ -50,9 +50,20 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.6.0** (2026-10-30) · [full changelog](CHANGELOG.en.md)
+Latest release **0.6.1** (2026-10-31) · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-10-31</b> · 0.6.1 · 3 changed</summary>
+
+**Changed**
+
+- Claude's plans are renamed: Max 5x shows as Max and Max 20x as Ultra, at the same price. Readings Quota Run kept under the old names count with the Max and Ultra boards, so no result is lost.
+- A verified Ultra account has no 5-hour limit, so its card shows the week and Fable only, with no empty 5-hour bar; a menu bar ring that followed the 5-hour limit follows the fullest limit instead. Max and accounts not yet verified still have the 5-hour limit and show it as before.
+- The MiniMax card shows an email address or no account at all: an account with no address bound, such as one made with a phone number, no longer shows its nickname.
+
+</details>
+
+<details>
 <summary><b>2026-10-30</b> · 0.6.0 · 4 added · 1 fixed</summary>
 
 **Added**
@@ -75,25 +86,6 @@ Latest release **0.6.0** (2026-10-30) · [full changelog](CHANGELOG.en.md)
 
 - With Antigravity closed, the card no longer lists a dozen internal models and repeated model names. It shows the app's own two groups, Gemini and Claude and GPT, each with its 5-hour and weekly limit, Gemini first, and the menu bar no longer leads with Claude.
 - With Antigravity closed, weekly limits are read too, so a half-spent Gemini week no longer shows as 0%. The plan chip shows the subscription, such as Google AI Pro, instead of ANTIGRAVITY.
-
-</details>
-
-<details>
-<summary><b>2026-10-13</b> · 0.5.31 · 2 added · 1 changed · 2 fixed</summary>
-
-**Added**
-
-- Mac, iOS and widgets support migrated X Subscription accounts, grouping Cursor and Grok only for the same verified workspace and seat and showing shared weekly usage and prepaid balance once. Existing plans keep their original presentation.
-- iOS DeepSeek uses a balance-only card: one large amount for a single currency, side-by-side CNY and USD balances, and no balance progress bars or repeated quota rows. Details and sharing use the same layout.
-
-**Changed**
-
-- Codex uses one flat OpenAI mark in the existing island blue across Mac, iOS and widgets, replacing the old gradient icon.
-
-**Fixed**
-
-- Migrated plans no longer reuse stale Cursor monthly quotas or duplicate Grok Bot allowances. Unknown usage remains a dash; reported zero usage and zero balances remain valid.
-- Existing Cursor selections, widgets and links resolve to the shared card. Sync, cache restoration and multi-Mac merges preserve shared subscription identity.
 
 </details>
 

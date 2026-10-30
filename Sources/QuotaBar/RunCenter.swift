@@ -788,8 +788,8 @@ extension RunCenter {
         ])
         // Claude's 5 hours, running now and three runs back.
         let hourReset = RunMath.roundedReset(clock + 7_200)
-        readings += series("claude", plan: "Max 20x", seconds: fiveHours, reset: hourReset, points: [(1_200, 22), (10_000, 64)])
-        readings += series("claude", plan: "Max 20x", seconds: fiveHours, reset: hourReset - 3 * fiveHours, points: [
+        readings += series("claude", plan: "Max", seconds: fiveHours, reset: hourReset, points: [(1_200, 22), (10_000, 64)])
+        readings += series("claude", plan: "Max", seconds: fiveHours, reset: hourReset - 3 * fiveHours, points: [
             (300, 12), (1_500, 44), (2_100, 58), (5_400, 90), (8_100, 99.6),
         ])
         // Cursor from before it reported an account: a record that would not rank.

@@ -85,18 +85,17 @@ public enum MiniMaxCode {
             .appendingPathComponent("Library/Application Support/MiniMax Agent/minimax-agent-config.json")
     }
 
-    /// Who MiniMax Code is signed in as, by its settings (`sharedUser`):
-    /// the address when it keeps one, and the name.
+    /// The address MiniMax Code's settings keep for the account signed in
+    /// (`sharedUser`), when there is one.
     static func configIdentity(config: URL) -> Identity {
         guard let root = readObject(config), let user = root["sharedUser"] as? [String: Any] else { return Identity() }
-        return Identity(email: text(user["userMail"]), name: text(user["subUserName"]) ?? text(user["userName"]))
+        return Identity(email: text(user["userMail"]))
     }
 
-    /// An account's address and the name it goes by; either may be missing —
-    /// an account made with a phone number has no address at all.
+    /// An account's address; an account made with a phone number has none.
+    /// The nickname is not kept: the card shows an address or no account.
     struct Identity: Equatable {
         var email: String?
-        var name: String?
     }
 
     static func text(_ value: Any?) -> String? {
@@ -871,17 +870,18 @@ extension MiniMaxCode {
         let body = (root["data"] as? [String: Any]) ?? root
         guard let user = (body["userInfo"] as? [String: Any]) ?? (body["user_info"] as? [String: Any]) else { return nil }
         let email = ["email", "mail", "userMail", "user_mail"].lazy.compactMap { text(user[$0]) }.first { $0.contains("@") }
-        return Identity(email: email, name: text(user["name"]) ?? text(user["subUserName"]))
+        return Identity(email: email)
     }
 
     /// What goes under the card's name: an address — the server's, else the
-    /// one MiniMax Code's settings keep — else the name the account goes by.
-    /// Kept six hours, so a refresh does not ask each time.
+    /// one MiniMax Code's settings keep — and nothing for an account that
+    /// has none, never its nickname. Kept six hours, so a refresh does not
+    /// ask each time.
     static func account(region: MiniMaxRegion, token: String, env: MiniMaxCodeEnvironment) async -> String? {
         if let cached = env.accounts.cached(region, now: env.now()) { return cached.value }
         let server = await fetchIdentity(region: region, token: token, signing: env.signing(), send: env.send, now: env.now())
         let settings = configIdentity(config: env.appConfig)
-        let account = server?.email ?? settings.email ?? server?.name ?? settings.name
+        let account = server?.email ?? settings.email
         env.accounts.store(account, for: region, now: env.now(), asked: server != nil)
         return account
     }

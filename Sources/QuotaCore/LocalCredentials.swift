@@ -92,7 +92,7 @@ public enum LocalCredentials {
     struct ClaudeLookup: Sendable, Equatable {
         let state: ClaudeCredentialState
         let token: String?
-        /// "Max 20x", "Pro" — from the same item, so no extra keychain read.
+        /// "Ultra", "Pro" — from the same item, so no extra keychain read.
         var plan: String? = nil
         var via: ClaudeLookupRoute = .keychainAPI
         /// When the access token runs out. Claude Code renews it only while
@@ -495,8 +495,12 @@ public enum LocalCredentials {
         }
     }
 
-    /// `rateLimitTier` is the precise one — "default_claude_max_20x" carries
-    /// the multiplier — with `subscriptionType` ("max", "pro") as the
+    /// Anthropic renamed Max 5x to Max and Max 20x to Ultra. The tier ids
+    /// still carry the old multipliers, so the new names are mapped here.
+    private static let claudeTierNames = ["max 5x": "Max", "max 20x": "Ultra"]
+
+    /// `rateLimitTier` is the precise one — "default_claude_max_20x" is the
+    /// Ultra plan — with `subscriptionType` ("max", "pro") as the
     /// fallback. Neither is documented; both are what the item holds today.
     static func claudePlan(_ root: [String: Any]) -> String? {
         let oauth = root["claudeAiOauth"] as? [String: Any] ?? root
@@ -505,7 +509,8 @@ public enum LocalCredentials {
             if words.first == "default" { words.removeFirst() }
             if words.first?.lowercased() == "claude" { words.removeFirst() }
             if !words.isEmpty {
-                return words.map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
+                let name = words.map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
+                return claudeTierNames[name.lowercased()] ?? name
             }
         }
         if let type = oauth["subscriptionType"] as? String, !type.isEmpty {

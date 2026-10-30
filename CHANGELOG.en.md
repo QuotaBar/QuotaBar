@@ -3,6 +3,16 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
+## 0.6.1 · 2026-10-31
+
+### 2026-10-31
+
+#### Changed
+
+- Claude's plans are renamed: Max 5x shows as Max and Max 20x as Ultra, at the same price. Readings Quota Run kept under the old names count with the Max and Ultra boards, so no result is lost.
+- A verified Ultra account has no 5-hour limit, so its card shows the week and Fable only, with no empty 5-hour bar; a menu bar ring that followed the 5-hour limit follows the fullest limit instead. Max and accounts not yet verified still have the 5-hour limit and show it as before.
+- The MiniMax card shows an email address or no account at all: an account with no address bound, such as one made with a phone number, no longer shows its nickname.
+
 ## 0.6.0 · 2026-10-30
 
 ### 2026-10-30

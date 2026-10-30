@@ -297,9 +297,10 @@ public enum RunMath {
     public static let resetGrain = 300
 
     /// `"Pro 200"` → `pro200`: lower-case, ASCII letters and digits only.
-    /// Codex's Pro tiers were called Pro 5x and Pro 20x before October 2026;
-    /// readings kept under those names count with the new ones, as on the
-    /// server (`PLAN_RENAMES`).
+    /// Codex's Pro tiers were called Pro 5x and Pro 20x before October 2026,
+    /// and Claude's Max 5x and Max 20x became Max and Ultra; readings kept
+    /// under those names count with the new ones, as on the server
+    /// (`PLAN_RENAMES`).
     public static func planNorm(_ plan: String?) -> String {
         guard let plan else { return "" }
         let norm = String(plan.lowercased().unicodeScalars.filter { scalar in
@@ -308,7 +309,7 @@ public enum RunMath {
         return renamedPlans[norm] ?? norm
     }
 
-    static let renamedPlans = ["pro5x": "pro100", "pro20x": "pro200"]
+    static let renamedPlans = ["pro5x": "pro100", "pro20x": "pro200", "max5x": "max", "max20x": "ultra"]
 
     public static func windowKey(seconds: Int?, scope: String?) -> String {
         "\(max(seconds ?? 0, 0)):\(scope ?? "")"

@@ -49,9 +49,20 @@ Gatekeeper 可以直接打开。
 <!-- changelog:start -->
 <!-- 由 Scripts/sync_changelog.py 从 CHANGELOG.md 生成，请勿手改。 -->
 
-最新版本 **0.6.0**（2026-10-30） · [完整更新日志](CHANGELOG.md)
+最新版本 **0.6.1**（2026-10-31） · [完整更新日志](CHANGELOG.md)
 
 <details open>
+<summary><b>2026-10-31</b> · 0.6.1 · 调整 3</summary>
+
+**调整**
+
+- Claude 套餐改名：Max 5x 显示为 Max，Max 20x 显示为 Ultra，价格不变。Quota Run 里用旧名字记下的读数归入 Max 和 Ultra 的榜，原来的成绩不丢。
+- 已验证的 Ultra 账号没有 5 小时限制，卡片只显示每周额度和 Fable，不再出现没有数据的 5 小时条；原来让菜单栏圆环跟着 5 小时的，改为跟着最满的额度。Max 和尚未验证的账号仍有 5 小时限制，照常显示。
+- MiniMax 卡片只显示邮箱：没有绑定邮箱的账号（比如用手机号注册的）不再显示昵称，卡片上不显示账号。
+
+</details>
+
+<details>
 <summary><b>2026-10-30</b> · 0.6.0 · 新增 4 · 修复 1</summary>
 
 **新增**
@@ -74,25 +85,6 @@ Gatekeeper 可以直接打开。
 
 - Antigravity 关闭后，卡片不再列出十几行内部模型和重复的模型名，改为和应用内一致的 Gemini、Claude and GPT 两组，各显示 5 小时和每周额度，Gemini 在前；菜单栏不再先显示 Claude。
 - Antigravity 关闭时也能读到每周额度，用了一半的 Gemini 周额度不再显示为 0%；套餐标签显示订阅名（如 Google AI Pro），不再显示 ANTIGRAVITY。
-
-</details>
-
-<details>
-<summary><b>2026-10-13</b> · 0.5.31 · 新增 2 · 调整 1 · 修复 2</summary>
-
-**新增**
-
-- Mac、iOS 和小组件支持已迁移的 X Subscription：核对工作区与席位后合并 Cursor／Grok，共享周额度与预付余额各显示一次；保留旧套餐的原显示。
-- iOS DeepSeek 改为纯余额卡片：单币种显示大金额，人民币与美元并排显示，移除余额进度条和重复额度行；详情与分享保持一致。
-
-**调整**
-
-- Codex 图标统一为平面的 OpenAI 标志，复用刘海岛蓝色；Mac、iOS 与小组件不再显示旧的渐变立体图标。
-
-**修复**
-
-- 迁移后不再读取残留的 Cursor 月度额度或重复显示 Grok Bot；未知用量仍显示「—」，真实零用量和零余额保持有效。
-- 原 Cursor 的选择、小组件和链接能找到合并卡片；同步、缓存恢复与多台 Mac 合并均保留共享订阅身份。
 
 </details>
 

@@ -52,9 +52,9 @@ final class MiniMaxAccountTests: XCTestCase {
 
     func testWhatTheServerSays() {
         let phoneAccount = #"{"data":{"userInfo":{"email":"","name":"","phone":"x","subUserName":"小明","userID":"1"}},"statusInfo":{"code":0}}"#
-        XCTAssertEqual(MiniMaxCode.userInfo(Data(phoneAccount.utf8)), MiniMaxCode.Identity(email: nil, name: "小明"))
+        XCTAssertEqual(MiniMaxCode.userInfo(Data(phoneAccount.utf8)), MiniMaxCode.Identity(email: nil))
         let withMail = #"{"data":{"userInfo":{"email":"me@example.com","name":"Me"}},"statusInfo":{"code":0}}"#
-        XCTAssertEqual(MiniMaxCode.userInfo(Data(withMail.utf8)), MiniMaxCode.Identity(email: "me@example.com", name: "Me"))
+        XCTAssertEqual(MiniMaxCode.userInfo(Data(withMail.utf8)), MiniMaxCode.Identity(email: "me@example.com"))
         XCTAssertNil(MiniMaxCode.userInfo(Data(#"{"statusInfo":{"code":1004,"message":"login"}}"#.utf8)))
     }
 
@@ -83,7 +83,7 @@ final class MiniMaxAccountTests: XCTestCase {
         return (env, network)
     }
 
-    func testAnAddressWinsAndTheNameStandsInForNone() async throws {
+    func testOnlyAnAddressIsShownNeverTheName() async throws {
         let phone = #"{"data":{"userInfo":{"email":"","name":"","subUserName":"小明"}},"statusInfo":{"code":0}}"#
         let mail = #"{"data":{"userInfo":{"email":"server@example.com","subUserName":"小明"}},"statusInfo":{"code":0}}"#
 
@@ -93,15 +93,15 @@ final class MiniMaxAccountTests: XCTestCase {
 
         (env, _) = try environment(server: phone, settings: ["userMail": "settings@example.com"])
         account = await MiniMaxCode.account(region: .en, token: "t", env: env)
-        XCTAssertEqual(account, "settings@example.com", "an address MiniMax Code keeps beats a name")
+        XCTAssertEqual(account, "settings@example.com", "an address MiniMax Code keeps stands in for the server's")
 
         (env, _) = try environment(server: phone, settings: ["userID": "1"])
         account = await MiniMaxCode.account(region: .en, token: "t", env: env)
-        XCTAssertEqual(account, "小明", "an account made with a phone number goes by its name")
+        XCTAssertNil(account, "an account made with a phone number has no address, and its name is not shown")
 
         (env, _) = try environment(server: nil, settings: ["subUserName": "阿明"])
         account = await MiniMaxCode.account(region: .en, token: "t", env: env)
-        XCTAssertEqual(account, "阿明")
+        XCTAssertNil(account, "a name in MiniMax Code's settings is not shown either")
     }
 
     func testTheAccountIsNotAskedForAtEveryRefresh() async throws {
