@@ -262,6 +262,7 @@ enum Diagnostics {
         }
         out += "Grok Bot \(GrokBot.sessionDescription())\n"
         out += "Qoder    \(QoderApp.sessionDescription())\n"
+        out += "Cursor   \(LocalCredentials.cursorSessionDescription())\n"
         if let zcode = ZCode.signIn(family: .zai) {
             out += "z.ai     ZCode sign-in \(zcode.isExpired() ? "expired" : "available") · ~/.zcode/v2/credentials.json\n"
         } else {

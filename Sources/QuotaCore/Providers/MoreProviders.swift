@@ -60,7 +60,8 @@ enum ToolRunner {
     }
 
     static func run(
-        _ path: String, _ arguments: [String], timeout: TimeInterval = 20, in directory: URL? = nil) -> (status: Int32, output: Data)?
+        _ path: String, _ arguments: [String], timeout: TimeInterval = 20, in directory: URL? = nil,
+        environment overrides: [String: String] = [:]) -> (status: Int32, output: Data)?
     {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
@@ -69,6 +70,7 @@ enum ToolRunner {
         var environment = ProcessInfo.processInfo.environment
         environment["PATH"] = (searchPaths + [environment["PATH"] ?? ""]).joined(separator: ":")
         environment["NO_COLOR"] = "1"
+        environment.merge(overrides) { _, override in override }
         process.environment = environment
         let stdout = Pipe()
         process.standardOutput = stdout

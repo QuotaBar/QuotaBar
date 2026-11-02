@@ -170,6 +170,44 @@ final class CostEstimatorTests: XCTestCase {
         XCTAssertEqual(CostEstimator.summary(paths: paths, now: now).windowUSD, 1.25, accuracy: 0.0001)
     }
 
+    // MARK: Codex archives
+
+    /// The lines as Codex archives a rollout, a zstd frame, here in raw
+    /// blocks of 64 bytes so that lines straddle blocks and no encoder is
+    /// needed to make one.
+    private func writeCodexArchive(_ name: String, lines: [String]) throws {
+        let plain = Array(lines.joined(separator: "\n").utf8)
+        // Magic, no checksum or content size, a 2MB window.
+        var frame: [UInt8] = [0x28, 0xB5, 0x2F, 0xFD, 0x00, 0x58]
+        var start = 0
+        repeat {
+            let block = plain[start..<min(start + 64, plain.count)]
+            start += block.count
+            let header = (start == plain.count ? 1 : 0) | block.count << 3
+            frame += [UInt8(header & 0xFF), UInt8(header >> 8 & 0xFF), UInt8(header >> 16)] + block
+        } while start < plain.count
+        try Data(frame).write(to: codexRoot.appendingPathComponent(name))
+    }
+
+    func testAnArchivedCodexRolloutIsStillBilled() throws {
+        try writeCodexArchive("rollout-1.jsonl.zst", lines: [
+            codexLine(input: 1_000_000, cached: 0, output: 0),
+            codexLine(input: 0, cached: 0, output: 100_000),
+        ])
+
+        // $1.25 for the input, $10/M for the 100k output.
+        XCTAssertEqual(CostEstimator.summary(paths: paths, now: now).windowUSD, 2.25, accuracy: 0.0001)
+    }
+
+    func testARolloutCaughtMidArchiveIsBilledOnce() throws {
+        // Codex writes the archive before deleting the plain file.
+        let lines = [codexLine(input: 1_000_000, cached: 0, output: 0)]
+        try writeCodex("rollout-1.jsonl", lines: lines)
+        try writeCodexArchive("rollout-1.jsonl.zst", lines: lines)
+
+        XCTAssertEqual(CostEstimator.summary(paths: paths, now: now).windowUSD, 1.25, accuracy: 0.0001)
+    }
+
     // MARK: Time boundaries
 
     func testEventsOutsideTheLookbackWindowAreExcluded() throws {

@@ -7,8 +7,9 @@ public struct CursorProvider: QuotaProvider {
 
     public func isConfigured(config: ConfigStore) -> Bool {
         // A manually pasted cookie wins so the user can override a stale local
-        // session; otherwise fall back to the session Cursor.app established.
-        config.credential(for: .cursor) != nil || LocalCredentials.cursorSession() != nil
+        // session; otherwise fall back to the session Cursor.app established,
+        // even one still waiting for the keychain, so its card can ask.
+        config.credential(for: .cursor) != nil || LocalCredentials.cursorSessionState() != .missing
     }
 
     /// The value for the WorkosCursorSessionToken cookie. A pasted credential
@@ -21,8 +22,12 @@ public struct CursorProvider: QuotaProvider {
             }
             return "WorkosCursorSessionToken=\(raw)"
         }
-        if let session = LocalCredentials.cursorSession() {
+        let local = LocalCredentials.cursorLookup(interactive: false)
+        if let session = local.session {
             return session.cookieHeader
+        }
+        if local.state == .needsAuthorization {
+            throw ProviderError.needsAuthorization(hint: LocalCredentials.cursorAuthorizationHint)
         }
         throw ProviderError.notConfigured(hint: ProviderID.cursor.setupHint)
     }

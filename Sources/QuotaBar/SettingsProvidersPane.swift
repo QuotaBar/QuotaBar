@@ -434,6 +434,9 @@ private struct CredentialEditor: View {
                     if id == .qoder, store.needsKeychainAuthorization(.qoder) {
                         Text(QoderApp.authorizationHint)
                     }
+                    if id == .cursor, store.needsKeychainAuthorization(.cursor) {
+                        Text(LocalCredentials.cursorAuthorizationHint)
+                    }
                 }
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)

@@ -50,9 +50,25 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.6.1** (2026-10-31) · **7** changes in development · [full changelog](CHANGELOG.en.md)
+Latest release **0.6.1** (2026-10-31) · **12** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-11-03</b> · Unreleased · 2 added · 3 fixed</summary>
+
+**Added**
+
+- Early resets and credits that Codex and Claude give you stand out as they near their deadline: within 24 hours an hourglass badge sits beside the card's name (“expires in 21h”), folded or not, and a click opens the card; opened, the row turns amber, red in its last hour, and an early reset says where to spend it. The dock card shows the badge too.
+- Given credits — Codex's credits, Claude's Cloud session credit and the like — now notify a day before they run out unspent, saying how much is left and when it goes, once per credit. In Settings → Alerts → Resets the switch is now “Early resets and credits given”, with a new “Remind” choice that adds a last-hour reminder; it is set ahead of time, so it comes on time even between readings.
+
+**Fixed**
+
+- Codex sessions archived as `.jsonl.zst` count toward spend again: QuotaBar reads the archives directly. Codex compresses a session about a week after it ends, so most Codex spend older than a week showed as $0.
+- Cursor 3.27 and later keep the sign-in encrypted, which left the Cursor card unable to read it; it is read again. macOS asks once: press “Allow keychain access” on the card or in Settings and choose Always Allow. Background refreshes never ask.
+- Reading the Antigravity CLI's (`agy`) quota no longer sets off its automatic update, which could download gigabytes in the background behind a quota read.
+
+</details>
+
+<details>
 <summary><b>2026-11-02</b> · Unreleased · 4 added · 3 fixed</summary>
 
 **Added**
@@ -78,22 +94,6 @@ Latest release **0.6.1** (2026-10-31) · **7** changes in development · [full c
 - Claude's plans are renamed: Max 5x shows as Max and Max 20x as Ultra, at the same price. Readings Quota Run kept under the old names count with the Max and Ultra boards, so no result is lost.
 - A verified Ultra account has no 5-hour limit, so its card shows the week and Fable only, with no empty 5-hour bar; a menu bar ring that followed the 5-hour limit follows the fullest limit instead. Max and accounts not yet verified still have the 5-hour limit and show it as before.
 - The MiniMax card shows an email address or no account at all: an account with no address bound, such as one made with a phone number, no longer shows its nickname.
-
-</details>
-
-<details>
-<summary><b>2026-10-30</b> · 0.6.0 · 4 added · 1 fixed</summary>
-
-**Added**
-
-- z.ai is read automatically when ZCode is signed in on this Mac, with no API key to paste and no need to open ZCode. The card shows the plan, such as Lite, and usage to a fraction of a percent from the actual counts.
-- MiniMax is read automatically when MiniMax Code is signed in, Global or China edition, with the plan's name, such as Go, and the account — its name, for an account without an address. Its sign-in lasts an hour; while QuotaBar runs it renews and saves the sign-in the way MiniMax Code does, so readings stay current with MiniMax Code closed.
-- Antigravity is read with the app closed, for as long as its sign-in lasts: once the token it saved runs out after an hour, QuotaBar renews one of its own from the saved refresh token and keeps it in memory only, leaving Antigravity's sign-in untouched and signed in. The card still names the account signed in.
-- Qoder's plan and credits are read automatically when the Qoder app is signed in, with no Cookie to paste and no need to open Qoder. Its sign-in is encrypted with a key in the keychain, so macOS asks once on the first read — press “Allow keychain access” in Settings or on the card and choose Always Allow. A qoder.com Cookie can still be pasted in Settings for an account without the app.
-
-**Fixed**
-
-- A pasted MiniMax API key read no quota at all: the reply is now read by the fields MiniMax actually sends, and calls left are no longer shown as calls used.
 
 </details>
 

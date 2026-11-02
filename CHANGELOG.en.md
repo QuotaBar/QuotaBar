@@ -12,6 +12,12 @@ Server moves, the website, and build or release scripts don't change the app its
 - Early resets and credits that Codex and Claude give you stand out as they near their deadline: within 24 hours an hourglass badge sits beside the card's name (“expires in 21h”), folded or not, and a click opens the card; opened, the row turns amber, red in its last hour, and an early reset says where to spend it. The dock card shows the badge too.
 - Given credits — Codex's credits, Claude's Cloud session credit and the like — now notify a day before they run out unspent, saying how much is left and when it goes, once per credit. In Settings → Alerts → Resets the switch is now “Early resets and credits given”, with a new “Remind” choice that adds a last-hour reminder; it is set ahead of time, so it comes on time even between readings.
 
+#### Fixed
+
+- Codex sessions archived as `.jsonl.zst` count toward spend again: QuotaBar reads the archives directly. Codex compresses a session about a week after it ends, so most Codex spend older than a week showed as $0.
+- Cursor 3.27 and later keep the sign-in encrypted, which left the Cursor card unable to read it; it is read again. macOS asks once: press “Allow keychain access” on the card or in Settings and choose Always Allow. Background refreshes never ask.
+- Reading the Antigravity CLI's (`agy`) quota no longer sets off its automatic update, which could download gigabytes in the background behind a quota read.
+
 ### 2026-11-02
 
 #### Added

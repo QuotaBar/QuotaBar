@@ -15,6 +15,11 @@ enum AntigravityCLI {
         ToolRunner.locate("agy")
     }
 
+    /// agy checks for a new version whenever it starts and installs one if
+    /// there is, a download of gigabytes behind a quota read nobody asked to
+    /// update anything. It takes only "true" here — "1" is ignored.
+    static let environment = ["AGY_CLI_DISABLE_AUTO_UPDATE": "true"]
+
     private static let cache = Cache()
 
     /// The report, or nil when agy is missing, signed out, too old for the
@@ -27,7 +32,8 @@ enum AntigravityCLI {
                 .appendingPathComponent("QuotaBar-agy-\(UUID().uuidString)", isDirectory: true)
             try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             defer { try? FileManager.default.removeItem(at: folder) }
-            guard let result = ToolRunner.run(agy, ["-p", "/usage", "--output-format", "json"], timeout: 90, in: folder),
+            guard let result = ToolRunner.run(
+                agy, ["-p", "/usage", "--output-format", "json"], timeout: 90, in: folder, environment: environment),
                   result.status == 0
             else { return nil }
             return try? parseReport(result.output)

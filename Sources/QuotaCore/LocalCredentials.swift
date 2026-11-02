@@ -630,14 +630,104 @@ public enum LocalCredentials {
         }
     }
 
-    /// Reads the session Cursor.app already established, from the SQLite
-    /// key/value store it keeps under Application Support. No keychain, no
-    /// decryption — the values are stored in the clear.
+    public enum CursorSessionState: Sendable, Equatable {
+        case available
+        /// Signed in, but the token is sealed and the key needs the user's
+        /// say-so first.
+        case needsAuthorization
+        /// Not installed, or not signed in.
+        case missing
+    }
+
+    /// The session Cursor.app already established, from the SQLite key/value
+    /// store it keeps under Application Support. Never prompts.
     ///
     /// The cookie cursor.com wants is not the bare JWT but `sub::JWT`; the
     /// bare token is rejected. `sub` is a claim inside the JWT, so the two
     /// halves come from one value.
     public static func cursorSession() -> CursorSession? {
+        cursorLookup(interactive: false).session
+    }
+
+    /// Never prompts. For the card and settings row: whether the button is needed.
+    public static func cursorSessionState() -> CursorSessionState {
+        cursorLookup(interactive: false).state
+    }
+
+    /// For `--credentials`: what a quiet lookup found, never the secret.
+    public static func cursorSessionDescription() -> String {
+        switch cursorLookup(interactive: false).state {
+        case .missing: return "missing"
+        case .needsAuthorization: return "needs authorization (press Allow keychain access in Settings › Cursor)"
+        case .available: return "available (Cursor.app's own sign-in)"
+        }
+    }
+
+    /// The one place the keychain dialog is allowed, from a button. Blocks
+    /// the calling thread while the dialog is up.
+    @discardableResult
+    public static func authorizeCursor() -> Bool {
+        cursorLookup(interactive: true).state == .available
+    }
+
+    public static func authorizeCursorAsync() async -> Bool {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(returning: authorizeCursor())
+            }
+        }
+    }
+
+    /// Cursor 3.27 stopped storing the token in the clear: it is now this
+    /// prefix and base64 of Electron `safeStorage` ciphertext, the scheme
+    /// Qoder's sign-in uses, under the key in Cursor's own keychain item.
+    /// Older versions' plain tokens are still read as they are.
+    static let cursorSealedPrefix = "cursor-safe-storage:v1:"
+    static let cursorKeychainService = "Cursor Safe Storage"
+    private static let cursorKeyMemo = QoderApp.KeyMemo()
+
+    static func resetCursorKeyMemo() {
+        cursorKeyMemo.reset()
+    }
+
+    static func cursorLookup(
+        interactive: Bool,
+        stored: (token: String, email: String?)? = cursorStoredSession(),
+        read: (String, Bool) -> QoderApp.KeychainRead = QoderApp.readPassword) -> (state: CursorSessionState, session: CursorSession?)
+    {
+        guard let stored else { return (.missing, nil) }
+        guard let sealed = cursorSealed(stored.token) else {
+            let session = makeCursorSession(accessToken: stored.token, email: stored.email)
+            return (session == nil ? .missing : .available, session)
+        }
+        let key: Data
+        switch cursorKeyMemo.key(service: cursorKeychainService, interactive: interactive, read: read) {
+        case let .key(found): key = found
+        case .refused: return (.needsAuthorization, nil)
+        case .missing: return (.missing, nil)
+        }
+        func open(_ sealed: Data) -> String? {
+            QoderApp.decrypt(sealed, key: key).flatMap { String(data: $0, encoding: .utf8) }
+        }
+        // The cached email may be sealed the same way; one that will not
+        // open is left out rather than shown as ciphertext.
+        let email = stored.email.flatMap { value -> String? in
+            guard let sealedEmail = cursorSealed(value) else { return value }
+            return open(sealedEmail)
+        }
+        guard let token = open(sealed), let session = makeCursorSession(accessToken: token, email: email) else {
+            return (.missing, nil)
+        }
+        return (.available, session)
+    }
+
+    /// The `safeStorage` ciphertext inside a sealed value, nil for a plain one.
+    static func cursorSealed(_ value: String) -> Data? {
+        guard value.hasPrefix(cursorSealedPrefix) else { return nil }
+        return Data(base64Encoded: String(value.dropFirst(cursorSealedPrefix.count)))
+    }
+
+    static func cursorStoredSession() -> (token: String, email: String?)? {
         let db = home
             .appendingPathComponent("Library/Application Support/Cursor/User/globalStorage/state.vscdb")
             .path
@@ -651,7 +741,13 @@ public enum LocalCredentials {
             inFile: db,
             query: "SELECT value FROM ItemTable WHERE key = ?",
             bind: "cursorAuth/cachedEmail")
-        return makeCursorSession(accessToken: token, email: email)
+        return (token, email)
+    }
+
+    public static var cursorAuthorizationHint: String {
+        L10n.t(
+            "Cursor 3.27 and later keep the sign-in encrypted with a key in the keychain, and macOS asks before another app may read it. Press “Allow keychain access” and choose Always Allow in the dialog.",
+            "Cursor 3.27 起用钥匙串里的密钥加密登录，macOS 会在其他应用读取前询问一次。点「授权钥匙串访问」，在弹窗里选「始终允许」。")
     }
 
     /// Pure assembly step, split out so it can be tested without a database:

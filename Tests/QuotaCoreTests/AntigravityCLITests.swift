@@ -18,6 +18,13 @@ final class AntigravityCLITests: XCTestCase {
         """
     }
 
+    func testAgyIsToldNotToUpdateItself() throws {
+        XCTAssertEqual(AntigravityCLI.environment["AGY_CLI_DISABLE_AUTO_UPDATE"], "true", "agy ignores \"1\"")
+        let result = try XCTUnwrap(ToolRunner.run("/usr/bin/env", [], environment: AntigravityCLI.environment))
+        let printed = String(decoding: result.output, as: UTF8.self)
+        XCTAssertTrue(printed.contains("AGY_CLI_DISABLE_AUTO_UPDATE=true\n"), printed)
+    }
+
     func testTheReportReadsLikeTheAppsSummary() throws {
         let snapshot = try AntigravityCLI.parseReport(Data(report().utf8))
         XCTAssertEqual(snapshot.windows.map(\.scope), ["Gemini", "Gemini", "Claude and GPT", "Claude and GPT"])

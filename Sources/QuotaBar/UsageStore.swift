@@ -25,6 +25,9 @@ final class UsageStore: ObservableObject {
     /// What the last quiet look at Qoder's sign-in found. Its tokens are
     /// sealed with a key in Qoder's own keychain item, which macOS asks about.
     @Published private(set) var qoderCredential: QoderApp.SessionState?
+    /// What the last quiet look at Cursor.app's sign-in found. From Cursor
+    /// 3.27 its token is sealed with a key in Cursor's own keychain item.
+    @Published private(set) var cursorCredential: LocalCredentials.CursorSessionState?
     /// Another config dir's Claude Code sign-in (#8) the quiet reads could
     /// not open; the same button asks for it.
     @Published private(set) var claudeOthersNeedAuthorization = false
@@ -41,6 +44,7 @@ final class UsageStore: ObservableObject {
         case .claude: claudeNeedsAuthorization || claudeOthersNeedAuthorization || claudeWebNeedsAuthorization
         case .grok: grokBotCredential == .needsAuthorization
         case .qoder: qoderCredential == .needsAuthorization
+        case .cursor: cursorCredential == .needsAuthorization && config.credential(for: .cursor) == nil
         default: false
         }
     }
@@ -714,7 +718,7 @@ final class UsageStore: ObservableObject {
     /// Re-evaluates which providers have usable credentials.
     func refreshConfigured() {
         Task { [config] in
-            let (ready, local, sources, claude, claudeOthers, claudeWeb, grokBot, qoder) = await Task.detached(priority: .utility) {
+            let (ready, local, sources, claude, claudeOthers, claudeWeb, grokBot, qoder, cursor) = await Task.detached(priority: .utility) {
                 let ready = Set(ProviderID.allCases.filter {
                     ProviderRegistry.make($0).isConfigured(config: config)
                 })
@@ -731,7 +735,8 @@ final class UsageStore: ObservableObject {
                 let claudeWeb = ClaudeProvider.webNeedsAuthorization(config: config)
                 let grokBot = GrokBot.sessionState()
                 let qoder = QoderApp.sessionState()
-                return (ready, local, sources, claude, claudeOthers, claudeWeb, grokBot, qoder)
+                let cursor = LocalCredentials.cursorSessionState()
+                return (ready, local, sources, claude, claudeOthers, claudeWeb, grokBot, qoder, cursor)
             }.value
             self.configured = ready
             self.signedInLocally = local
@@ -741,6 +746,7 @@ final class UsageStore: ObservableObject {
             self.claudeWebNeedsAuthorization = claudeWeb
             self.grokBotCredential = grokBot
             self.qoderCredential = qoder
+            self.cursorCredential = cursor
         }
     }
 
@@ -804,6 +810,14 @@ final class UsageStore: ObservableObject {
             Task {
                 _ = await QoderApp.authorizeAsync()
                 refresh(.qoder)
+                refreshConfigured()
+            }
+        case .cursor:
+            Task {
+                _ = await LocalCredentials.authorizeCursorAsync()
+                // Grok Bot reads Cursor.app's session too when it is the
+                // same account.
+                refresh([.cursor, .grok])
                 refreshConfigured()
             }
         default:

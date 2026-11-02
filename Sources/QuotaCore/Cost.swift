@@ -734,10 +734,17 @@ public enum CostEstimator {
         }
     }
 
-    // MARK: Codex CLI (~/.codex/sessions/**/rollout-*.jsonl)
+    // MARK: Codex CLI (~/.codex/sessions/**/rollout-*.jsonl, and .jsonl.zst once archived)
 
     private static func scanCodex(root: URL, cutoff: Date) -> [TokenEvent] {
-        return walk(root, cutoff: cutoff, filter: { $0.lastPathComponent.hasPrefix("rollout-") }) { url, formatter in
+        let isRollout = { (url: URL) -> Bool in
+            guard url.lastPathComponent.hasPrefix("rollout-") else { return false }
+            // Codex writes the archive before it deletes the plain file; for
+            // that moment both are there, and the plain one is the one read.
+            return url.pathExtension != "zst"
+                || !FileManager.default.fileExists(atPath: url.deletingPathExtension().path)
+        }
+        return walk(root, cutoff: cutoff, filter: isRollout) { url, formatter in
             var out: [TokenEvent] = []
             var currentModel = "gpt-5-codex"
             // The session's first record says where it ran and from what; each
@@ -745,7 +752,8 @@ public enum CostEstimator {
             var cwd: String?
             var repository: String?
             var mode = CodingMode.cli
-            var session = url.deletingPathExtension().lastPathComponent
+            var session = (url.pathExtension == "zst" ? url.deletingPathExtension() : url)
+                .deletingPathExtension().lastPathComponent
             streamLines(url) { line in
                 let head = line.count > Markers.codexHeadBytes
                     ? UnsafeRawBufferPointer(rebasing: line[0..<Markers.codexHeadBytes])
@@ -981,8 +989,22 @@ public enum CostEstimator {
         matches: (UnsafeRawBufferPointer) -> Bool,
         handle: (Data) -> Void)
     {
-        guard let file = FileHandle(forReadingAtPath: url.path) else { return }
-        defer { try? file.close() }
+        // A rollout Codex has archived comes through the decoder, a block at
+        // a time; a damaged one ends where it breaks, and what came before
+        // still counts.
+        let file: FileHandle?
+        let nextChunk: () -> Data
+        if url.pathExtension == "zst" {
+            guard let sealed = try? Data(contentsOf: url, options: .alwaysMapped) else { return }
+            var stream = Zstd.Stream(sealed)
+            file = nil
+            nextChunk = { (try? stream.next()) ?? Data() }
+        } else {
+            guard let handle = FileHandle(forReadingAtPath: url.path) else { return }
+            file = handle
+            nextChunk = { handle.readData(ofLength: chunkSize) }
+        }
+        defer { try? file?.close() }
 
         // Carries the trailing partial line across a chunk boundary.
         var remainder = Data()
@@ -997,7 +1019,7 @@ public enum CostEstimator {
         }
 
         while true {
-            let chunk = file.readData(ofLength: chunkSize)
+            let chunk = nextChunk()
             if chunk.isEmpty { break }
             chunk.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
                 guard let base = raw.baseAddress else { return }
