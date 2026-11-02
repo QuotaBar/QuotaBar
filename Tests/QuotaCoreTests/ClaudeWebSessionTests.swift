@@ -60,6 +60,27 @@ final class ClaudeWebSessionTests: XCTestCase {
         XCTAssertNil(ClaudeWebSession.data(fromHex: "zz"))
     }
 
+    /// The keychain button is due only when every sign-in found is sealed with
+    /// a key that was refused: one that opens, or one kept in the clear,
+    /// answers without it.
+    func testKeychainButtonIsDueOnlyWhenEverySealedJarWasRefused() {
+        let app = ClaudeWebSession.Source(name: "Claude app", jar: .chromium(path: "/app", service: "Claude Safe Storage"))
+        let chrome = ClaudeWebSession.Source(name: "Chrome", jar: .chromium(path: "/chrome", service: "Chrome Safe Storage"))
+        let firefox = ClaudeWebSession.Source(name: "Firefox", jar: .firefox(path: "/firefox"))
+        func answers(_ table: [String: ClaudeWebSession.KeyAnswer]) -> (String) -> ClaudeWebSession.KeyAnswer {
+            { table[$0] ?? .missing }
+        }
+        let refusedApp = answers(["Claude Safe Storage": .refused])
+        XCTAssertTrue(ClaudeWebSession.needsAuthorization([app], key: refusedApp))
+        // A key the keychain has never heard of does not cancel a refused one.
+        XCTAssertTrue(ClaudeWebSession.needsAuthorization([app, chrome], key: refusedApp))
+        XCTAssertFalse(ClaudeWebSession.needsAuthorization(
+            [app, chrome], key: answers(["Claude Safe Storage": .refused, "Chrome Safe Storage": .key(Data(count: 16))])))
+        XCTAssertFalse(ClaudeWebSession.needsAuthorization([app, firefox], key: refusedApp))
+        XCTAssertFalse(ClaudeWebSession.needsAuthorization([app], key: answers([:])))
+        XCTAssertFalse(ClaudeWebSession.needsAuthorization([], key: refusedApp))
+    }
+
     /// The real thing: this Mac's Claude app. Skipped unless
     /// `QB_CLAUDE_DESKTOP_LIVE=1`; the keychain may ask once.
     func testLiveReadOfTheDesktopSession() async throws {

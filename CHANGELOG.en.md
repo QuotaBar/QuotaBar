@@ -3,6 +3,24 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
+## Unreleased
+
+### 2026-11-02
+
+#### Added
+
+- The menus for switching Claude account — the arrow after a card's address and the dock card's switch bar — now mark how each sign-in stands: expired, signed out, needs access, folder gone, with the ones that read first. Several copies of the same account fold into one row, though the one in use and a better one beside it are never folded away. A sign-in that cannot read yet carries its own “Sign in” or “Allow access” in the menu, so it is not found out only after switching to it.
+- With Claude Code's default sign-in signed out, the card, the dock card and Settings all have a “Sign in” button that opens a Terminal window to finish the login, instead of running `claude` and typing /login yourself.
+- “Add account” no longer leaves a second copy when the login turns out to be an account already there, because the browser was still signed in to it: it says “same account, nothing added”, clears the folder and keychain item it just made, and explains that you switch to the other account in the browser first.
+- Removing a Claude sign-in QuotaBar made can also delete its folder and keychain item, and Settings offers to clear what earlier removals left behind in one press. QuotaBar only cleans up what it made; a config dir you set up yourself is never touched.
+
+#### Fixed
+
+- A Claude reading from the Claude app or a browser now names its source after the address (“· Claude app”), and the account list no longer marks the default sign-in as “on the card” while the card is reading something else.
+
+- When Claude Code's default sign-in is signed out and the card reads the Claude app's or a browser's sign-in instead, the “Allow keychain access” button the message tells you to press now shows, on the card and in Settings. Before, the message named a button that was not there.
+- A Claude reading that fails no longer strands you on the error: the dock card lists every Claude sign-in, so one press switches to the other account and back, and the menu-bar panel's Claude card lets you pick an account when it fails too.
+
 ## 0.6.1 · 2026-10-31
 
 ### 2026-10-31

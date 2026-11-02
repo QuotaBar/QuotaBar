@@ -232,7 +232,10 @@ struct ProviderCallout: View {
             if account != nil || status != nil || stale != nil {
                 HStack(spacing: Design.space2) {
                     if let account {
-                        Text(account)
+                        // A Claude reading from the Claude app or a browser
+                        // says so: it can be another account than the default.
+                        let source = id == .claude ? phase?.snapshot?.sourceLabel.map { " · \($0)" } ?? "" : ""
+                        Text(account + source)
                             .font(.system(size: 10, design: .monospaced))
                             .foregroundStyle(.white.opacity(0.40))
                             .lineLimit(1)
@@ -262,15 +265,21 @@ struct ProviderCallout: View {
                 .font(.caption)
                 .foregroundStyle(.white.opacity(0.6))
         case let .failed(message):
-            Text(message)
-                .font(.caption)
-                .foregroundStyle(Color(hex: "FF9F0A"))
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: Design.space2) {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(Color(hex: "FF9F0A"))
+                    .fixedSize(horizontal: false, vertical: true)
+                recovery
+            }
         case let .notice(message):
-            Label(message, systemImage: "info.circle")
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.6))
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: Design.space2) {
+                Label(message, systemImage: "info.circle")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.6))
+                    .fixedSize(horizontal: false, vertical: true)
+                recovery
+            }
         case let .redirected(_, message):
             Label(message, systemImage: "arrow.turn.down.right")
                 .font(.caption)
@@ -299,6 +308,32 @@ struct ProviderCallout: View {
                     detailExtras(snapshot)
                 }
             }
+        }
+    }
+
+    /// What a reading that cannot be had still offers. The account bar and
+    /// the rest of the detail hang on a reading, so an error that told people
+    /// to press the keychain button showed no button, and a Claude sign-in
+    /// that failed left no way back to the other. Pressables, because this
+    /// card is never key.
+    @ViewBuilder
+    private var recovery: some View {
+        let keychain = store.needsKeychainAuthorization(id)
+        let signIn = id == .claude && store.claudeCardRepair == .signIn
+        if keychain || signIn {
+            HStack(spacing: Design.space2) {
+                if keychain {
+                    AllowKeychainButton(store: store, id: id)
+                }
+                if signIn {
+                    CapsuleButton(title: L10n.t("Sign in", "登录")) {
+                        store.repairClaudeSignIn(store.claudeCardService)
+                    }
+                }
+            }
+        }
+        if id == .claude {
+            ClaudeAccountBar(store: store, signIns: store.claudeSignIns)
         }
     }
 

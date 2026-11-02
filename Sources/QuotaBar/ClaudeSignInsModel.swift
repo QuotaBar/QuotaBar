@@ -16,6 +16,8 @@ final class ClaudeSignInsModel: ObservableObject {
     @Published private(set) var services: [String] = []
     /// Who each of them is, as far as read.
     @Published private(set) var identities: [String: ClaudeProvider.Identity] = [:]
+    /// Where each of them stands, as far as read: what the pickers mark.
+    @Published private(set) var states: [String: ClaudeSignIns.State] = [:]
     private var hidden: [String] = []
     private var names: [String: String] = [:]
     private var generation = 0
@@ -43,12 +45,17 @@ final class ClaudeSignInsModel: ObservableObject {
         readAt = Date()
         defer { reading = false }
         let identity = await ClaudeSignIns.cardIdentity(service: cardService)
+        let cardState = await ClaudeSignIns.currentState(service: cardService)
         let fresh = await ClaudeSignIns.readOthers(card: cardService, excluding: hidden, registered: Array(names.keys), deduplicate: false)
         guard version == generation else { return }
         card = identity
         services = ([LocalCredentials.claudeService] + Array(Set(LocalCredentials.claudeExtraServices() + Array(self.names.keys))).sorted()).filter { !self.hidden.contains($0) }
         if let card { identities[cardService] = card }
         for reading in fresh { if let identity = reading.identity { identities[reading.id] = identity } }
+        var known = states.filter { services.contains($0.key) }
+        known[cardService] = cardState
+        for reading in fresh { known[reading.id] = reading.state ?? known[reading.id] }
+        states = known
         let merged = fresh.filter { !self.hidden.contains($0.id) }.map { $0.preserving(allReadings[$0.id]) }
         allReadings = Dictionary(merged.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         others = ClaudeSignIns.arranged(merged, card: card)
@@ -72,6 +79,7 @@ final class ClaudeSignInsModel: ObservableObject {
         generation += 1
         readAt = .distantPast
         allReadings.removeValue(forKey: service)
+        states.removeValue(forKey: service)
         others.removeAll { $0.id == service }
         if let identity = LocalCredentials.claudeConfigIdentity(service: service) { identities[service] = identity }
     }
@@ -85,15 +93,101 @@ final class ClaudeSignInsModel: ObservableObject {
         others.removeAll { $0.id == service }
         allReadings.removeValue(forKey: service)
         identities.removeValue(forKey: service)
+        states.removeValue(forKey: service)
     }
 
     /// Off-screen renders (`--snapshot`): sign-ins to draw, without the keychain.
-    func seedForPreview(card: ClaudeProvider.Identity?, others: [ClaudeSignIns.Reading]) {
+    func seedForPreview(
+        card: ClaudeProvider.Identity?, others: [ClaudeSignIns.Reading],
+        cardState: ClaudeSignIns.State? = nil)
+    {
         self.card = card
         self.others = others
         services = [LocalCredentials.claudeService] + others.map(\.id)
         identities[LocalCredentials.claudeService] = card
-        for reading in others { identities[reading.id] = reading.identity }
+        for reading in others {
+            identities[reading.id] = reading.identity
+            states[reading.id] = reading.state
+        }
+        if let cardState { states[LocalCredentials.claudeService] = cardState }
+    }
+
+    // MARK: What a picker offers
+
+    nonisolated static func note(for state: ClaudeSignIns.State?) -> String? {
+        switch state {
+        case .expired?: L10n.t("expired", "已过期")
+        case .signedOut?: L10n.t("signed out", "已退出登录")
+        case .needsAuthorization?: L10n.t("needs access", "待授权")
+        case .missing?: L10n.t("not signed in", "未登录")
+        case .directoryMissing?: L10n.t("folder gone", "找不到登录目录")
+        case .ready?, nil: nil
+        }
+    }
+
+    /// One row of a picker: the sign-in, how it stands, and what a press could
+    /// do about it.
+    struct Option: Identifiable {
+        let id: String
+        /// Who it is, without how it stands.
+        let name: String
+        let state: ClaudeSignIns.State?
+        let repair: ClaudeSignIns.Repair?
+
+        /// How it stands, in words, when it is not simply fine.
+        var note: String? { ClaudeSignInsModel.note(for: state) }
+
+        /// A menu's row.
+        var label: String { note.map { "\(name) · \($0)" } ?? name }
+
+        /// A capsule's: no room for words, so a mark where it cannot read.
+        var barLabel: String {
+            switch state {
+            case .signedOut?, .needsAuthorization?, .missing?, .directoryMissing?: "⚠︎ \(name)"
+            case .ready?, .expired?, nil: name
+            }
+        }
+
+        /// The row's own button, "Sign in to a@b.c".
+        var repairTitle: String? {
+            switch repair {
+            case .signIn?: L10n.t("Sign in to \(name)", "登录 \(name)")
+            case .authorize?: L10n.t("Allow access to \(name)", "授权读取 \(name)")
+            case nil: nil
+            }
+        }
+    }
+
+    /// The choices a picker lists while `selected` is in use: one row for each
+    /// account, the ones that read first, each with how it stands. `failing`:
+    /// the card's own reading is failing now, which is what offers an expired
+    /// sign-in a fresh login.
+    func options(selected: String, failing: Bool, masked: Bool) -> [Option] {
+        let choices = services.map { ClaudeSignIns.Choice(id: $0, identity: identities[$0], state: states[$0]) }
+        let picked = ClaudeSignIns.pickable(choices, selected: selected)
+        let listed = picked.map(\.id)
+        let plain = picked.map { name(for: $0.id, among: listed, masked: masked) }
+        // Two rows that still read alike are told apart by their item.
+        var names = plain
+        for index in names.indices where plain.filter({ $0 == plain[index] }).count > 1 && !picked[index].isDefault {
+            names[index] += " · \(picked[index].id.suffix(8))"
+        }
+        return zip(picked, names).map { choice, name in
+            let failed = choice.id == selected
+                ? failing
+                : (allReadings[choice.id].map { $0.error != nil && $0.snapshot == nil } ?? false)
+            return Option(id: choice.id, name: name, state: choice.state, repair: ClaudeSignIns.repair(for: choice.state, failing: failed))
+        }
+    }
+
+    /// `pickerLabel`, with the organization added only where two rows of the
+    /// list itself share an address — a folded copy does not count.
+    private func name(for service: String, among listed: [String], masked: Bool) -> String {
+        guard !masked, let email = identities[service]?.email else { return choiceLabel(service, masked: masked) }
+        let shared = listed.filter { identities[$0]?.email == email }.count > 1
+        let organization = shared ? identities[service]?.organization.map { " · " + $0 } ?? "" : ""
+        let marker = service == LocalCredentials.claudeService ? L10n.t(" (default)", "（默认）") : ""
+        return email + organization + marker
     }
 
     /// A profile's choice, named: the organization, else the email, else

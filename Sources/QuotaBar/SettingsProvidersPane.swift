@@ -425,6 +425,9 @@ private struct CredentialEditor: View {
                     if id == .claude, store.claudeNeedsAuthorization {
                         Text(LocalCredentials.claudeAuthorizationHint)
                     }
+                    if id == .claude, store.claudeWebNeedsAuthorization {
+                        Text(ClaudeWebSession.authorizationHint)
+                    }
                     if id == .grok, store.needsKeychainAuthorization(.grok) {
                         Text(GrokBot.authorizationHint)
                     }

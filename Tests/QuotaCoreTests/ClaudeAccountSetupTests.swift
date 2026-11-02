@@ -1,3 +1,4 @@
+import CryptoKit
 import XCTest
 @testable import QuotaCore
 
@@ -99,5 +100,41 @@ final class ClaudeAccountSetupTests: XCTestCase {
         let service = "Claude Code-credentials-abcdef12"
         let results = ClaudeSignIns.visibleServices(extras: [service, "keep"], registered: [service], excluding: [service])
         XCTAssertEqual(results, ["keep"])
+    }
+}
+
+/// What QuotaBar made, and so may clean up — and the login of the default
+/// sign-in, which must not name a config dir.
+final class ClaudeAccountSetupOwnershipTests: XCTestCase {
+    private func hash(_ directory: URL) -> String {
+        String(SHA256.hash(data: Data(directory.path.utf8)).map { String(format: "%02x", $0) }.joined().prefix(8))
+    }
+
+    func testOnlyAFolderQuotaBarMadeIsOurs() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("qb-own-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let ours = home.appendingPathComponent(".claude-quotabar-\(UUID().uuidString.lowercased())")
+        let theirs = home.appendingPathComponent(".claude-work")
+        for directory in [ours, theirs] { try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true) }
+        XCTAssertEqual(ClaudeAccountSetup.ownedDirectory(service: "Claude Code-credentials-\(hash(ours))", home: home)?.path, ours.path)
+        // One the owner made themself, however it is named, is never cleaned up.
+        XCTAssertNil(ClaudeAccountSetup.ownedDirectory(service: "Claude Code-credentials-\(hash(theirs))", home: home))
+        // Nor the default sign-in, nor a folder that is gone.
+        XCTAssertNil(ClaudeAccountSetup.ownedDirectory(service: LocalCredentials.claudeService, home: home))
+        XCTAssertNil(ClaudeAccountSetup.ownedDirectory(service: "Claude Code-credentials-00000000", home: home))
+        // Discarding what is not ours touches nothing.
+        XCTAssertFalse(ClaudeAccountSetup.discard(service: "Claude Code-credentials-\(hash(theirs))", home: home))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: theirs.path))
+    }
+
+    func testTheDefaultSignInsLoginNamesNoConfigDir() {
+        let binary = URL(fileURLWithPath: "/usr/local/bin/claude")
+        let script = ClaudeAccountSetup.script(binary: binary, directory: nil)
+        XCTAssertFalse(script.contains("export CLAUDE_CONFIG_DIR"))
+        XCTAssertTrue(script.contains("unset \"$qb_login_env_name\""))
+        XCTAssertTrue(script.contains("exec '/usr/local/bin/claude' auth login --claudeai"))
+        let directory = URL(fileURLWithPath: "/Users/me/.claude-quotabar-x", isDirectory: true)
+        XCTAssertTrue(ClaudeAccountSetup.script(binary: binary, directory: directory).contains("export CLAUDE_CONFIG_DIR='/Users/me/.claude-quotabar-x'"))
     }
 }

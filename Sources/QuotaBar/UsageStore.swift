@@ -28,12 +28,17 @@ final class UsageStore: ObservableObject {
     /// Another config dir's Claude Code sign-in (#8) the quiet reads could
     /// not open; the same button asks for it.
     @Published private(set) var claudeOthersNeedAuthorization = false
+    /// Claude Code is signed out, so the card reads the Claude app's or a
+    /// browser's claude.ai sign-in, and the key that opens it is outstanding.
+    /// Not Claude Code's item at all, which is why `claudeNeedsAuthorization`
+    /// stays false while the card tells the owner to press the button.
+    @Published private(set) var claudeWebNeedsAuthorization = false
 
     /// The keychain button is due for this provider: Claude Code's item, or
     /// the key to Grok Bot's sign-in.
     func needsKeychainAuthorization(_ id: ProviderID) -> Bool {
         switch id {
-        case .claude: claudeNeedsAuthorization || claudeOthersNeedAuthorization
+        case .claude: claudeNeedsAuthorization || claudeOthersNeedAuthorization || claudeWebNeedsAuthorization
         case .grok: grokBotCredential == .needsAuthorization
         case .qoder: qoderCredential == .needsAuthorization
         default: false
@@ -174,6 +179,10 @@ final class UsageStore: ObservableObject {
     let codexAccounts = CodexAccountsModel()
     let claudeSignIns = ClaudeSignInsModel()
     @Published var claudeLoginsPending: Set<String> = []
+    /// What the last add or repair of a Claude sign-in has to tell the owner,
+    /// kept on the settings row until the next one: a login finishes minutes
+    /// after the press, in a browser, when the pill that flashes is long gone.
+    @Published var claudeAccountNote: String?
     var claudeLoginTasks: [String: Task<Void, Never>] = [:]
     /// What the last Codex account switch or save said, for Settings.
     @Published var codexSwitchNotice: String?
@@ -208,10 +217,12 @@ final class UsageStore: ObservableObject {
         cost: CostSummary = .empty,
         ledger: UsageLedger = .empty,
         history: [ProviderID: [Double]] = [:],
-        claudeCredential: LocalCredentials.ClaudeCredentialState? = nil) -> UsageStore
+        claudeCredential: LocalCredentials.ClaudeCredentialState? = nil,
+        claudeWebNeedsAuthorization: Bool = false) -> UsageStore
     {
         let store = UsageStore(inert: true)
         store.claudeCredential = claudeCredential
+        store.claudeWebNeedsAuthorization = claudeWebNeedsAuthorization
         store.enabled = enabled
         store.reported = states.compactMapValues(\.snapshot)
         store.states = states
@@ -703,7 +714,7 @@ final class UsageStore: ObservableObject {
     /// Re-evaluates which providers have usable credentials.
     func refreshConfigured() {
         Task { [config] in
-            let (ready, local, sources, claude, claudeOthers, grokBot, qoder) = await Task.detached(priority: .utility) {
+            let (ready, local, sources, claude, claudeOthers, claudeWeb, grokBot, qoder) = await Task.detached(priority: .utility) {
                 let ready = Set(ProviderID.allCases.filter {
                     ProviderRegistry.make($0).isConfigured(config: config)
                 })
@@ -717,15 +728,17 @@ final class UsageStore: ObservableObject {
                 // Non-interactive, like every keychain read off a timer.
                 let claude = LocalCredentials.claudeCredentialState()
                 let claudeOthers = LocalCredentials.claudeExtrasNeedAuthorization()
+                let claudeWeb = ClaudeProvider.webNeedsAuthorization(config: config)
                 let grokBot = GrokBot.sessionState()
                 let qoder = QoderApp.sessionState()
-                return (ready, local, sources, claude, claudeOthers, grokBot, qoder)
+                return (ready, local, sources, claude, claudeOthers, claudeWeb, grokBot, qoder)
             }.value
             self.configured = ready
             self.signedInLocally = local
             if self.sourceInfo != sources { self.sourceInfo = sources }
             self.claudeCredential = claude
             self.claudeOthersNeedAuthorization = claudeOthers
+            self.claudeWebNeedsAuthorization = claudeWeb
             self.grokBotCredential = grokBot
             self.qoderCredential = qoder
         }

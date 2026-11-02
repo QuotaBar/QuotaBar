@@ -133,15 +133,86 @@ extension UsageStore {
         updateProfiles { $0.append(AccountProfile(name: name)) }
     }
 
-    func removeClaudeSignIn(_ service: String) {
+    /// `discardFiles`: also take away the folder and keychain item QuotaBar
+    /// made for it — only ever for a sign-in QuotaBar made, never for one the
+    /// owner set up themself; else Claude Code's login and files stay intact.
+    func removeClaudeSignIn(_ service: String, discardFiles: Bool = false) {
         guard service != LocalCredentials.claudeService else { return }
         claudeLoginTasks.removeValue(forKey: service)?.cancel()
         claudeLoginsPending.remove(service)
         changeAccounts { updateExperience { $0.forgetClaudeSignIn(service) } }
         claudeSignIns.forget(service)
         accountReadings = accountReadings.filter { !$0.key.hasPrefix("claude|\(service)|") }
+        if discardFiles {
+            Task.detached(priority: .utility) {
+                ClaudeAccountSetup.discard(service: service)
+                LocalCredentials.invalidateClaudeToken()
+            }
+        }
         Task { await readClaudeSignIns(force: true) }
         flashNotice(L10n.t("Removed from QuotaBar", "已从 QuotaBar 移除"))
+    }
+
+    /// Whether removing this sign-in can also clear what QuotaBar made for it.
+    func claudeSignInIsOurs(_ service: String) -> Bool {
+        ClaudeAccountSetup.ownedDirectory(service: service) != nil
+    }
+
+    /// Removed sign-ins QuotaBar made that still have their folder and
+    /// keychain item on this Mac: what "Remove" used to leave behind.
+    func claudeLeftovers() -> [String] {
+        experience.hiddenClaudeSignIns.filter { ClaudeAccountSetup.ownedDirectory(service: $0) != nil }
+    }
+
+    func discardClaudeLeftovers() {
+        let leftovers = claudeLeftovers()
+        guard !leftovers.isEmpty else { return }
+        Task {
+            await Task.detached(priority: .utility) {
+                for service in leftovers { ClaudeAccountSetup.discard(service: service) }
+                LocalCredentials.invalidateClaudeToken()
+            }.value
+            updateExperience { prefs in prefs.hiddenClaudeSignIns.removeAll { leftovers.contains($0) } }
+            await readClaudeSignIns(force: true)
+            claudeAccountNote = L10n.t(
+                "Cleared \(leftovers.count) removed sign-in(s) QuotaBar had left on this Mac.",
+                "已清理 \(leftovers.count) 个之前移除后遗留的登录。")
+        }
+    }
+
+    /// Where one sign-in stands: what the last read of it found, or — for the
+    /// default one, before that read is back — the card's own quiet look.
+    func claudeState(_ service: String) -> ClaudeSignIns.State? {
+        if let state = claudeSignIns.states[service] { return state }
+        guard service == LocalCredentials.claudeService, let credential = claudeCredential else { return nil }
+        switch credential {
+        case .available: return .ready
+        case .needsAuthorization: return .needsAuthorization
+        case .signedOut: return .signedOut
+        case .missing: return .missing
+        }
+    }
+
+    /// What a press could do about the sign-in the card reads, shown where its
+    /// reading failed: a failure has no address to hang the account arrow on.
+    var claudeCardRepair: ClaudeSignIns.Repair? {
+        ClaudeSignIns.repair(for: claudeState(claudeCardService), failing: true)
+    }
+
+    /// The one press a sign-in's state offers: sign in again in a Terminal
+    /// window, or let macOS ask once for the keychain.
+    func repairClaudeSignIn(_ service: String) {
+        claudeAccountNote = nil
+        if claudeState(service) == .needsAuthorization {
+            authorizeClaude()
+            return
+        }
+        if let problem = reconnectClaudeAccount(service) {
+            claudeAccountNote = problem
+            flashNotice(problem)
+        } else {
+            flashNotice(L10n.t("Finish signing in in the Terminal window", "请在打开的终端窗口里完成登录"))
+        }
     }
 
     func reconnectClaudeAccount(_ service: String) -> String? {
@@ -165,13 +236,33 @@ extension UsageStore {
                 return L10n.t("Could not open the login window. Try again from Settings.", "无法打开登录窗口，请在设置中重试。")
             }
             if let oldService { removeClaudeSignIn(oldService) }
-            watchClaudeLogin(prepared.service, before: .init())
+            claudeAccountNote = nil
+            watchClaudeLogin(prepared.service, before: .init(), mergesDuplicate: true)
             Task { await readClaudeSignIns(force: true) }
             return nil
         } catch { return error.localizedDescription }
     }
 
-    private func watchClaudeLogin(_ service: String, before: ClaudeAccountSetup.LoginStamp) {
+    /// A login that signed in as an account already here — the browser was
+    /// still signed in to it — adds a second copy to keep up and nothing to
+    /// read. Said so, and taken away again with the folder and keychain item
+    /// QuotaBar made for it, rather than left to pile up beside the others.
+    /// True when that is what it was.
+    private func mergeDuplicateLogin(_ service: String) -> Bool {
+        let choices = claudeSignIns.services.map {
+            ClaudeSignIns.Choice(id: $0, identity: claudeSignIns.identities[$0], state: claudeSignIns.states[$0])
+        }
+        guard claudeSignInIsOurs(service), let twin = ClaudeSignIns.duplicate(of: service, among: choices) else { return false }
+        let name = claudeSignIns.pickerLabel(twin.id, masked: isPrivacyMasked)
+        removeClaudeSignIn(service, discardFiles: true)
+        claudeAccountNote = L10n.t(
+            "That login was the same account as \(name), so nothing was added and the copy was removed. To add another account, switch to it in the browser first, then press Add account again.",
+            "刚登录的和「\(name)」是同一个账号，没有新增，重复的登录已清理。要添加另一个账号，请先在浏览器里切换到那个账号，再点一次「添加账号」。")
+        flashNotice(L10n.t("Same account as \(name); nothing added", "和「\(name)」是同一个账号，未新增"))
+        return true
+    }
+
+    private func watchClaudeLogin(_ service: String, before: ClaudeAccountSetup.LoginStamp, mergesDuplicate: Bool = false) {
         claudeLoginTasks.removeValue(forKey: service)?.cancel()
         claudeLoginsPending.insert(service)
         claudeLoginTasks[service] = Task { [weak self] in
@@ -189,6 +280,7 @@ extension UsageStore {
                     self.refreshConfigured()
                     self.claudeLoginsPending.remove(service)
                     self.claudeLoginTasks[service] = nil
+                    if mergesDuplicate, self.mergeDuplicateLogin(service) { return }
                     self.flashNotice(L10n.t("Claude login updated", "Claude 登录已更新"))
                     return
                 }

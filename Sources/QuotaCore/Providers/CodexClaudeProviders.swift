@@ -539,6 +539,16 @@ public struct ClaudeProvider: QuotaProvider {
         }
     }
 
+    /// The card reads a web sign-in whose keychain key is waiting on the
+    /// owner's say-so: what the "Allow keychain access" button is shown for
+    /// when Claude Code's own item is not the one asking (it is signed out, so
+    /// the Claude app's or a browser's answers instead).
+    public static func webNeedsAuthorization(config: ConfigStore) -> Bool {
+        config.experience.claudeItem == LocalCredentials.claudeService
+            && usesWeb(config)
+            && ClaudeWebSession.needsAuthorization()
+    }
+
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
         // A profile (#8) reading another config dir's sign-in.
         let service = config.experience.claudeItem

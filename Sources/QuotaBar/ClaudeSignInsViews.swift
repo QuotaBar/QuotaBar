@@ -30,8 +30,13 @@ struct ClaudeSignInsSection: View {
     private var cardRow: some View {
         let snapshot = store.states[.claude]?.snapshot
         let identity = signIns.card ?? snapshot.map { ClaudeProvider.Identity(email: $0.account) }
+        // Read from the Claude app or a browser, the card is not on the
+        // default sign-in at all: say whose it is, and where from.
+        let web = snapshot?.sourceLabel.flatMap { source in
+            store.isPrivacyMasked ? nil : snapshot?.account.map { "\($0) · \(source)" }
+        }
         return VStack(alignment: .leading, spacing: 2) {
-            header(identity, service: store.claudeCardService, plan: snapshot?.planName, number: 1, onCard: true)
+            header(identity, service: store.claudeCardService, plan: snapshot?.planName, number: 1, onCard: true, title: web)
         }
         .help(L10n.t("Claude Code's default sign-in, which the card shows.", "Claude Code 的默认登录，也就是卡片上显示的这个。"))
     }
@@ -58,12 +63,12 @@ struct ClaudeSignInsSection: View {
         .help(reading.id)
     }
 
-    private func header(_ identity: ClaudeProvider.Identity?, service: String, plan: String?, number: Int, onCard: Bool) -> some View {
+    private func header(_ identity: ClaudeProvider.Identity?, service: String, plan: String?, number: Int, onCard: Bool, title: String? = nil) -> some View {
         HStack(spacing: 6) {
             Circle()
                 .fill(onCard ? accent : .white.opacity(0.2))
                 .frame(width: 6, height: 6)
-            Text(identity?.email == nil ? signIns.label(identity, number: number, masked: store.isPrivacyMasked) : signIns.pickerLabel(service, masked: store.isPrivacyMasked))
+            Text(title ?? (identity?.email == nil ? signIns.label(identity, number: number, masked: store.isPrivacyMasked) : signIns.pickerLabel(service, masked: store.isPrivacyMasked)))
                 .font(.system(size: 11))
                 .foregroundStyle(.white.opacity(onCard ? 0.9 : 0.7))
                 .lineLimit(1)
@@ -113,6 +118,11 @@ struct ClaudeAccountPicker: View {
     @ObservedObject var store: UsageStore
     @ObservedObject var signIns: ClaudeSignInsModel
     let account: String
+    /// Where the reading came from when it is not Claude Code's own sign-in —
+    /// the Claude app or a browser, read while Claude Code is signed out. The
+    /// address beside it may then be a different account from the one the
+    /// menu calls the default, so the card says which it is reading.
+    var source: String?
 
     var body: some View { menu }
 
@@ -124,18 +134,35 @@ struct ClaudeAccountPicker: View {
             .truncationMode(.middle)
     }
 
+    private var options: [ClaudeSignInsModel.Option] {
+        signIns.options(
+            selected: store.claudeCardService,
+            failing: store.displayPhase(for: .claude)?.errorMessage != nil,
+            masked: store.isPrivacyMasked)
+    }
+
     private var menu: some View {
-        Menu {
-            ForEach(signIns.services, id: \.self) { service in
-                Toggle(signIns.pickerLabel(service, masked: store.isPrivacyMasked), isOn: Binding(
-                    get: { store.claudeCardService == service },
-                    set: { on in if on { store.useClaudeSignIn(service) } }))
+        let options = options
+        return Menu {
+            ForEach(options) { option in
+                Toggle(option.label, isOn: Binding(
+                    get: { store.claudeCardService == option.id },
+                    set: { on in if on { store.useClaudeSignIn(option.id) } }))
+            }
+            // A choice that cannot read yet carries its own fix, so it is not
+            // found out only after switching to it.
+            let repairs = options.filter { $0.repair != nil }
+            if !repairs.isEmpty {
+                Divider()
+                ForEach(repairs) { option in
+                    Button(option.repairTitle ?? "") { store.repairClaudeSignIn(option.id) }
+                }
             }
             Divider()
             Button(L10n.t("Manage accounts…", "管理账号／添加账号…")) { SettingsWindow.open(provider: .claude) }
         } label: {
             // One run of text, so the arrow cannot land before the address.
-            (Text(account) + Text(" ") + Text(Image(systemName: "chevron.down")).font(.system(size: 8, weight: .semibold)))
+            (Text(account) + Text(source.map { " · \($0)" } ?? "") + Text(" ") + Text(Image(systemName: "chevron.down")).font(.system(size: 8, weight: .semibold)))
                 .font(.system(size: 10, design: .monospaced))
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -156,6 +183,10 @@ struct ClaudeSignInsSettings: View {
     @ObservedObject var signIns: ClaudeSignInsModel
     @State private var name = ""
     @State private var notice: String?
+    /// The sign-in QuotaBar made that "Remove" is asking about.
+    @State private var removing: String?
+    /// Removed ones whose folder and keychain item are still on this Mac.
+    @State private var leftovers: [String] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: Design.space2) {
@@ -170,6 +201,9 @@ struct ClaudeSignInsSettings: View {
                             .font(.system(size: 12))
                             .lineLimit(1)
                             .truncationMode(.middle)
+                        if let note = ClaudeSignInsModel.note(for: store.claudeState(service)) {
+                            Text(note).font(.system(size: 11)).foregroundStyle(.orange)
+                        }
                         if duplicate {
                             Text(L10n.t("Same as default", "与默认登录相同")).font(.system(size: 11)).foregroundStyle(.secondary)
                         }
@@ -185,6 +219,11 @@ struct ClaudeSignInsSettings: View {
                         } else if service != LocalCredentials.claudeService && (duplicate || snapshot == nil || reading?.error != nil || store.states[.claude]?.errorMessage != nil) {
                             Button(duplicate ? L10n.t("Sign in to another account", "换账号登录") : L10n.t("Sign in", "登录")) { notice = store.reconnectClaudeAccount(service) }
                                 .glassAction(compact: true)
+                        } else if service == LocalCredentials.claudeService, store.claudeState(service) == .signedOut || store.claudeState(service) == .missing {
+                            // The default sign-in has a login window of its own
+                            // too: signed out, it is no longer a trip to Terminal.
+                            Button(L10n.t("Sign in", "登录")) { notice = store.reconnectClaudeAccount(service) }
+                                .glassAction(compact: true)
                         }
                         if service == store.claudeCardService {
                             Text(L10n.t("In use", "使用中")).font(.system(size: 11)).foregroundStyle(.secondary)
@@ -194,7 +233,11 @@ struct ClaudeSignInsSettings: View {
                                 .disabled(service != LocalCredentials.claudeService && reading?.snapshot == nil)
                         }
                         if service != LocalCredentials.claudeService {
-                            Button(L10n.t("Remove", "移除")) { store.removeClaudeSignIn(service) }
+                            Button(L10n.t("Remove", "移除")) {
+                                // One QuotaBar made has a folder and a keychain item
+                                // of its own: ask whether to take those away too.
+                                if store.claudeSignInIsOurs(service) { removing = service } else { store.removeClaudeSignIn(service) }
+                            }
                                 .glassAction(compact: true)
                                 .help(L10n.t("Forget in QuotaBar; Claude Code's login and files stay intact.", "只从 QuotaBar 移除，保留 Claude Code 的登录和文件。"))
                         }
@@ -230,13 +273,52 @@ struct ClaudeSignInsSettings: View {
             if let notice {
                 Text(notice).font(.system(size: 11)).foregroundStyle(.secondary)
             }
+            if let note = store.claudeAccountNote {
+                Text(note).font(.system(size: 11)).foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if !leftovers.isEmpty {
+                HStack(spacing: Design.space2) {
+                    Text(L10n.t(
+                        "\(leftovers.count) removed sign-in(s) are still on this Mac, with their folders and keychain items.",
+                        "有 \(leftovers.count) 个已移除的登录，登录文件和钥匙串项还留在这台 Mac 上。"))
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    Button(L10n.t("Clean up", "清理")) { store.discardClaudeLeftovers() }
+                        .glassAction(compact: true)
+                }
+            }
             Text(L10n.t(
                 "The list shows the account Claude actually signed in to; notes are labels only. Choose a different account in the browser; the list updates after login. Check accounts refreshes manually. Remove an entry to stop reading it.",
                 "上方显示 Claude 实际登录的账号，备注只是标记。请在浏览器里选择另一个账号，登录完成后列表会自动更新；也可点击「检查账号」手动刷新。移除后不再读取或提示这项登录。"))
                 .font(.system(size: 11)).foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .task { await store.readClaudeSignIns() }
+        .task {
+            await store.readClaudeSignIns()
+            leftovers = store.claudeLeftovers()
+        }
+        .onChange(of: store.claudeAccountNote) { _, _ in leftovers = store.claudeLeftovers() }
+        .confirmationDialog(
+            L10n.t("Remove this sign-in?", "移除这个登录？"),
+            isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
+            titleVisibility: .visible)
+        {
+            Button(L10n.t("Remove and delete its files", "移除并删除登录文件"), role: .destructive) {
+                if let service = removing { store.removeClaudeSignIn(service, discardFiles: true) }
+                removing = nil
+            }
+            Button(L10n.t("Only stop reading it", "只是不再读取")) {
+                if let service = removing { store.removeClaudeSignIn(service) }
+                removing = nil
+                leftovers = store.claudeLeftovers()
+            }
+            Button(L10n.t("Cancel", "取消"), role: .cancel) { removing = nil }
+        } message: {
+            Text(L10n.t(
+                "QuotaBar made this sign-in, with a folder and a keychain item of its own. Deleting them signs it out for good; stopping only leaves them on this Mac.",
+                "这个登录是 QuotaBar 创建的，有自己的登录文件夹和钥匙串项。删除后会彻底退出这个登录；只是不再读取则会把它们留在这台 Mac 上。"))
+        }
     }
 }
 
@@ -248,10 +330,24 @@ struct ClaudeSignInRecovery: View {
 
     var body: some View {
         HStack(spacing: 8) {
+            // What fixes the sign-in the card reads, first: it is why the card
+            // is here.
+            if store.claudeCardRepair == .signIn {
+                Button(L10n.t("Sign in", "登录")) { store.repairClaudeSignIn(store.claudeCardService) }
+            }
             Menu(L10n.t("Choose account", "选择账号")) {
-                ForEach(signIns.services.filter { !ClaudeSignIns.directoryMissing(service: $0) }, id: \.self) { service in
-                    Button(signIns.pickerLabel(service, masked: store.isPrivacyMasked)) { store.useClaudeSignIn(service) }
+                let options = signIns.options(selected: store.claudeCardService, failing: true, masked: store.isPrivacyMasked)
+                ForEach(options.filter { $0.state != .directoryMissing && !ClaudeSignIns.directoryMissing(service: $0.id) }) { option in
+                    Button(option.label) { store.useClaudeSignIn(option.id) }
                 }
+                let repairs = options.filter { $0.repair != nil && $0.id != store.claudeCardService }
+                if !repairs.isEmpty {
+                    Divider()
+                    ForEach(repairs) { option in
+                        Button(option.repairTitle ?? "") { store.repairClaudeSignIn(option.id) }
+                    }
+                }
+                Divider()
                 Button(L10n.t("Manage accounts…", "管理账号…")) { SettingsWindow.open(provider: .claude) }
             }
             if ClaudeSignIns.directoryMissing(service: store.claudeCardService) {

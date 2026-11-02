@@ -79,6 +79,36 @@ struct Pressable<Label: View>: View {
     }
 }
 
+/// "Allow keychain access": the press that may raise macOS's dialog for the
+/// sign-in this provider reads. Wherever a reading says to press it, it is
+/// there to press — an error that points at a button nobody drew is a dead end.
+struct AllowKeychainButton: View {
+    let store: UsageStore
+    let id: ProviderID
+
+    var body: some View {
+        CapsuleButton(title: L10n.t("Allow keychain access", "授权钥匙串访问")) { store.authorizeKeychain(id) }
+    }
+}
+
+/// A white capsule to press on a dark card: what to do about an error, in
+/// panels that are never key, so a `Pressable`.
+struct CapsuleButton: View {
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Pressable(action: action) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.black)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(Color.white))
+        }
+    }
+}
+
 // MARK: - Colours
 
 enum Palette {

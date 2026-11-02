@@ -241,7 +241,7 @@ public enum ClaudeWebSession {
             "这台 Mac 上没有找到 claude.ai 的登录。在 Claude 桌面应用里登录，或在 Chrome、Edge、Brave、Arc、Firefox、Safari 里登录 claude.ai。")
     }
 
-    static var authorizationHint: String {
+    public static var authorizationHint: String {
         L10n.t(
             "A sign-in was found, but it is sealed with a keychain item, and macOS asks before another app may read it. Press “Allow keychain access” and choose Always Allow in the dialog.",
             "找到了登录，但它由钥匙串里的一项加密保存，macOS 会在其他应用读取前询问一次。点「授权钥匙串访问」，在弹窗里选「始终允许」。")
@@ -310,6 +310,30 @@ public enum ClaudeWebSession {
             if case .session = read(source, interactive: true) { any = true }
         }
         return any
+    }
+
+    /// Whether the keychain button is what the web sign-in waits on: every
+    /// sign-in found is sealed with a key macOS has not let this app read, and
+    /// at least one was refused. Quiet, like a refresh — it never asks.
+    public static func needsAuthorization() -> Bool {
+        needsAuthorization(sources()) { service in
+            keys.key(service: service, interactive: false, read: { readPassword(service: service, interactive: $0) })
+        }
+    }
+
+    /// Pure, so the verdict is pinned by tests without a keychain. A jar kept
+    /// in the clear, or a key already read, answers without the button.
+    static func needsAuthorization(_ sources: [Source], key: (String) -> KeyAnswer) -> Bool {
+        var refused = false
+        for source in sources {
+            guard case let .chromium(_, service) = source.jar else { return false }
+            switch key(service) {
+            case .key: return false
+            case .refused: refused = true
+            case .missing: continue
+            }
+        }
+        return refused
     }
 
     // MARK: Cookie sealing

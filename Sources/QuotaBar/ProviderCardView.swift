@@ -105,7 +105,7 @@ struct ProviderCardView: View {
                 if forExport && store.experience.shareMasksAccount {
                     AccountMosaic()
                 } else if id == .claude, !forExport {
-                    ClaudeAccountPicker(store: store, signIns: store.claudeSignIns, account: account)
+                    ClaudeAccountPicker(store: store, signIns: store.claudeSignIns, account: account, source: snapshot?.sourceLabel)
                 } else if id == .codex, !forExport {
                     CodexAccountPicker(store: store, accounts: store.codexAccounts, account: account)
                 } else {
@@ -137,6 +137,12 @@ struct ProviderCardView: View {
             }
         case let .failed(message):
             failure(message)
+            // The account arrow sits on a reading's address, and a failure
+            // has none: without this, one sign-in that cannot be read is the
+            // end of the card, with the others out of reach.
+            if id == .claude, !forExport {
+                ClaudeSignInRecovery(store: store, signIns: store.claudeSignIns)
+            }
         case let .notice(message):
             Label(message, systemImage: "info.circle")
                 .font(.system(size: 11))
@@ -365,14 +371,7 @@ struct ProviderCardView: View {
                 .foregroundStyle(Palette.amber)
                 .fixedSize(horizontal: false, vertical: true)
             if store.needsKeychainAuthorization(id), !forExport {
-                Pressable(action: { store.authorizeKeychain(id) }) {
-                    Text(L10n.t("Allow keychain access", "授权钥匙串访问"))
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.black)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Capsule().fill(Color.white))
-                }
+                AllowKeychainButton(store: store, id: id)
             }
         }
     }

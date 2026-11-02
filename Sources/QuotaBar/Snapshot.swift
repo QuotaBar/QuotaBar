@@ -414,6 +414,54 @@ enum Snapshot {
     /// height when the plan reports few windows.
     /// Codex and Claude as they read in October 2026: Codex credits and a
     /// reset, Claude a Full reset and a Cloud session credit.
+    /// The default Claude Code sign-in is signed out, so the card reads the
+    /// Claude app's, whose keychain key is still to be allowed; a second
+    /// sign-in sits beside it, and a third that has run out.
+    private static func claudeWebAuthorizationStore() -> UsageStore {
+        let hint = ProviderError.needsAuthorization(hint: ClaudeWebSession.authorizationHint).errorDescription ?? ""
+        let store = UsageStore.preview(
+            enabled: [.claude],
+            states: [.claude: .failed(hint)],
+            claudeCredential: .signedOut,
+            claudeWebNeedsAuthorization: true)
+        store.claudeSignIns.seedForPreview(
+            card: ClaudeProvider.Identity(email: "you@example.com", accountID: "you", organizationID: "org-you"),
+            others: [
+                claudeSignInPreview("Claude Code-credentials-9f8e7d6c", email: "side@example.com", account: "side", state: .ready),
+                claudeSignInPreview("Claude Code-credentials-1a2b3c4d", email: "you@example.com", account: "you", state: .expired),
+            ],
+            cardState: .signedOut)
+        return store
+    }
+
+    /// The Claude app's sign-in answering while Claude Code is signed out: the
+    /// address says where it came from, and the menu says what the default
+    /// sign-in is doing.
+    private static func claudeWebSourceStore() -> UsageStore {
+        let snapshot = UsageSnapshot(
+            planName: "Pro", account: "app-user@example.com",
+            windows: [UsageWindow(title: WindowTitle.forSeconds(18_000), usedPercent: 31,
+                                  resetsAt: Date().addingTimeInterval(7_000), windowSeconds: 18_000)],
+            source: "Claude app")
+        let store = UsageStore.preview(enabled: [.claude], states: [.claude: .loaded(snapshot)], claudeCredential: .signedOut)
+        store.claudeSignIns.seedForPreview(
+            card: ClaudeProvider.Identity(email: "you@example.com", accountID: "you", organizationID: "org-you"),
+            others: [claudeSignInPreview("Claude Code-credentials-9f8e7d6c", email: "side@example.com", account: "side", state: .ready)],
+            cardState: .signedOut)
+        return store
+    }
+
+    private static func claudeSignInPreview(
+        _ service: String, email: String, account: String, state: ClaudeSignIns.State) -> ClaudeSignIns.Reading
+    {
+        var reading = ClaudeSignIns.Reading(
+            id: service,
+            identity: ClaudeProvider.Identity(email: email, accountID: account, organizationID: "org-\(account)"),
+            plan: "Pro")
+        reading.state = state
+        return reading
+    }
+
     private static func givenCreditsStore(withClaudeSignIns: Bool = false) -> UsageStore {
         let codexJSON = """
         {"email":"you@example.com","plan_type":"pro",
@@ -570,6 +618,31 @@ enum Snapshot {
                 .padding(20)
                 .environment(\.colorScheme, .dark)
             render(callout, to: url, name: "dock-callout-not-updating-\(suffix)", backing: Color(hex: "3A4A5A"))
+            // Claude Code signed out, the Claude app's sign-in waiting on its
+            // keychain key: the error names a button, and the other sign-in
+            // is one press away, on the dock's card and the panel's.
+            render(
+                ProviderCallout(store: claudeWebAuthorizationStore(), id: .claude)
+                    .padding(20)
+                    .environment(\.colorScheme, .dark),
+                to: url, name: "dock-callout-claude-web-authorization-\(suffix)", backing: Color(hex: "3A4A5A"))
+            render(
+                ProviderCardView(store: claudeWebAuthorizationStore(), id: .claude)
+                    .frame(width: 340)
+                    .padding(12)
+                    .background(Color(white: 0.06))
+                    .environment(\.colorScheme, .dark),
+                to: url, name: "panel-card-claude-web-authorization-\(suffix)", backing: Color(white: 0.06))
+            render(
+                ProviderCallout(store: claudeWebSourceStore(), id: .claude)
+                    .padding(20)
+                    .environment(\.colorScheme, .dark),
+                to: url, name: "dock-callout-claude-web-source-\(suffix)", backing: Color(hex: "3A4A5A"))
+            render(
+                ProviderCallout(store: claudeWebSourceStore(), id: .claude, detail: true)
+                    .padding(20)
+                    .environment(\.colorScheme, .dark),
+                to: url, name: "dock-callout-claude-web-source-detail-\(suffix)", backing: Color(hex: "3A4A5A"))
             // Two windows on the front and a month of bars on the back: the
             // card must be no taller than the two rows need.
             render(

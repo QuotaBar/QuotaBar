@@ -9,6 +9,50 @@ import Foundation
 /// Read only. Claude Code renews each sign-in while it runs with that config
 /// dir; QuotaBar never spends a refresh token, so it cannot sign one out.
 public enum ClaudeSignIns {
+    /// Where one sign-in stands, known before anyone switches to it — so a
+    /// picker can say which choices read and which need a hand, instead of
+    /// the card finding out after the switch.
+    public enum State: Sendable, Equatable {
+        /// A token that has not run out.
+        case ready
+        /// The token has run out. Claude Code renews it while it runs; QuotaBar
+        /// asks it to, and a renewal that fails leaves the sign-in here.
+        case expired
+        /// The item is there with its tokens blanked: `/logout`.
+        case signedOut
+        /// macOS wants the owner's say-so before the item may be read.
+        case needsAuthorization
+        /// No item, or one without a usable token.
+        case missing
+        /// A config dir's item whose folder is no longer on this Mac.
+        case directoryMissing
+    }
+
+    /// What one press can do about a state, if anything.
+    public enum Repair: Sendable, Equatable {
+        /// Sign in again, in a Terminal window of QuotaBar's making.
+        case signIn
+        /// The keychain button: let macOS ask once.
+        case authorize
+    }
+
+    /// One sign-in as a picker sees it.
+    public struct Choice: Sendable, Equatable, Identifiable {
+        /// The keychain item's name.
+        public let id: String
+        public var identity: ClaudeProvider.Identity?
+        /// nil until it has been read.
+        public var state: State?
+
+        public init(id: String, identity: ClaudeProvider.Identity? = nil, state: State? = nil) {
+            self.id = id
+            self.identity = identity
+            self.state = state
+        }
+
+        public var isDefault: Bool { id == LocalCredentials.claudeService }
+    }
+
     public struct Reading: Sendable, Identifiable {
         /// The keychain item's name.
         public let id: String
@@ -18,6 +62,7 @@ public enum ClaudeSignIns {
         public var error: String?
         public var discardsCachedReading = false
         public var needsAuthorization = false
+        public var state: State?
 
         public func preserving(_ previous: Reading?) -> Reading {
             var result = self
@@ -77,6 +122,105 @@ public enum ClaudeSignIns {
         return account == otherAccount && organization == otherOrganization
     }
 
+    // MARK: What a picker shows
+
+    /// Pure: what a lookup says about a sign-in, with the clock and the
+    /// folder it lives in.
+    static func state(of lookup: LocalCredentials.ClaudeLookup, directoryMissing: Bool, now: Date) -> State {
+        if directoryMissing { return .directoryMissing }
+        switch lookup.state {
+        case .needsAuthorization: return .needsAuthorization
+        case .signedOut: return .signedOut
+        case .missing: return .missing
+        case .available: return (lookup.expiresAt.map { $0 <= now } ?? false) ? .expired : .ready
+        }
+    }
+
+    /// A quiet read — memoized like every other, never a dialog — for the
+    /// sign-in the card shows, which `readOthers` leaves out.
+    public static func currentState(service: String, now: Date = .now) async -> State {
+        state(of: LocalCredentials.claudeLookup(service: service), directoryMissing: directoryMissing(service: service), now: now)
+    }
+
+    /// What one press can do about `state`. An expired sign-in is Claude
+    /// Code's to renew, so it is offered a fresh login only once a reading of
+    /// it has failed; a folder that is gone is "Add again" in Settings.
+    public static func repair(for state: State?, failing: Bool) -> Repair? {
+        switch state {
+        case .needsAuthorization?: return .authorize
+        case .signedOut?, .missing?: return .signIn
+        case .expired?: return failing ? .signIn : nil
+        case .ready?, .directoryMissing?, nil: return nil
+        }
+    }
+
+    /// Ones that read come first; one not read yet is taken as the best it
+    /// could be, so a picker does not shuffle while it is still finding out.
+    static func rank(_ state: State?) -> Int {
+        switch state {
+        case .ready?: 0
+        case .expired?, nil: 1
+        case .needsAuthorization?: 2
+        case .signedOut?: 3
+        case .missing?: 4
+        case .directoryMissing?: 5
+        }
+    }
+
+    private static func accountKey(_ identity: ClaudeProvider.Identity?) -> String? {
+        guard let account = identity?.accountID, let organization = identity?.organizationID else { return nil }
+        return "\(account)/\(organization)"
+    }
+
+    /// What a picker lists: one row for each account and organization. A
+    /// second sign-in of the same one — the copies a browser login leaves
+    /// behind when it signs in as the account already there — is folded into
+    /// whichever reads best, the default first among equals. The one in use
+    /// is never folded away, and neither is a better one beside it: it is a
+    /// way out. Then the ones that read first, otherwise in the order given.
+    public static func pickable(_ choices: [Choice], selected: String) -> [Choice] {
+        var groups: [(key: String?, members: [Choice])] = []
+        for choice in choices {
+            let key = accountKey(choice.identity)
+            if let key, let index = groups.firstIndex(where: { $0.key == key }) {
+                groups[index].members.append(choice)
+            } else {
+                groups.append((key, [choice]))
+            }
+        }
+        func better(_ first: Choice, _ second: Choice) -> Bool {
+            if rank(first.state) != rank(second.state) { return rank(first.state) < rank(second.state) }
+            if first.isDefault != second.isDefault { return first.isDefault }
+            return first.id < second.id
+        }
+        var kept: [Choice] = []
+        for group in groups {
+            guard let best = group.members.min(by: better) else { continue }
+            if let current = group.members.first(where: { $0.id == selected }), rank(current.state) > rank(best.state) {
+                // The one in use reads worse than another of the same account.
+                kept += group.members
+            } else {
+                kept.append(group.members.first { $0.id == selected } ?? best)
+            }
+        }
+        return kept.enumerated()
+            .sorted { first, second in
+                let (a, b) = (rank(first.element.state), rank(second.element.state))
+                return a != b ? a < b : first.offset < second.offset
+            }
+            .map(\.element)
+    }
+
+    /// A sign-in just made that is the account and organization of another
+    /// that already reads: it adds nothing, and is what a browser login
+    /// leaves when it signs in as the account that was there. Only a sign-in
+    /// that reads counts — beside one that does not, the new one is the way
+    /// back in.
+    public static func duplicate(of service: String, among choices: [Choice]) -> Choice? {
+        guard let key = accountKey(choices.first { $0.id == service }?.identity) else { return nil }
+        return choices.first { $0.id != service && $0.state == .ready && accountKey($0.identity) == key }
+    }
+
     static func visibleServices(extras: [String], registered: [String], excluding: [String]) -> [String] {
         Array(Set(extras + registered)).filter { !excluding.contains($0) }.sorted()
     }
@@ -128,6 +272,7 @@ public enum ClaudeSignIns {
             if renewal == .renewed { lookup = LocalCredentials.readClaudeNow(service: service) }
         }
         var reading = Reading(id: service, plan: lookup.plan)
+        reading.state = state(of: lookup, directoryMissing: directoryMissing(service: service), now: now)
         switch lookup.state {
         case .needsAuthorization:
             reading.needsAuthorization = true

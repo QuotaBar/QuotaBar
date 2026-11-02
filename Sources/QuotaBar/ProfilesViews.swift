@@ -54,7 +54,10 @@ struct ClaudeAccountBar: View {
 
     var body: some View {
         AccountChoiceBar(
-            choices: signIns.services.map { .init(id: $0, label: signIns.pickerLabel($0, masked: store.isPrivacyMasked)) },
+            choices: signIns.options(
+                selected: store.claudeCardService,
+                failing: store.displayPhase(for: .claude)?.errorMessage != nil,
+                masked: store.isPrivacyMasked).map { .init(id: $0.id, label: $0.barLabel) },
             selected: store.claudeCardService,
             help: L10n.t("Which Claude sign-in this card reads.", "这张卡片读取哪个 Claude 登录。"),
             onSelect: { store.useClaudeSignIn($0) })

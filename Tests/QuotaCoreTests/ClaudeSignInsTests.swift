@@ -141,3 +141,105 @@ final class ClaudeProfileSwitchTests: XCTestCase {
         XCTAssertEqual(back.map(\.id), [workReading.id])
     }
 }
+
+/// What a picker says about each sign-in before anyone switches to it, and
+/// what it folds away or offers to fix.
+final class ClaudeSignInChoiceTests: XCTestCase {
+    private let now = Date(timeIntervalSince1970: 1_790_000_000)
+    private let me = ClaudeProvider.Identity(email: "me@example.com", organization: "Me", accountID: "me", organizationID: "org-me")
+    private let other = ClaudeProvider.Identity(email: "side@example.com", organization: "Side", accountID: "side", organizationID: "org-side")
+    private let team = ClaudeProvider.Identity(email: "me@example.com", organization: "Acme", accountID: "me", organizationID: "org-team")
+    private let dirA = "Claude Code-credentials-1a2b3c4d"
+    private let dirB = "Claude Code-credentials-5e6f7a8b"
+    private let dirC = "Claude Code-credentials-9c0d1e2f"
+    private let fallback = LocalCredentials.claudeService
+
+    private func choice(_ id: String, _ identity: ClaudeProvider.Identity?, _ state: ClaudeSignIns.State?) -> ClaudeSignIns.Choice {
+        ClaudeSignIns.Choice(id: id, identity: identity, state: state)
+    }
+
+    // MARK: State
+
+    func testALookupIsTold() {
+        func state(_ lookup: LocalCredentials.ClaudeLookup, missingDir: Bool = false) -> ClaudeSignIns.State {
+            ClaudeSignIns.state(of: lookup, directoryMissing: missingDir, now: now)
+        }
+        XCTAssertEqual(state(.init(state: .available, token: "t", expiresAt: now.addingTimeInterval(3_600))), .ready)
+        // No expiry recorded is not "expired".
+        XCTAssertEqual(state(.init(state: .available, token: "t")), .ready)
+        XCTAssertEqual(state(.init(state: .available, token: "t", expiresAt: now.addingTimeInterval(-1))), .expired)
+        XCTAssertEqual(state(.init(state: .signedOut, token: nil)), .signedOut)
+        XCTAssertEqual(state(.init(state: .needsAuthorization, token: nil)), .needsAuthorization)
+        XCTAssertEqual(state(.init(state: .missing, token: nil)), .missing)
+        // The folder being gone says more than whatever the item still holds.
+        XCTAssertEqual(state(.init(state: .available, token: "t"), missingDir: true), .directoryMissing)
+    }
+
+    func testOnlyWhatAPressCanFixIsOfferedAFix() {
+        XCTAssertEqual(ClaudeSignIns.repair(for: .signedOut, failing: false), .signIn)
+        XCTAssertEqual(ClaudeSignIns.repair(for: .missing, failing: false), .signIn)
+        XCTAssertEqual(ClaudeSignIns.repair(for: .needsAuthorization, failing: false), .authorize)
+        // Claude Code renews an expired one; a login is offered once that has failed.
+        XCTAssertNil(ClaudeSignIns.repair(for: .expired, failing: false))
+        XCTAssertEqual(ClaudeSignIns.repair(for: .expired, failing: true), .signIn)
+        XCTAssertNil(ClaudeSignIns.repair(for: .ready, failing: true))
+        XCTAssertNil(ClaudeSignIns.repair(for: nil, failing: true))
+        // Its folder is gone: "Add again" in Settings, not a login here.
+        XCTAssertNil(ClaudeSignIns.repair(for: .directoryMissing, failing: true))
+    }
+
+    // MARK: What a picker lists
+
+    func testThoseThatReadComeFirstAndNothingElseMoves() {
+        let list = [
+            choice(fallback, me, .signedOut),
+            choice(dirA, other, .ready),
+            choice(dirB, team, .expired),
+            choice(dirC, nil, .needsAuthorization),
+        ]
+        XCTAssertEqual(ClaudeSignIns.pickable(list, selected: dirA).map(\.id), [dirA, dirB, dirC, fallback])
+        // Not read yet counts as the best it could be, so the list holds still while it finds out.
+        let unread = [choice(fallback, me, nil), choice(dirA, other, nil)]
+        XCTAssertEqual(ClaudeSignIns.pickable(unread, selected: fallback).map(\.id), [fallback, dirA])
+    }
+
+    func testACopyOfTheSameAccountIsFoldedIntoTheOneThatReadsBest() {
+        // The browser logged in as the account already there, three times over.
+        let copies = [choice(fallback, me, .ready), choice(dirA, me, .ready), choice(dirB, me, .ready), choice(dirC, other, .ready)]
+        XCTAssertEqual(ClaudeSignIns.pickable(copies, selected: fallback).map(\.id), [fallback, dirC])
+        // The default no longer reads: the copy that does stands for the account.
+        let better = [choice(fallback, me, .signedOut), choice(dirA, me, .ready)]
+        XCTAssertEqual(ClaudeSignIns.pickable(better, selected: dirA).map(\.id), [dirA])
+        // Another organization of the same email is another account.
+        let teams = [choice(fallback, me, .ready), choice(dirA, team, .ready)]
+        XCTAssertEqual(ClaudeSignIns.pickable(teams, selected: fallback).count, 2)
+        // One whose account is not known yet is never folded into another.
+        let unknown = [choice(fallback, me, .ready), choice(dirA, nil, .ready), choice(dirB, nil, .ready)]
+        XCTAssertEqual(ClaudeSignIns.pickable(unknown, selected: fallback).count, 3)
+    }
+
+    func testTheOneInUseIsNeverFoldedAwayAndNeitherIsABetterOneBesideIt() {
+        // In use and as good as its copy: it stands for the account.
+        let same = [choice(fallback, me, .ready), choice(dirA, me, .ready)]
+        XCTAssertEqual(ClaudeSignIns.pickable(same, selected: dirA).map(\.id), [dirA])
+        // In use and worse than a copy that reads: both stay, the way out included.
+        let worse = [choice(fallback, me, .signedOut), choice(dirA, me, .ready)]
+        XCTAssertEqual(Set(ClaudeSignIns.pickable(worse, selected: fallback).map(\.id)), [fallback, dirA])
+    }
+
+    // MARK: A login that added nothing
+
+    func testALoginThatSignedInAsAnAccountAlreadyThereIsADuplicate() {
+        let list = [choice(fallback, me, .ready), choice(dirA, me, .ready), choice(dirB, other, .ready)]
+        XCTAssertEqual(ClaudeSignIns.duplicate(of: dirA, among: list)?.id, fallback)
+        XCTAssertNil(ClaudeSignIns.duplicate(of: dirB, among: list))
+        // The same email in another organization is another account.
+        XCTAssertNil(ClaudeSignIns.duplicate(of: dirA, among: [choice(fallback, team, .ready), choice(dirA, me, .ready)]))
+        // Beside one that does not read, the new login is the way back in, not a copy.
+        XCTAssertNil(ClaudeSignIns.duplicate(of: dirA, among: [choice(fallback, me, .signedOut), choice(dirA, me, .ready)]))
+        XCTAssertNil(ClaudeSignIns.duplicate(of: dirA, among: [choice(fallback, me, .expired), choice(dirA, me, .ready)]))
+        // An account that could not be told is never merged.
+        XCTAssertNil(ClaudeSignIns.duplicate(of: dirA, among: [choice(fallback, me, .ready), choice(dirA, nil, .ready)]))
+        XCTAssertNil(ClaudeSignIns.duplicate(of: "Claude Code-credentials-00000000", among: list))
+    }
+}
