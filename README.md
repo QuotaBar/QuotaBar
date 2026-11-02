@@ -50,7 +50,7 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.6.1** (2026-10-31) · **12** changes in development · [full changelog](CHANGELOG.en.md)
+Latest release **0.6.1** (2026-10-31) · **13** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
 <summary><b>2026-11-03</b> · Unreleased · 2 added · 3 fixed</summary>
@@ -69,7 +69,7 @@ Latest release **0.6.1** (2026-10-31) · **12** changes in development · [full 
 </details>
 
 <details>
-<summary><b>2026-11-02</b> · Unreleased · 4 added · 3 fixed</summary>
+<summary><b>2026-11-02</b> · Unreleased · 4 added · 4 fixed</summary>
 
 **Added**
 
@@ -83,6 +83,7 @@ Latest release **0.6.1** (2026-10-31) · **12** changes in development · [full 
 - A Claude reading from the Claude app or a browser now names its source after the address (“· Claude app”), and the account list no longer marks the default sign-in as “on the card” while the card is reading something else.
 - When Claude Code's default sign-in is signed out and the card reads the Claude app's or a browser's sign-in instead, the “Allow keychain access” button the message tells you to press now shows, on the card and in Settings. Before, the message named a button that was not there.
 - A Claude reading that fails no longer strands you on the error: the dock card lists every Claude sign-in, so one press switches to the other account and back, and the menu-bar panel's Claude card lets you pick an account when it fails too.
+- “Copy as Image” copies the card as it stands: folded, just the card; opened, everything under the arrow too — the folded limits, early resets, given credits, the account list, the usage trend, the spend and when it was updated. Before, an opened card copied only its folded limits and kept the rest on the card, so the picture still looked like the small folded one. The picture has no buttons (status page, console, switch account), and addresses — in the account list and in errors that name one — stay hidden as “Hide the account in copied images” says, shown as “Account 1”, “Account 2”. With privacy masking on, an account's error in the panel loses its address the same way. A balance provider's opened card lists every model in the picture, not the top 3.
 
 </details>
 
