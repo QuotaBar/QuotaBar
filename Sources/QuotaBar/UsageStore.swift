@@ -630,7 +630,7 @@ final class UsageStore: ObservableObject {
             let previousVisible = snapshot.xSubscription != nil ? displayPhase(for: id)?.snapshot : states[id]?.snapshot
             reported[id] = snapshot
             if Self.profileProviders.contains(id) { accountReadings[profileAccountKey(id)] = snapshot }
-            noteResetCredits(id, previous: previousReading, current: snapshot.resetCredits)
+            noteResetCredits(id, previous: previousReading, current: snapshot)
             if snapshot.balance != nil || previousReading?.balance != nil { evaluateBalanceNotices() }
             let visible = shown(snapshot, for: id)
             states[id] = .loaded(visible)

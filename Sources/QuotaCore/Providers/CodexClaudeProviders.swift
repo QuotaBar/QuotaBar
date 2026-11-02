@@ -149,6 +149,7 @@ public struct CodexProvider: QuotaProvider {
     static func apply(_ grants: [CreditGrant], to window: inout UsageWindow) {
         guard var credit = window.credit, !grants.isEmpty else { return }
         credit.expiresAt = grants.first?.expiresAt
+        credit.expiring = nil
         let given = grants.filter(\.isGiven).compactMap(\.granted).reduce(0, +)
         if given > 0, credit.caption?.hasPrefix(L10n.t("Overage", "已达")) != true {
             let count = QuotaFormat.grouped(given)
@@ -161,6 +162,7 @@ public struct CodexProvider: QuotaProvider {
                 "\(QuotaFormat.grouped(left)) of them run out first.",
                 "其中 \(QuotaFormat.grouped(left)) 点最先到期。")
             window.note = [window.note, note].compactMap { $0 }.joined(separator: " ")
+            credit.expiring = L10n.t("\(QuotaFormat.grouped(left)) credits", "\(QuotaFormat.grouped(left)) 点")
         }
         window.credit = credit
     }

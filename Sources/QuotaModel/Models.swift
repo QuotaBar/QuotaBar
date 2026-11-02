@@ -703,11 +703,15 @@ public struct CreditAmount: Sendable, Equatable, Codable {
     public var caption: String?
     /// Nil when the provider gives no deadline.
     public var expiresAt: Date?
+    /// What runs out at `expiresAt` when that is only part of `amount` —
+    /// "12,300 credits" of several grants; nil when it is all of it.
+    public var expiring: String?
 
-    public init(amount: String, caption: String? = nil, expiresAt: Date? = nil) {
+    public init(amount: String, caption: String? = nil, expiresAt: Date? = nil, expiring: String? = nil) {
         self.amount = amount
         self.caption = caption
         self.expiresAt = expiresAt
+        self.expiring = expiring
     }
 }
 

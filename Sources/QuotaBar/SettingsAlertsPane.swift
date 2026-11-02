@@ -91,13 +91,35 @@ struct AlertsPane: View {
                     onSelect: { mode in store.updateExperience { $0.resetNotify = mode } })
             }
             SettingToggle(
-                L10n.t("Early resets given", "赠送的限额重置"),
+                L10n.t("Early resets and credits given", "赠送的限额重置和额度"),
                 caption: L10n.t(
-                    "When Codex gives you an early reset, and a day before one runs out unspent.",
-                    "Codex 送你限额重置时通知；某一次还没用、离到期不到一天时再提醒一次。"),
+                    "When Codex or Claude gives you an early reset, and a day before a reset or a credit runs out unspent.",
+                    "Codex、Claude 送你限额重置时通知；送的重置或额度还没用完、离到期不到一天时再提醒一次。"),
                 isOn: Binding(
                     get: { store.experience.resetCreditNotify },
-                    set: { value in store.updateExperience { $0.resetCreditNotify = value } }))
+                    set: { value in
+                        store.updateExperience { $0.resetCreditNotify = value }
+                        store.syncResetCreditLastCalls()
+                    }))
+            if store.experience.resetCreditNotify {
+                SettingRow(
+                    L10n.t("Remind", "提前提醒"),
+                    caption: L10n.t(
+                        "The last-hour reminder is set ahead of time, so it comes on time even between readings.",
+                        "最后 1 小时的提醒会提前排好，不用等下一次读取也能准时到。"))
+                {
+                    GlassSegmented(
+                        options: [
+                            (value: false, label: L10n.t("24 hours", "24 小时")),
+                            (value: true, label: L10n.t("24 hours + last hour", "24 小时 + 最后 1 小时")),
+                        ],
+                        selection: store.experience.resetCreditLastCall,
+                        onSelect: { value in
+                            store.updateExperience { $0.resetCreditLastCall = value }
+                            store.syncResetCreditLastCalls()
+                        })
+                }
+            }
         }
 
         SettingsCard(

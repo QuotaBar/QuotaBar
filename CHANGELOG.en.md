@@ -5,6 +5,13 @@ Server moves, the website, and build or release scripts don't change the app its
 
 ## Unreleased
 
+### 2026-11-03
+
+#### Added
+
+- Early resets and credits that Codex and Claude give you stand out as they near their deadline: within 24 hours an hourglass badge sits beside the card's name (“expires in 21h”), folded or not, and a click opens the card; opened, the row turns amber, red in its last hour, and an early reset says where to spend it. The dock card shows the badge too.
+- Given credits — Codex's credits, Claude's Cloud session credit and the like — now notify a day before they run out unspent, saying how much is left and when it goes, once per credit. In Settings → Alerts → Resets the switch is now “Early resets and credits given”, with a new “Remind” choice that adds a last-hour reminder; it is set ahead of time, so it comes on time even between readings.
+
 ### 2026-11-02
 
 #### Added

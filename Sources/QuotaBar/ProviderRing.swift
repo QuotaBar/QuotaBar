@@ -199,6 +199,9 @@ struct ProviderCallout: View {
                     .help(phase?.snapshot?.chipLabel ?? "")
                 }
                 Spacer(minLength: Design.space2)
+                if let snapshot = phase?.snapshot {
+                    CreditExpiryBadge(snapshot: snapshot, compact: true)
+                }
                 if refreshing {
                     ProgressView()
                         .controlSize(.small)
@@ -347,7 +350,7 @@ struct ProviderCallout: View {
         }
         if let credits = snapshot.resetCredits, credits.isShown {
             ResetCreditsRow(store: store, credits: credits, accent: Color(hex: id.accentHex))
-            ResetCreditDeadlines(store: store, credits: credits, accent: Color(hex: id.accentHex))
+            ResetCreditDeadlines(store: store, provider: id, credits: credits, accent: Color(hex: id.accentHex))
         }
         // Which account the card reads — its own provider's accounts only —
         // and the others beside it, as under the panel card's arrow.

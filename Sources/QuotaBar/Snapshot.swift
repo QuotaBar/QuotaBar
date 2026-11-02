@@ -462,7 +462,9 @@ enum Snapshot {
         return reading
     }
 
-    private static func givenCreditsStore(withClaudeSignIns: Bool = false) -> UsageStore {
+    /// `expiring`: the same accounts a day from their deadlines — a Codex
+    /// reset and a Claude reset in 21 hours, Codex's credits in 47 minutes.
+    private static func givenCreditsStore(withClaudeSignIns: Bool = false, expiring: Bool = false) -> UsageStore {
         let codexJSON = """
         {"email":"you@example.com","plan_type":"pro",
          "rate_limit":{"allowed":true,"limit_reached":false,
@@ -489,6 +491,18 @@ enum Snapshot {
         claude.resetCredits = ResetCredits(available: 1, applicable: 0, totalEarned: 1, credits: [
             ResetCredit(id: "launch", title: "Full reset", expiresAt: Date().addingTimeInterval(21 * 86_400)),
         ])
+        if expiring {
+            codex.resetCredits = ResetCredits(available: 3, applicable: 0, totalEarned: 3, credits: [
+                ResetCredit(id: "soon", title: "Full reset", expiresAt: Date().addingTimeInterval(21 * 3600 + 600)),
+                ResetCredit(id: "later", title: "Full reset", expiresAt: Date().addingTimeInterval(18 * 86_400 + 60)),
+                ResetCredit(id: "last", title: "Full reset", expiresAt: Date().addingTimeInterval(25 * 86_400 + 60)),
+            ])
+            if let index = codex.windows.firstIndex(where: { $0.credit != nil }) {
+                codex.windows[index].credit?.caption = L10n.t("Given 62,500 credits", "赠送 62,500 点")
+                codex.windows[index].credit?.expiresAt = Date().addingTimeInterval(47 * 60 + 30)
+            }
+            claude.resetCredits?.credits = [ResetCredit(id: "launch", title: "Full reset", expiresAt: Date().addingTimeInterval(21 * 3600 + 600))]
+        }
         let store = UsageStore.preview(enabled: [.codex, .claude], states: [.codex: .loaded(codex), .claude: .loaded(claude)])
         if withClaudeSignIns { seedClaudeSignIns(store) }
         return store
@@ -594,6 +608,27 @@ enum Snapshot {
                         backing: Color(white: 0.06))
                 }
             }
+            // The same a day from their deadlines: the badge with the card
+            // folded, the marked rows opened.
+            for expanded in [false, true] {
+                for id in [ProviderID.codex, .claude] {
+                    let store = givenCreditsStore(expiring: true)
+                    store.experience.expandedCards = expanded ? [id.rawValue] : []
+                    render(
+                        ProviderCardView(store: store, id: id)
+                            .frame(width: 340)
+                            .padding(12)
+                            .background(Color(white: 0.06))
+                            .environment(\.colorScheme, .dark),
+                        to: url, name: "panel-card-expiring-\(id.rawValue)-\(expanded ? "open" : "folded")-\(suffix)",
+                        backing: Color(white: 0.06))
+                }
+            }
+            render(
+                ProviderCallout(store: givenCreditsStore(expiring: true), id: .codex, detail: true)
+                    .padding(20)
+                    .environment(\.colorScheme, .dark),
+                to: url, name: "dock-card-expiring-codex-\(suffix)", backing: Color(hex: "3A4A5A"))
             // Claude Code's other config dirs' sign-ins under the arrow (#8).
             let organizations = givenCreditsStore(withClaudeSignIns: true)
             organizations.experience.expandedCards = [ProviderID.claude.rawValue]

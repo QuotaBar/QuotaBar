@@ -300,8 +300,10 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
     /// Whether a reset also raises a system notification.
     public var resetNotify: ResetNotifyMode = .afterHeavyUse
     /// A notification when a provider gives the account an early reset, and
-    /// a day before one runs out unspent.
+    /// a day before one — or a credit balance — runs out unspent.
     public var resetCreditNotify: Bool = true
+    /// A second reminder in the last hour before such a deadline.
+    public var resetCreditLastCall: Bool = false
     /// The run-out reminders already sent, by `ResetCreditNotice.key`.
     public var resetCreditNotified: [String] = []
     /// Providers hidden per surface, by raw value: still enabled, still read,
@@ -379,7 +381,7 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
         case reduceMotion, islandGlow, islandSweepAlways, islandAutoPeek, islandOpensOnHover, islandChart, widgetSortsByUrgency
         case deskCards, deskCardsMigrated
         case hideWhenSharing, hotkey, paceAlerts, localAPI, iCloudSync, proxy, betaUpdates
-        case resetEffects, resetNotify, resetCreditNotify, resetCreditNotified, hiddenProviders, cardWindows, cardWindowsKnown, hiddenWindows
+        case resetEffects, resetNotify, resetCreditNotify, resetCreditLastCall, resetCreditNotified, hiddenProviders, cardWindows, cardWindowsKnown, hiddenWindows
         case placeWindows, placeWindowsSeeded
         case spendBudget, budgetNotified, balanceFloor, balanceFloorNotified, balanceChart, weeklyDigest, weeklyDigestSent
         case shareSignature, shareShowsSignature, shareMasksAccount
@@ -426,6 +428,7 @@ public struct ExperiencePrefs: Codable, Equatable, Sendable {
         resetEffects = value(.resetEffects, d.resetEffects)
         resetNotify = choice(.resetNotify, d.resetNotify)
         resetCreditNotify = value(.resetCreditNotify, d.resetCreditNotify)
+        resetCreditLastCall = value(.resetCreditLastCall, d.resetCreditLastCall)
         resetCreditNotified = value(.resetCreditNotified, d.resetCreditNotified)
         hiddenProviders = value(.hiddenProviders, d.hiddenProviders)
         cardWindows = value(.cardWindows, d.cardWindows)

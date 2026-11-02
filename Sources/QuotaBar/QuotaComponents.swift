@@ -128,6 +128,16 @@ enum Palette {
         case .critical: red
         }
     }
+
+    /// Amber within a day of a given reset or credit running out, red in its
+    /// last hour; nil while it is further off.
+    static func expiry(_ urgency: CreditUrgency) -> Color? {
+        switch urgency {
+        case .none: nil
+        case .day: amber
+        case .lastHour: red
+        }
+    }
 }
 
 // MARK: - Quota row

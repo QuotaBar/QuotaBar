@@ -113,23 +113,26 @@ extension UsageStore {
 // MARK: - Resets the account is given
 
 extension UsageStore {
-    /// A reset given since the reading before, and a reset about to run out
-    /// unspent — Codex and Claude hand them out every so often and each lasts
-    /// about a month. A reminder is remembered even while notifications are off, so
-    /// turning them on does not bring back a day of old ones.
-    func noteResetCredits(_ id: ProviderID, previous: UsageSnapshot?, current: ResetCredits?) {
+    /// A reset given since the reading before, and a reset or a credit about
+    /// to run out unspent — Codex and Claude hand resets out every so often
+    /// and each lasts about a month. A reminder is remembered even while
+    /// notifications are off, so turning them on does not bring back a day of
+    /// old ones.
+    func noteResetCredits(_ id: ProviderID, previous: UsageSnapshot?, current snapshot: UsageSnapshot) {
         let notices = ResetCreditCheck.notices(
-            provider: id, previous: previous, current: current, notified: experience.resetCreditNotified)
-        guard !notices.isEmpty else { return }
+            provider: id, previous: previous, current: snapshot.resetCredits,
+            credits: snapshot.windows.filter { $0.credit != nil }, account: snapshot.account,
+            notified: experience.resetCreditNotified)
         let reminders = notices.compactMap { notice -> String? in
-            if case .expiring = notice.kind { return notice.key }
-            return nil
+            if case .given = notice.kind { return nil }
+            return notice.key
         }
         if !reminders.isEmpty {
             updateExperience { $0.resetCreditNotified = Array(($0.resetCreditNotified + reminders).suffix(24)) }
         }
-        guard experience.resetCreditNotify, notificationsReady, notificationsAvailable, !isPrivacyMasked else { return }
-        for notice in notices { post(notice, credits: current) }
+        scheduleLastCalls(id, snapshot)
+        guard !notices.isEmpty, experience.resetCreditNotify, notificationsReady, notificationsAvailable, !isPrivacyMasked else { return }
+        for notice in notices { post(notice, credits: snapshot.resetCredits) }
     }
 
     private func post(_ notice: ResetCreditNotice, credits: ResetCredits?) {
@@ -149,17 +152,78 @@ extension UsageStore {
             content.body = body
         case let .expiring(credit):
             content.title = L10n.t("An early reset is about to expire", "限额重置快过期了")
-            let name = credit.title ?? L10n.t("An early reset", "一次限额重置")
-            let howTo = notice.provider == .claude
-                ? L10n.t("Use it with /limit-reset in Claude Code.", "可以在 Claude Code 里用 /limit-reset 兑换。")
-                : L10n.t("Use it with /usage in the Codex CLI.", "可以在 Codex CLI 里用 /usage 兑换。")
-            content.body = L10n.t(
-                "\(name) \(QuotaFormat.creditExpiry(credit, format: .countdown)), unspent. \(howTo)",
-                "\(name) \(QuotaFormat.creditExpiry(credit, format: .countdown))，还没用。\(howTo)")
+            content.body = Self.resetReminder(credit, provider: notice.provider, when: QuotaFormat.creditExpiry(credit, format: .countdown))
+        case let .creditExpiring(name, credit):
+            content.title = L10n.t("A credit is about to expire", "额度快过期了")
+            content.body = Self.creditReminder(
+                name, credit, when: QuotaFormat.creditExpiry(ResetCredit(expiresAt: credit.expiresAt), format: .countdown))
         }
         content.threadIdentifier = "bar.quota.reset-credit"
         UNUserNotificationCenter.current().add(UNNotificationRequest(
             identifier: "bar.quota.reset-credit.\(notice.key)", content: content, trigger: nil))
+    }
+
+    private static func resetReminder(_ credit: ResetCredit, provider: ProviderID, when: String) -> String {
+        let name = credit.title ?? L10n.t("An early reset", "一次限额重置")
+        let howTo = ResetCreditCheck.spendHint(for: provider).map { L10n.t(" \($0)", $0) } ?? ""
+        return L10n.t("\(name) \(when), unspent.", "\(name) \(when)，还没用。") + howTo
+    }
+
+    /// "Credits: 12,300 credits left, expires in 23h 4m — what is unused is lost."
+    private static func creditReminder(_ name: String, _ credit: CreditAmount, when: String) -> String {
+        if let part = credit.expiring {
+            return L10n.t(
+                "\(name): \(part) of \(credit.amount) \(when) — what is unused is lost.",
+                "\(name)中有 \(part)\(when)，过期作废。")
+        }
+        return L10n.t(
+            "\(name): \(credit.amount) left, \(when) — what is unused is lost.",
+            "\(name)还剩 \(credit.amount)，\(when)，过期作废。")
+    }
+
+    /// Hands the system this reading's last calls, an hour before each
+    /// deadline within the day, and takes back the ones it set for this
+    /// account that the reading no longer lists — spent, or switched off.
+    private func scheduleLastCalls(_ id: ProviderID, _ snapshot: UsageSnapshot) {
+        guard notificationsAvailable else { return }
+        let center = UNUserNotificationCenter.current()
+        let prefix = "bar.quota.reset-credit." + ResetCreditCheck.lastCallPrefix(provider: id, account: snapshot.account)
+        let wanted = experience.resetCreditNotify && experience.resetCreditLastCall && notificationsReady
+            ? ResetCreditCheck.lastCalls(provider: id, snapshot: snapshot) : []
+        if !isPrivacyMasked {
+            for call in wanted { center.add(lastCallRequest(call, provider: id)) }
+        }
+        let keep = Set(wanted.map { "bar.quota.reset-credit.\($0.key)" })
+        Task {
+            let stale = await center.pendingNotificationRequests().map(\.identifier)
+                .filter { $0.hasPrefix(prefix) && !keep.contains($0) }
+            if !stale.isEmpty { center.removePendingNotificationRequests(withIdentifiers: stale) }
+        }
+    }
+
+    private func lastCallRequest(_ call: ResetCreditLastCall, provider: ProviderID) -> UNNotificationRequest {
+        let content = UNMutableNotificationContent()
+        content.subtitle = provider.displayName
+        let when = L10n.t("expires in an hour", "1 小时后到期")
+        switch call.deadline.item {
+        case let .reset(credit):
+            content.title = L10n.t("An early reset expires in an hour", "限额重置还有 1 小时过期")
+            content.body = Self.resetReminder(credit, provider: provider, when: when)
+        case let .credit(name, credit):
+            content.title = L10n.t("A credit expires in an hour", "额度还有 1 小时过期")
+            content.body = Self.creditReminder(name, credit, when: when)
+        }
+        content.threadIdentifier = "bar.quota.reset-credit"
+        let parts = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: call.fireAt)
+        return UNNotificationRequest(
+            identifier: "bar.quota.reset-credit.\(call.key)", content: content,
+            trigger: UNCalendarNotificationTrigger(dateMatching: parts, repeats: false))
+    }
+
+    /// After the switches change: the last calls follow them at once rather
+    /// than at each provider's next reading.
+    func syncResetCreditLastCalls() {
+        for (id, snapshot) in reported { scheduleLastCalls(id, snapshot) }
     }
 
     /// The row's help: each given reset with what it resets and when it runs

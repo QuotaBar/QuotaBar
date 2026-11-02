@@ -68,6 +68,13 @@ struct ProviderCardView: View {
                     } ?? "")
                 }
                 Spacer(minLength: 6)
+                // What runs out under the arrow shows with the card folded.
+                if !forExport, let snapshot {
+                    CreditExpiryBadge(snapshot: snapshot) {
+                        guard !expanded else { return }
+                        withAnimation(Motion.animation(Motion.spring)) { store.toggleCardExpanded(id) }
+                    }
+                }
                 if let status = store.serviceStatus[id] {
                     if status.level.isHealthy {
                         Circle()
@@ -270,7 +277,7 @@ struct ProviderCardView: View {
                 }
                 .contentShape(Rectangle())
                 .help(store.resetCreditHelp(credits))
-                ResetCreditDeadlines(store: store, credits: credits, accent: Color(hex: id.accentHex))
+                ResetCreditDeadlines(store: store, provider: id, credits: credits, accent: Color(hex: id.accentHex))
             }
             ForEach(credits(snapshot)) { window in
                 BalanceCreditRow(store: store, window: window, accent: Color(hex: id.accentHex))

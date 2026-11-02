@@ -45,6 +45,25 @@ final class GivenCreditsTests: XCTestCase {
         XCTAssertEqual(window.credit?.caption, L10n.t("Given 62,500 credits", "赠送 62,500 点"))
     }
 
+    /// Of several grants only the soonest runs out at the row's deadline,
+    /// so the reminder says how much of the balance that is.
+    func testSeveralGrantsSayWhatRunsOutFirst() throws {
+        let body = """
+        {"balance":"62500","expiring_balance_details":[
+          {"amount_granted":"50000","amount_remaining":"50000","expiry_date":"2027-01-01T00:00:00Z","grant_type":"promotional_credit"},
+          {"amount_granted":"20000","amount_remaining":"12500","expiry_date":"2026-10-20T00:00:00Z","grant_type":"promotional_credit"}]}
+        """
+        let grants = try XCTUnwrap(CodexProvider.creditGrants(Data(body.utf8), now: now))
+        var window = UsageWindow(title: "Credits")
+        window.credit = CreditAmount(amount: "62,500 credits")
+        CodexProvider.apply(grants, to: &window)
+        XCTAssertEqual(window.credit?.expiresAt, ISO8601DateFormatter().date(from: "2026-10-20T00:00:00Z"))
+        XCTAssertEqual(window.credit?.expiring, L10n.t("12,500 credits", "12,500 点"))
+
+        CodexProvider.apply(Array(grants.prefix(1)), to: &window)
+        XCTAssertNil(window.credit?.expiring, "one grant: all of it runs out together")
+    }
+
     func testSpentAndPassedGrantsAreDropped() throws {
         let body = """
         {"balance":"10","expiring_balance_details":[

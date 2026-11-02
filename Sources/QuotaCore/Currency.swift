@@ -155,6 +155,17 @@ extension QuotaFormat {
         }
     }
 
+    /// A deadline within the day, short enough for the card's badge: "expires
+    /// in 21h", "47 分钟后到期". Whole hours, minutes in the last one.
+    public static func shortExpiry(_ date: Date, now: Date = .now) -> String {
+        let left = Int(max(date.timeIntervalSince(now), 0))
+        if left >= 3600 {
+            return L10n.t("expires in \(left / 3600)h", "\(left / 3600) 小时后到期")
+        }
+        let minutes = max(left / 60, 1)
+        return L10n.t("expires in \(minutes)m", "\(minutes) 分钟后到期")
+    }
+
     /// The given resets one per line, for the row's help: what each resets,
     /// as the provider titles it, and when it runs out.
     public static func creditLines(
