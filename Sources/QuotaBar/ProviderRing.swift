@@ -237,12 +237,22 @@ struct ProviderCallout: View {
                     if let account {
                         // A Claude reading from the Claude app or a browser
                         // says so: it can be another account than the default.
-                        let source = id == .claude ? phase?.snapshot?.sourceLabel.map { " · \($0)" } ?? "" : ""
-                        Text(account + source)
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.40))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+                        // The source stays whole and the address gives way,
+                        // or one string truncated in the middle eats the dot.
+                        let source = id == .claude ? phase?.snapshot?.sourceLabel : nil
+                        HStack(spacing: 0) {
+                            Text(account)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            if let source {
+                                Text(" · \(source)")
+                                    .lineLimit(1)
+                                    .fixedSize()
+                                    .layoutPriority(1)
+                            }
+                        }
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.40))
                     }
                     Spacer(minLength: 0)
                     if let status {
