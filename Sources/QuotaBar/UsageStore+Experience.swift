@@ -68,6 +68,12 @@ extension UsageStore {
         }
     }
 
+    /// Whether an address is left off what is drawn: always in privacy mode,
+    /// and in a copied image when Settings → General says so.
+    func hidesAccount(forExport: Bool) -> Bool {
+        isPrivacyMasked || (forExport && experience.shareMasksAccount)
+    }
+
     // MARK: Figures
 
     /// A token count in the chosen counting.

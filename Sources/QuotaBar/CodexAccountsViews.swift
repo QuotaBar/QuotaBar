@@ -10,6 +10,9 @@ struct CodexAccountsSection: View {
     @ObservedObject var store: UsageStore
     @ObservedObject var accounts: CodexAccountsModel
     var compact = false
+    /// Drawn into a copied image: no switch buttons, and the addresses left
+    /// out when Settings says so.
+    var forExport = false
 
     var body: some View {
         // One account is already the address under the card's name.
@@ -25,7 +28,7 @@ struct CodexAccountsSection: View {
                     row(account, active: false)
                 }
             }
-            .task { await accounts.reload() }
+            .task { if !forExport { await accounts.reload() } }
         }
     }
 
@@ -43,7 +46,7 @@ struct CodexAccountsSection: View {
                 Circle()
                     .fill(active ? Color(hex: ProviderID.codex.accentHex) : .white.opacity(0.2))
                     .frame(width: 6, height: 6)
-                Text(accounts.label(account, masked: store.isPrivacyMasked))
+                Text(accounts.label(account, masked: store.hidesAccount(forExport: forExport)))
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(.white.opacity(active ? 0.9 : 0.7))
                     .lineLimit(1)
@@ -64,7 +67,7 @@ struct CodexAccountsSection: View {
                     Text(L10n.t("In use", "使用中"))
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(Color(hex: ProviderID.codex.accentHex))
-                } else {
+                } else if !forExport {
                     Pressable(action: { store.switchCodexAccount(account.id) }) {
                         Text(L10n.t("Switch", "切换"))
                             .font(.system(size: 10, weight: .semibold))
@@ -84,7 +87,7 @@ struct CodexAccountsSection: View {
                     if let window = reading?.snapshot?.headlineWindow, let used = window.usedPercent {
                         Text(figure(window, used: used))
                     } else if let error = reading?.error {
-                        Text(error).foregroundStyle(Palette.amber)
+                        Text(hiding(error, of: account)).foregroundStyle(Palette.amber)
                     } else {
                         Text(L10n.t("Reading…", "读取中…"))
                     }
@@ -95,6 +98,12 @@ struct CodexAccountsSection: View {
                 .padding(.leading, 12)
             }
         }
+    }
+
+    /// A failure that names the address, with it taken out where it is not drawn.
+    private func hiding(_ message: String, of account: CodexAccount) -> String {
+        guard store.hidesAccount(forExport: forExport), let email = account.email, !email.isEmpty else { return message }
+        return message.replacingOccurrences(of: email, with: accounts.label(account, masked: true))
     }
 
     /// "Weekly · 64% left · resets in 3d 2h", in the reading's own terms.

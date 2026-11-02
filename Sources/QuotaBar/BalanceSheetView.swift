@@ -259,7 +259,7 @@ struct BalanceSheetView: View {
 
     @ViewBuilder
     private var modelRows: some View {
-        let shown = expanded && !forExport ? models : Array(models.prefix(Self.upFront))
+        let shown = expanded ? models : Array(models.prefix(Self.upFront))
         if models.isEmpty {
             empty
         }

@@ -13,13 +13,15 @@ struct ProviderCardView: View {
     @ObservedObject var store: UsageStore
     let id: ProviderID
     /// The static version rendered into a PNG: no hover, no caret, no buttons.
+    /// It copies the card as it stands — folded, just the card; opened, all
+    /// that is under the caret too.
     var forExport = false
 
     @State private var refreshing = false
 
     private var phase: ProviderPhase? { store.displayPhase(for: id) }
     private var snapshot: UsageSnapshot? { phase?.snapshot }
-    private var expanded: Bool { !forExport && store.isCardExpanded(id) }
+    private var expanded: Bool { store.isCardExpanded(id) }
     private var compact: Bool { store.experience.panelDensity == .compact }
 
     var body: some View {
@@ -178,14 +180,6 @@ struct ProviderCardView: View {
                 ForEach(primary(snapshot)) { window in
                     QuotaRowView(store: store, id: id, window: window, compact: compact, allowsPick: !forExport)
                 }
-                // The copy shows the limits the card is showing: opened to
-                // its folded windows, it copies those too, and leaves the
-                // trend, the spend and the links on the card.
-                if forExport, store.isCardExpanded(id) {
-                    ForEach(rest(snapshot)) { window in
-                        QuotaRowView(store: store, id: id, window: window, compact: compact, allowsPick: false)
-                    }
-                }
                 if hasMore(snapshot) && !forExport {
                     caret
                 }
@@ -253,7 +247,7 @@ struct ProviderCardView: View {
     private func more(_ snapshot: UsageSnapshot) -> some View {
         VStack(alignment: .leading, spacing: compact ? 6 : 9) {
             ForEach(rest(snapshot)) { window in
-                QuotaRowView(store: store, id: id, window: window, compact: compact)
+                QuotaRowView(store: store, id: id, window: window, compact: compact, allowsPick: !forExport)
             }
             if let credits = snapshot.resetCredits, credits.isShown {
                 HStack(spacing: 6) {
@@ -283,10 +277,10 @@ struct ProviderCardView: View {
                 BalanceCreditRow(store: store, window: window, accent: Color(hex: id.accentHex))
             }
             if id == .codex {
-                CodexAccountsSection(store: store, accounts: store.codexAccounts, compact: compact)
+                CodexAccountsSection(store: store, accounts: store.codexAccounts, compact: compact, forExport: forExport)
             }
             if id == .claude {
-                ClaudeSignInsSection(store: store, signIns: store.claudeSignIns, compact: compact)
+                ClaudeSignInsSection(store: store, signIns: store.claudeSignIns, compact: compact, forExport: forExport)
             }
             if let source = id.costSource {
                 trend(source)
@@ -344,11 +338,14 @@ struct ProviderCardView: View {
 
     private func links(_ snapshot: UsageSnapshot) -> some View {
         HStack(spacing: 8) {
-            if let page = StatusPages.page(for: id) {
-                linkButton(L10n.t("Status", "状态页"), "waveform.path.ecg", page)
-            }
-            if let console = store.dashboardURL(for: id) {
-                linkButton(L10n.t("Console", "控制台"), "arrow.up.right", console)
+            // Buttons to nowhere in a picture: only the age stays.
+            if !forExport {
+                if let page = StatusPages.page(for: id) {
+                    linkButton(L10n.t("Status", "状态页"), "waveform.path.ecg", page)
+                }
+                if let console = store.dashboardURL(for: id) {
+                    linkButton(L10n.t("Console", "控制台"), "arrow.up.right", console)
+                }
             }
             Spacer()
             Text(L10n.t("Updated \(QuotaFormat.age(of: snapshot.fetchedAt))", "更新于 \(QuotaFormat.age(of: snapshot.fetchedAt))"))

@@ -442,12 +442,19 @@ enum Snapshot {
             planName: "Pro", account: "app-user@example.com",
             windows: [UsageWindow(title: WindowTitle.forSeconds(18_000), usedPercent: 31,
                                   resetsAt: Date().addingTimeInterval(7_000), windowSeconds: 18_000)],
-            source: "Claude app")
+            source: L10n.t("Claude app", "Claude 桌面应用"))
         let store = UsageStore.preview(enabled: [.claude], states: [.claude: .loaded(snapshot)], claudeCredential: .signedOut)
         store.claudeSignIns.seedForPreview(
             card: ClaudeProvider.Identity(email: "you@example.com", accountID: "you", organizationID: "org-you"),
             others: [claudeSignInPreview("Claude Code-credentials-9f8e7d6c", email: "side@example.com", account: "side", state: .ready)],
             cardState: .signedOut)
+        // The status badge shares the line with the address and the source,
+        // which is what makes it tight enough to truncate.
+        store.serviceStatus[.claude] = ServiceStatus(
+            level: .operational,
+            description: "",
+            pageURL: URL(string: "https://status.anthropic.com")!,
+            checkedAt: Date())
         return store
     }
 
@@ -640,6 +647,24 @@ enum Snapshot {
                     .environment(\.colorScheme, .dark),
                 to: url, name: "panel-card-claude-organizations-\(suffix)",
                 backing: Color(white: 0.06))
+            // The same cards copied as an image: folded, the card alone;
+            // opened, all that is under the arrow too, addresses left out.
+            let copied: [(String, () -> UsageStore)] = [
+                ("accounts", { makeStore(selected: nil) }),
+                ("given", { givenCreditsStore(withClaudeSignIns: true) }),
+            ]
+            for expanded in [false, true] {
+                for id in [ProviderID.codex, .claude] {
+                    for (kind, make) in copied {
+                        let store = make()
+                        store.experience.expandedCards = expanded ? [id.rawValue] : []
+                        render(
+                            ShareableCard(store: store) { ProviderCardView(store: store, id: id, forExport: true) },
+                            to: url, name: "copy-card-\(kind)-\(id.rawValue)-\(expanded ? "open" : "folded")-\(suffix)",
+                            backing: .black)
+                    }
+                }
+            }
             // The dock's full card with profiles to switch between (#8). Set
             // on the store directly: `updateExperience` would save them.
             let profiled = givenCreditsStore(withClaudeSignIns: true)

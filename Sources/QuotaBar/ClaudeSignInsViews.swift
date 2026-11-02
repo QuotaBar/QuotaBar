@@ -10,8 +10,11 @@ struct ClaudeSignInsSection: View {
     @ObservedObject var store: UsageStore
     @ObservedObject var signIns: ClaudeSignInsModel
     var compact = false
+    /// Drawn into a copied image: the addresses left out when Settings says so.
+    var forExport = false
 
     private var accent: Color { Color(hex: ProviderID.claude.accentHex) }
+    private var masked: Bool { store.hidesAccount(forExport: forExport) }
 
     var body: some View {
         if !signIns.others.isEmpty {
@@ -33,7 +36,7 @@ struct ClaudeSignInsSection: View {
         // Read from the Claude app or a browser, the card is not on the
         // default sign-in at all: say whose it is, and where from.
         let web = snapshot?.sourceLabel.flatMap { source in
-            store.isPrivacyMasked ? nil : snapshot?.account.map { "\($0) · \(source)" }
+            masked ? nil : snapshot?.account.map { "\($0) · \(source)" }
         }
         return VStack(alignment: .leading, spacing: 2) {
             header(identity, service: store.claudeCardService, plan: snapshot?.planName, number: 1, onCard: true, title: web)
@@ -50,7 +53,8 @@ struct ClaudeSignInsSection: View {
                     Text(windows.map(figure).joined(separator: "  ·  "))
                 }
                 if let error = reading.error {
-                    Text(error).foregroundStyle(reading.discardsCachedReading ? Color.white.opacity(0.5) : Palette.amber)
+                    Text(hiding(error, of: reading, number: number))
+                        .foregroundStyle(reading.discardsCachedReading ? Color.white.opacity(0.5) : Palette.amber)
                 } else if windows.isEmpty {
                     Text(L10n.t("Reading…", "读取中…"))
                 }
@@ -63,12 +67,18 @@ struct ClaudeSignInsSection: View {
         .help(reading.id)
     }
 
+    /// A failure that names the address, with it taken out where it is not drawn.
+    private func hiding(_ message: String, of reading: ClaudeSignIns.Reading, number: Int) -> String {
+        guard masked, let email = reading.identity?.email, !email.isEmpty else { return message }
+        return message.replacingOccurrences(of: email, with: signIns.label(reading.identity, number: number, masked: true))
+    }
+
     private func header(_ identity: ClaudeProvider.Identity?, service: String, plan: String?, number: Int, onCard: Bool, title: String? = nil) -> some View {
         HStack(spacing: 6) {
             Circle()
                 .fill(onCard ? accent : .white.opacity(0.2))
                 .frame(width: 6, height: 6)
-            Text(title ?? (identity?.email == nil ? signIns.label(identity, number: number, masked: store.isPrivacyMasked) : signIns.pickerLabel(service, masked: store.isPrivacyMasked)))
+            Text(title ?? (identity?.email == nil ? signIns.label(identity, number: number, masked: masked) : signIns.pickerLabel(service, masked: masked)))
                 .font(.system(size: 11))
                 .foregroundStyle(.white.opacity(onCard ? 0.9 : 0.7))
                 .lineLimit(1)
