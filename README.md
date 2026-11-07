@@ -50,9 +50,19 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.6.1** (2026-10-31) · **13** changes in development · [full changelog](CHANGELOG.en.md)
+Latest release **0.6.1** (2026-10-31) · **15** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-11-07</b> · Unreleased · 2 added</summary>
+
+**Added**
+
+- The Claude card shows the API credit your plan includes (Max's $200 a month, say): what is left, what is used and the day it runs out (UTC). The credit lives in the Claude Console, and QuotaBar reads it read-only, without a dialog, from a browser's platform.claude.com sign-in — Chrome, Edge, Brave, Arc, Firefox or Safari. Settings → Providers → Claude has a new “API credit” row saying where a sign-in was found; when one needs it, “Allow keychain access” asks macOS once.
+- The Codex card shows the OpenAI API credit a ChatGPT Pro plan includes ($500 a month on Pro 500): the allowance, the API organization it goes to and the day this period's runs out, or a reminder to claim it at platform.openai.com. Read with Codex's own sign-in, nothing to set up. For what is left, add an OpenAI API key under Settings → Providers → Codex → “API credit key” (kept in the keychain), or let QuotaBar use one already on the Mac (OPENAI_ADMIN_KEY / OPENAI_API_KEY, ~/.codex/auth.json, exports in shell start-up files): a key that reads billing shows the exact balance, an organization Admin key (sk-admin-…) estimates it from this period's API spend, marked “about”.
+
+</details>
+
+<details>
 <summary><b>2026-11-03</b> · Unreleased · 2 added · 3 fixed</summary>
 
 **Added**
@@ -84,17 +94,6 @@ Latest release **0.6.1** (2026-10-31) · **13** changes in development · [full 
 - When Claude Code's default sign-in is signed out and the card reads the Claude app's or a browser's sign-in instead, the “Allow keychain access” button the message tells you to press now shows, on the card and in Settings. Before, the message named a button that was not there.
 - A Claude reading that fails no longer strands you on the error: the dock card lists every Claude sign-in, so one press switches to the other account and back, and the menu-bar panel's Claude card lets you pick an account when it fails too.
 - “Copy as Image” copies the card as it stands: folded, just the card; opened, everything under the arrow too — the folded limits, early resets, given credits, the account list, the usage trend, the spend and when it was updated. Before, an opened card copied only its folded limits and kept the rest on the card, so the picture still looked like the small folded one. The picture has no buttons (status page, console, switch account), and addresses — in the account list and in errors that name one — stay hidden as “Hide the account in copied images” says, shown as “Account 1”, “Account 2”. With privacy masking on, an account's error in the panel loses its address the same way. A balance provider's opened card lists every model in the picture, not the top 3.
-
-</details>
-
-<details>
-<summary><b>2026-10-31</b> · 0.6.1 · 3 changed</summary>
-
-**Changed**
-
-- Claude's plans are renamed: Max 5x shows as Max and Max 20x as Ultra, at the same price. Readings Quota Run kept under the old names count with the Max and Ultra boards, so no result is lost.
-- A verified Ultra account has no 5-hour limit, so its card shows the week and Fable only, with no empty 5-hour bar; a menu bar ring that followed the 5-hour limit follows the fullest limit instead. Max and accounts not yet verified still have the 5-hour limit and show it as before.
-- The MiniMax card shows an email address or no account at all: an account with no address bound, such as one made with a phone number, no longer shows its nickname.
 
 </details>
 

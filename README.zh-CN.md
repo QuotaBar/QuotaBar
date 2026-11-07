@@ -49,9 +49,19 @@ Gatekeeper 可以直接打开。
 <!-- changelog:start -->
 <!-- 由 Scripts/sync_changelog.py 从 CHANGELOG.md 生成，请勿手改。 -->
 
-最新版本 **0.6.1**（2026-10-31） · 开发中 **13** 项改动尚未发布 · [完整更新日志](CHANGELOG.md)
+最新版本 **0.6.1**（2026-10-31） · 开发中 **15** 项改动尚未发布 · [完整更新日志](CHANGELOG.md)
 
 <details open>
+<summary><b>2026-11-07</b> · 未发布 · 新增 2</summary>
+
+**新增**
+
+- Claude 卡片显示订阅附送的 API 额度（例如 Max 每月送的 $200）：剩多少、已用多少、哪天到期（UTC）。额度在 Claude Console 里，QuotaBar 从浏览器里 platform.claude.com 的登录读取，只读、不弹窗；在 Chrome、Edge、Brave、Arc、Firefox 或 Safari 里登录过 platform.claude.com 就能看到。设置 → 服务商 → Claude 新增「API 赠送额度」一行，写明在哪些浏览器找到了登录；需要授权时点「授权钥匙串访问」，macOS 只询问一次。
+- Codex 卡片显示 ChatGPT Pro 附送的 OpenAI API 额度（Pro 500 每月 $500）：每月额度、绑定的 API 组织和本期到期日；还没领取时提示去 platform.openai.com 领取。用 Codex 现有的登录读取，不需要额外设置。想看剩余多少，在设置 → 服务商 → Codex 的「API 额度 Key」里填一个 OpenAI API Key（存在钥匙串里），或者让 QuotaBar 自动使用本机已有的（环境变量 OPENAI_ADMIN_KEY / OPENAI_API_KEY、~/.codex/auth.json、shell 配置文件里的 export）：能读账单的 Key 显示准确余额，组织的 Admin Key（sk-admin-…）按本期 API 花费估算，卡片上标「约」。
+
+</details>
+
+<details>
 <summary><b>2026-11-03</b> · 未发布 · 新增 2 · 修复 3</summary>
 
 **新增**
@@ -83,17 +93,6 @@ Gatekeeper 可以直接打开。
 - Claude Code 的默认登录已退出、卡片改读 Claude 桌面应用或浏览器里的登录时，提示里让你点的「授权钥匙串访问」按钮现在会出现，卡片和设置里都有；之前提示写着点它，按钮却不显示。
 - Claude 读取失败时不再卡死在错误提示上：Dock 圆环的详情卡会列出所有 Claude 登录，一点就能切到另一个账号再切回来；菜单栏面板的 Claude 卡片失败时也能直接选账号。
 - 「复制为图片」按卡片当前的样子复制：卡片收起时只复制卡片本身，展开时把展开的内容一起复制——折叠的额度行、限额重置次数、赠送额度、账号列表、用量趋势、花费和更新时间。之前展开后复制只多带折叠的额度行，其余都留在卡片上，复制出来看起来还是收起的小卡片。图片里不放按钮（状态页、控制台、切换账号），账号地址和报错里的地址按「复制图片时遮挡账号」照常遮挡，显示为「账号 1」「账号 2」这样的名字；开启隐私遮挡时，面板里账号报错中的地址也会同样换掉。余额型服务商展开后，图片里列出全部模型而不是前 3 个。
-
-</details>
-
-<details>
-<summary><b>2026-10-31</b> · 0.6.1 · 调整 3</summary>
-
-**调整**
-
-- Claude 套餐改名：Max 5x 显示为 Max，Max 20x 显示为 Ultra，价格不变。Quota Run 里用旧名字记下的读数归入 Max 和 Ultra 的榜，原来的成绩不丢。
-- 已验证的 Ultra 账号没有 5 小时限制，卡片只显示每周额度和 Fable，不再出现没有数据的 5 小时条；原来让菜单栏圆环跟着 5 小时的，改为跟着最满的额度。Max 和尚未验证的账号仍有 5 小时限制，照常显示。
-- MiniMax 卡片只显示邮箱：没有绑定邮箱的账号（比如用手机号注册的）不再显示昵称，卡片上不显示账号。
 
 </details>
 
