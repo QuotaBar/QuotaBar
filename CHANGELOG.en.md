@@ -5,6 +5,13 @@ Server moves, the website, and build or release scripts don't change the app its
 
 ## Unreleased
 
+### 2026-11-07
+
+#### Added
+
+- The Claude card shows the API credit your plan includes (Max's $200 a month, say): what is left, what is used and the day it runs out (UTC). The credit lives in the Claude Console, and QuotaBar reads it read-only, without a dialog, from a browser's platform.claude.com sign-in — Chrome, Edge, Brave, Arc, Firefox or Safari. Settings → Providers → Claude has a new “API credit” row saying where a sign-in was found; when one needs it, “Allow keychain access” asks macOS once.
+- The Codex card shows the OpenAI API credit a ChatGPT Pro plan includes ($500 a month on Pro 500): the allowance, the API organization it goes to and the day this period's runs out, or a reminder to claim it at platform.openai.com. Read with Codex's own sign-in, nothing to set up. For what is left, add an OpenAI API key under Settings → Providers → Codex → “API credit key” (kept in the keychain), or let QuotaBar use one already on the Mac (OPENAI_ADMIN_KEY / OPENAI_API_KEY, ~/.codex/auth.json, exports in shell start-up files): a key that reads billing shows the exact balance, an organization Admin key (sk-admin-…) estimates it from this period's API spend, marked “about”.
+
 ### 2026-11-03
 
 #### Added

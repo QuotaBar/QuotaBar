@@ -36,6 +36,11 @@ final class UsageStore: ObservableObject {
     /// Not Claude Code's item at all, which is why `claudeNeedsAuthorization`
     /// stays false while the card tells the owner to press the button.
     @Published private(set) var claudeWebNeedsAuthorization = false
+    /// The browser's platform.claude.com sign-in, for the plan's API credit,
+    /// is sealed with a key not read yet. Optional, so only Settings asks.
+    @Published private(set) var claudeConsoleNeedsAuthorization = false
+    /// The browsers signed in to platform.claude.com.
+    @Published private(set) var claudeConsoleSources: [String] = []
 
     /// The keychain button is due for this provider: Claude Code's item, or
     /// the key to Grok Bot's sign-in.
@@ -718,7 +723,7 @@ final class UsageStore: ObservableObject {
     /// Re-evaluates which providers have usable credentials.
     func refreshConfigured() {
         Task { [config] in
-            let (ready, local, sources, claude, claudeOthers, claudeWeb, grokBot, qoder, cursor) = await Task.detached(priority: .utility) {
+            let (ready, local, sources, claude, claudeOthers, claudeWeb, console, grokBot, qoder, cursor) = await Task.detached(priority: .utility) {
                 let ready = Set(ProviderID.allCases.filter {
                     ProviderRegistry.make($0).isConfigured(config: config)
                 })
@@ -733,10 +738,11 @@ final class UsageStore: ObservableObject {
                 let claude = LocalCredentials.claudeCredentialState()
                 let claudeOthers = LocalCredentials.claudeExtrasNeedAuthorization()
                 let claudeWeb = ClaudeProvider.webNeedsAuthorization(config: config)
+                let console = (names: ClaudeConsoleCredits.detectedNames, sealed: ClaudeConsoleCredits.needsAuthorization())
                 let grokBot = GrokBot.sessionState()
                 let qoder = QoderApp.sessionState()
                 let cursor = LocalCredentials.cursorSessionState()
-                return (ready, local, sources, claude, claudeOthers, claudeWeb, grokBot, qoder, cursor)
+                return (ready, local, sources, claude, claudeOthers, claudeWeb, console, grokBot, qoder, cursor)
             }.value
             self.configured = ready
             self.signedInLocally = local
@@ -744,6 +750,8 @@ final class UsageStore: ObservableObject {
             self.claudeCredential = claude
             self.claudeOthersNeedAuthorization = claudeOthers
             self.claudeWebNeedsAuthorization = claudeWeb
+            if self.claudeConsoleSources != console.names { self.claudeConsoleSources = console.names }
+            self.claudeConsoleNeedsAuthorization = console.sealed
             self.grokBotCredential = grokBot
             self.qoderCredential = qoder
             self.cursorCredential = cursor
@@ -763,6 +771,16 @@ final class UsageStore: ObservableObject {
 
     /// Raises the keychain dialog for Claude Code's item — the only place the
     /// app ever does — then reads again. Wire it to a button, nothing else.
+    /// The keychain dialog for the browser's Console sign-in, then a fresh
+    /// Claude reading to show the credit.
+    func authorizeClaudeConsole() {
+        Task {
+            _ = await Task.detached(priority: .userInitiated) { ClaudeConsoleCredits.authorize() }.value
+            refresh(.claude)
+            refreshConfigured()
+        }
+    }
+
     func authorizeClaude() {
         Task {
             _ = await LocalCredentials.authorizeClaudeAccessAsync()

@@ -164,7 +164,7 @@ final class GivenCreditsTests: XCTestCase {
      "seven_day":{"utilization":6.0,"resets_at":"2026-10-04T21:00:00+00:00","limit_dollars":null,
                   "used_dollars":null,"remaining_dollars":null,"locked_reason":null},
      "seven_day_opus":null,"cinder_cove":null,"cedar_ember":null,
-     "iguana_necktie":{"utilization":10.0,"resets_at":"2026-11-05T07:59:00+00:00","limit_dollars":250,
+     "iguana_necktie":{"utilization":10.0,"resets_at":"2027-11-05T07:59:00+00:00","limit_dollars":250,
                        "used_dollars":25.0,"remaining_dollars":225.0,"locked_reason":null},
      "extra_usage":{"is_enabled":false,"monthly_limit":null,"used_credits":null,"utilization":null},
      "limits":[{"kind":"weekly_all","group":"weekly","percent":6,"severity":"normal",
@@ -177,7 +177,7 @@ final class GivenCreditsTests: XCTestCase {
         let credit = try XCTUnwrap(snapshot.windows.first { $0.title == "Cloud session credit" })
         XCTAssertEqual(credit.usedPercent, 10)
         XCTAssertEqual(credit.credit?.amount, "$225.00")
-        XCTAssertEqual(credit.credit?.expiresAt, ISO8601DateFormatter().date(from: "2026-11-05T07:59:00Z"))
+        XCTAssertEqual(credit.credit?.expiresAt, ISO8601DateFormatter().date(from: "2027-11-05T07:59:00Z"))
         XCTAssertFalse(snapshot.upFrontWindows(for: .claude).contains { $0.id == credit.id })
         XCTAssertTrue(try XCTUnwrap(credit.detail).hasPrefix("$25.00 / $250.00"))
         XCTAssertNil(credit.resetsAt, "it runs out rather than resets")

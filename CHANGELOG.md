@@ -5,6 +5,13 @@
 
 ## 未发布
 
+### 2026-11-07
+
+#### 新增
+
+- Claude 卡片显示订阅附送的 API 额度（例如 Max 每月送的 $200）：剩多少、已用多少、哪天到期（UTC）。额度在 Claude Console 里，QuotaBar 从浏览器里 platform.claude.com 的登录读取，只读、不弹窗；在 Chrome、Edge、Brave、Arc、Firefox 或 Safari 里登录过 platform.claude.com 就能看到。设置 → 服务商 → Claude 新增「API 赠送额度」一行，写明在哪些浏览器找到了登录；需要授权时点「授权钥匙串访问」，macOS 只询问一次。
+- Codex 卡片显示 ChatGPT Pro 附送的 OpenAI API 额度（Pro 500 每月 $500）：每月额度、绑定的 API 组织和本期到期日；还没领取时提示去 platform.openai.com 领取。用 Codex 现有的登录读取，不需要额外设置。想看剩余多少，在设置 → 服务商 → Codex 的「API 额度 Key」里填一个 OpenAI API Key（存在钥匙串里），或者让 QuotaBar 自动使用本机已有的（环境变量 OPENAI_ADMIN_KEY / OPENAI_API_KEY、~/.codex/auth.json、shell 配置文件里的 export）：能读账单的 Key 显示准确余额，组织的 Admin Key（sk-admin-…）按本期 API 花费估算，卡片上标「约」。
+
 ### 2026-11-03
 
 #### 新增

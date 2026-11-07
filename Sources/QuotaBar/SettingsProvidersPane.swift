@@ -266,6 +266,8 @@ struct ProviderSettingsRow: View {
         ConfigStore.shared.invalidateCredentialCache()
         LocalCredentials.invalidateClaudeToken()
         ClaudeWebSession.invalidate()
+        ClaudeConsoleCredits.invalidate()
+        CodexAPICredits.invalidateKeys()
         let provider = ProviderRegistry.make(id)
         Task {
             do {
@@ -337,6 +339,23 @@ private struct CredentialEditor: View {
             "Automatic reads Claude Code's sign-in, else the Claude app's or a browser's. \(found)",
             "自动：先读 Claude Code 的登录，没有就读 Claude 桌面应用或浏览器里的登录。\(found)")
     }
+    /// Where the plan's API credit is read from, said as found.
+    private var claudeConsoleCaption: String {
+        let names = store.claudeConsoleSources
+        let what = L10n.t(
+            "The API credit a Claude plan includes is kept in the Claude Console; QuotaBar reads it with a browser's platform.claude.com sign-in.",
+            "Claude 订阅附送的 API 额度在 Claude Console 里，QuotaBar 用浏览器里 platform.claude.com 的登录读取。")
+        if names.isEmpty {
+            return what + " " + L10n.t(
+                "None found: sign in at platform.claude.com in Chrome, Edge, Brave, Arc, Firefox or Safari.",
+                "没有找到：在 Chrome、Edge、Brave、Arc、Firefox 或 Safari 里登录 platform.claude.com。")
+        }
+        let found = L10n.t("Found in \(names.joined(separator: ", ")).", "已找到：\(names.joined(separator: "、"))。")
+        return what + " " + found + (store.claudeConsoleNeedsAuthorization
+            ? " " + L10n.t("macOS asks once before it may be read.", "读取前 macOS 会询问一次。")
+            : "")
+    }
+
     /// Saving, clearing, authorising, signing in — what is left for a line of
     /// its own once the test and the console moved into the header.
     private var hasActions: Bool {
@@ -405,6 +424,14 @@ private struct CredentialEditor: View {
                 SettingRow(L10n.t("Accounts", "账号")) {
                     CodexAccountsSettings(store: store, accounts: store.codexAccounts)
                 }
+                SettingRow(
+                    L10n.t("API credit key", "API 额度 Key"),
+                    caption: L10n.t(
+                        "ChatGPT Pro includes OpenAI API credit each month. An OpenAI API key shows what is left of it: an Admin key (sk-admin-…) at least estimates it.",
+                        "ChatGPT Pro 每月附送 OpenAI API 额度。填一个 OpenAI API Key 可以显示剩余；Admin Key（sk-admin-…）至少能估算。"))
+                {
+                    CodexAPIKeySettings(store: store)
+                }
             }
 
             if id == .claude {
@@ -416,6 +443,20 @@ private struct CredentialEditor: View {
                 }
                 SettingRow(L10n.t("Accounts", "账号")) {
                     ClaudeSignInsSettings(store: store, signIns: store.claudeSignIns)
+                }
+                SettingRow(L10n.t("API credit", "API 赠送额度"), caption: claudeConsoleCaption) {
+                    HStack(spacing: Design.space2) {
+                        if store.claudeConsoleNeedsAuthorization {
+                            Button(L10n.t("Allow keychain access", "授权钥匙串访问")) { store.authorizeClaudeConsole() }
+                                .glassAction(prominent: true)
+                        } else {
+                            Button(L10n.t("Open the Console", "打开 Console")) {
+                                NSWorkspace.shared.open(URL(string: "https://platform.claude.com/settings/billing")!)
+                            }
+                            .glassAction()
+                        }
+                        Spacer(minLength: 0)
+                    }
                 }
             }
 

@@ -36,6 +36,24 @@ public enum ClaudeWebSession {
         let jar: Jar
     }
 
+    /// Whose sign-in a jar is searched for: claude.ai's, or the Claude
+    /// Console's at platform.claude.com, which keeps a `sessionKey` of its
+    /// own (`ClaudeConsoleCredits`).
+    struct Site: Sendable, Hashable {
+        /// Matched against a cookie's domain, with or without a leading dot.
+        let host: String
+        /// The Claude app is signed in to claude.ai only.
+        let inApp: Bool
+
+        static let claude = Site(host: "claude.ai", inApp: true)
+        static let console = Site(host: "platform.claude.com", inApp: false)
+
+        /// The SQL condition on a Chromium (`host_key`) or Firefox (`host`) row.
+        func matches(_ column: String) -> String {
+            "(\(column) = '\(host)' or \(column) like '%.\(host)')"
+        }
+    }
+
     private static var support: String { NSHomeDirectory() + "/Library/Application Support" }
 
     /// Browsers on Chromium, as the folder under Application Support and the
@@ -51,22 +69,27 @@ public enum ClaudeWebSession {
 
     /// Every jar on this Mac that holds a claude.ai `sessionKey`, the Claude
     /// app first. Memoized for a minute: it looks at files and databases.
-    static func sources() -> [Source] {
-        if let cached = sourcesMemo.cached() { return cached }
-        let found = scan()
-        sourcesMemo.store(found)
+    static func sources(_ site: Site = .claude) -> [Source] {
+        if let cached = sourcesMemo.cached(site) { return cached }
+        let found = scan(site)
+        sourcesMemo.store(found, site)
         return found
     }
 
     /// Drops the memo; the "test" button asks the files, not a minute-old answer.
-    public static func invalidate() { sourcesMemo.store(nil) }
+    public static func invalidate() {
+        sourcesMemo.store(nil, .claude)
+        sourcesMemo.store(nil, .console)
+    }
 
     public static var exists: Bool { !sources().isEmpty }
 
     /// "Claude app, Chrome", for Settings.
-    public static var detectedNames: [String] {
+    public static var detectedNames: [String] { detectedNames(.claude) }
+
+    static func detectedNames(_ site: Site) -> [String] {
         var seen: [String] = []
-        for source in sources() where !seen.contains(source.name) { seen.append(source.name) }
+        for source in sources(site) where !seen.contains(source.name) { seen.append(source.name) }
         return seen
     }
 
@@ -74,21 +97,20 @@ public enum ClaudeWebSession {
 
     final class SourcesMemo: @unchecked Sendable {
         private let lock = NSLock()
-        private var value: [Source]?
-        private var at = Date.distantPast
-        func cached() -> [Source]? {
-            lock.withLock { Date().timeIntervalSince(at) < 60 ? value : nil }
+        private var values: [Site: (sources: [Source], at: Date)] = [:]
+        func cached(_ site: Site) -> [Source]? {
+            lock.withLock { values[site].flatMap { Date().timeIntervalSince($0.at) < 60 ? $0.sources : nil } }
         }
-        func store(_ sources: [Source]?) {
-            lock.withLock { value = sources; at = sources == nil ? .distantPast : Date() }
+        func store(_ sources: [Source]?, _ site: Site) {
+            lock.withLock { values[site] = sources.map { ($0, Date()) } }
         }
     }
 
-    private static func scan() -> [Source] {
+    private static func scan(_ site: Site) -> [Source] {
         var out: [Source] = []
         let fm = FileManager.default
         let app = support + "/Claude/Cookies"
-        if hasSession(.chromium(path: app, service: "Claude Safe Storage")) {
+        if site.inApp, hasSession(.chromium(path: app, service: "Claude Safe Storage"), site) {
             out.append(Source(name: L10n.t("Claude app", "Claude 桌面应用"), jar: .chromium(path: app, service: "Claude Safe Storage")))
         }
         for browser in chromiumBrowsers {
@@ -99,7 +121,7 @@ public enum ClaudeWebSession {
                 for file in ["/Network/Cookies", "/Cookies"] {
                     let path = "\(base)/\(profile)\(file)"
                     let jar = Jar.chromium(path: path, service: browser.service)
-                    if fm.fileExists(atPath: path), hasSession(jar) {
+                    if fm.fileExists(atPath: path), hasSession(jar, site) {
                         out.append(Source(name: browser.name, jar: jar))
                         break
                     }
@@ -109,29 +131,29 @@ public enum ClaudeWebSession {
         let firefox = support + "/Firefox/Profiles"
         for profile in ((try? fm.contentsOfDirectory(atPath: firefox)) ?? []).sorted() {
             let jar = Jar.firefox(path: "\(firefox)/\(profile)/cookies.sqlite")
-            if hasSession(jar) { out.append(Source(name: "Firefox", jar: jar)) }
+            if hasSession(jar, site) { out.append(Source(name: "Firefox", jar: jar)) }
         }
         for path in [NSHomeDirectory() + "/Library/Cookies/Cookies.binarycookies",
                      NSHomeDirectory() + "/Library/Containers/com.apple.Safari/Data/Library/Cookies/Cookies.binarycookies"] {
             let jar = Jar.safari(path: path)
-            if hasSession(jar) { out.append(Source(name: "Safari", jar: jar)); break }
+            if hasSession(jar, site) { out.append(Source(name: "Safari", jar: jar)); break }
         }
         return out
     }
 
     /// Whether a jar holds the cookie, which needs no key.
-    private static func hasSession(_ jar: Jar) -> Bool {
+    private static func hasSession(_ jar: Jar, _ site: Site) -> Bool {
         switch jar {
         case let .chromium(path, _):
             return !withCopy(of: path) {
-                SQLiteRead.rows(inFile: $0, query: "select 1 from cookies where host_key like '%claude.ai' and name = 'sessionKey' limit 1", immutable: false)
+                SQLiteRead.rows(inFile: $0, query: "select 1 from cookies where \(site.matches("host_key")) and name = 'sessionKey' limit 1", immutable: false)
             }.isEmpty
         case let .firefox(path):
             return !withCopy(of: path) {
-                SQLiteRead.rows(inFile: $0, query: "select 1 from moz_cookies where host like '%claude.ai' and name = 'sessionKey' limit 1", immutable: false)
+                SQLiteRead.rows(inFile: $0, query: "select 1 from moz_cookies where \(site.matches("host")) and name = 'sessionKey' limit 1", immutable: false)
             }.isEmpty
         case let .safari(path):
-            return safariCookies(at: path)["sessionKey"] != nil
+            return safariCookies(at: path, host: site.host)["sessionKey"] != nil
         }
     }
 
@@ -169,20 +191,20 @@ public enum ClaudeWebSession {
 
     /// The jar's claude.ai cookies, opened. `interactive` lets macOS ask for
     /// the key; a refresh never does.
-    static func read(_ source: Source, interactive: Bool) -> Lookup {
+    static func read(_ source: Source, interactive: Bool, site: Site = .claude) -> Lookup {
         let names = wanted.map { "'\($0)'" }.joined(separator: ",")
         var cookies: [String: String] = [:]
         switch source.jar {
         case let .firefox(path):
             let rows = withCopy(of: path) {
-                SQLiteRead.rows(inFile: $0, query: "select name, value from moz_cookies where host like '%claude.ai' and name in (\(names))", immutable: false)
+                SQLiteRead.rows(inFile: $0, query: "select name, value from moz_cookies where \(site.matches("host")) and name in (\(names))", immutable: false)
             }
             for row in rows { if let name = row[0], let value = row[1] { cookies[name] = value } }
         case let .safari(path):
-            cookies = safariCookies(at: path).filter { wanted.contains($0.key) }
+            cookies = safariCookies(at: path, host: site.host).filter { wanted.contains($0.key) }
         case let .chromium(path, service):
             let rows = withCopy(of: path) {
-                SQLiteRead.rows(inFile: $0, query: "select name, hex(encrypted_value) from cookies where host_key like '%claude.ai' and name in (\(names))", immutable: false)
+                SQLiteRead.rows(inFile: $0, query: "select name, hex(encrypted_value) from cookies where \(site.matches("host_key")) and name in (\(names))", immutable: false)
             }
             guard !rows.isEmpty else { return .missing }
             let version = withCopy(of: path) {
@@ -303,11 +325,13 @@ public enum ClaudeWebSession {
     /// The keychain button's read, dialog allowed, for every sealed jar that
     /// holds a sign-in.
     @discardableResult
-    public static func authorize() -> Bool {
+    public static func authorize() -> Bool { authorize(.claude) }
+
+    static func authorize(_ site: Site) -> Bool {
         invalidate()
         var any = false
-        for source in sources() {
-            if case .session = read(source, interactive: true) { any = true }
+        for source in sources(site) {
+            if case .session = read(source, interactive: true, site: site) { any = true }
         }
         return any
     }
@@ -315,8 +339,10 @@ public enum ClaudeWebSession {
     /// Whether the keychain button is what the web sign-in waits on: every
     /// sign-in found is sealed with a key macOS has not let this app read, and
     /// at least one was refused. Quiet, like a refresh — it never asks.
-    public static func needsAuthorization() -> Bool {
-        needsAuthorization(sources()) { service in
+    public static func needsAuthorization() -> Bool { needsAuthorization(.claude) }
+
+    static func needsAuthorization(_ site: Site) -> Bool {
+        needsAuthorization(sources(site)) { service in
             keys.key(service: service, interactive: false, read: { readPassword(service: service, interactive: $0) })
         }
     }
@@ -384,9 +410,9 @@ public enum ClaudeWebSession {
     /// Safari's `Cookies.binarycookies`: "cook", a big-endian page count and
     /// page sizes, then pages of little-endian cookie records. Reading it needs
     /// Full Disk Access, and without it the file is simply not readable.
-    static func safariCookies(at path: String) -> [String: String] {
+    static func safariCookies(at path: String, host: String = "claude.ai") -> [String: String] {
         guard let file = FileManager.default.contents(atPath: path) else { return [:] }
-        return parseBinaryCookies(file)
+        return parseBinaryCookies(file, host: host)
     }
 
     static func parseBinaryCookies(_ file: Data, host: String = "claude.ai") -> [String: String] {

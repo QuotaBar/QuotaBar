@@ -22,12 +22,16 @@ public struct CodexProvider: QuotaProvider {
         guard let auth = LocalCredentials.codexAuth() else {
             throw ProviderError.notConfigured(hint: ProviderID.codex.setupHint)
         }
-        return try await Self.usage(accessToken: auth.accessToken, accountID: auth.accountId)
+        return try await Self.usage(
+            accessToken: auth.accessToken, accountID: auth.accountId,
+            apiKeys: CodexAPICredits.keys(saved: config.openAIKey))
     }
 
     /// One account's limits, read with that account's own token: the one the
     /// CLI is signed in as, or one QuotaBar keeps (`CodexAccountVault`).
-    public static func usage(accessToken: String, accountID: String?) async throws -> UsageSnapshot {
+    /// `apiKeys`: OpenAI API keys that read what is left of the plan's API
+    /// credit, for the CLI's own account only.
+    public static func usage(accessToken: String, accountID: String?, apiKeys: [CodexAPICredits.APIKey] = []) async throws -> UsageSnapshot {
         let auth = LocalCredentials.CodexAuth(accessToken: accessToken, accountId: accountID)
         var headers = [
             "Authorization": "Bearer \(auth.accessToken)",
@@ -37,6 +41,9 @@ public struct CodexProvider: QuotaProvider {
         if let accountId = auth.accountId {
             headers["ChatGPT-Account-Id"] = accountId
         }
+        // The plan's API credit, beside the reading and in parallel with it.
+        let sent = headers
+        async let apiCredit = apiCreditWindow(account: auth.accountId, headers: sent, keys: apiKeys)
         let url = URL(string: "https://chatgpt.com/backend-api/wham/usage")!
         let response = try await HTTP.get(url, headers: headers).requireOK()
         var snapshot = try parse(response.data, fallbackAccount: auth.accountId)
@@ -77,7 +84,13 @@ public struct CodexProvider: QuotaProvider {
             }
             if let grants { apply(grants, to: &snapshot.windows[index]) }
         }
+        if let window = await apiCredit { snapshot.windows.append(window) }
         return snapshot
+    }
+
+    private static func apiCreditWindow(account: String?, headers: [String: String], keys: [CodexAPICredits.APIKey]) async -> UsageWindow? {
+        guard let account else { return nil }
+        return await CodexAPICredits.window(account: account, headers: headers, keys: keys)
     }
 
     static let creditGrants = CreditGrantCache()
@@ -557,6 +570,15 @@ public struct ClaudeProvider: QuotaProvider {
         if service != LocalCredentials.claudeService {
             return try await Self.fetchSignIn(service: service)
         }
+        // The plan's API credit is the browser's Console sign-in's to read,
+        // so only the card's own sign-in shows it, not another profile's.
+        async let console = ClaudeConsoleCredits.windows()
+        var snapshot = try await fetchOwn(config: config)
+        snapshot.windows.append(contentsOf: await console)
+        return snapshot
+    }
+
+    private func fetchOwn(config: ConfigStore) async throws -> UsageSnapshot {
         if Self.usesWeb(config) { return try await ClaudeWebSession.fetch() }
         // Run out after eight hours away from Claude Code: have it renew.
         var renewal: ClaudeCodeRenewal.Outcome?

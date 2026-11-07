@@ -531,6 +531,43 @@ public final class ConfigStore: @unchecked Sendable {
         return true
     }
 
+    // MARK: The OpenAI API key for Codex's API credit
+
+    /// The keychain item that holds it, apart from the providers' own.
+    public static let openAIKeyAccount = "codex-openai-api-key"
+
+    private var openAIKeyCache: String??
+
+    /// An OpenAI API key typed in Settings › Codex, for what is left of the
+    /// plan's API credit. Read once, then from memory.
+    public var openAIKey: String? {
+        lock.lock()
+        if let cached = openAIKeyCache { lock.unlock(); return cached }
+        lock.unlock()
+        let read = credentials.read(account: Self.openAIKeyAccount)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = read?.isEmpty == false ? read : nil
+        lock.lock()
+        openAIKeyCache = .some(value)
+        lock.unlock()
+        return value
+    }
+
+    @discardableResult
+    public func setOpenAIKey(_ value: String?) -> Bool {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let saved = trimmed.isEmpty
+            ? credentials.delete(account: Self.openAIKeyAccount)
+            : credentials.write(trimmed, account: Self.openAIKeyAccount)
+        lastCredentialError = saved ? nil : (trimmed.isEmpty
+            ? L10n.t("Could not remove the key from the keychain.", "无法从钥匙串中删除这个 Key。")
+            : L10n.t("Could not save the key to the keychain.", "无法将这个 Key 写入钥匙串。"))
+        guard saved else { return false }
+        lock.lock()
+        openAIKeyCache = .some(trimmed.isEmpty ? nil : trimmed)
+        lock.unlock()
+        return true
+    }
+
     /// Keychain accounts of providers since removed: `moonshot`, the Kimi open
     /// platform's API key. Deleted at launch — nothing reads them any more,
     /// and a secret nothing uses should not stay behind. Deleting what is not
@@ -546,6 +583,7 @@ public final class ConfigStore: @unchecked Sendable {
         lock.lock()
         credentialCacheGeneration &+= 1
         credentialCache.removeAll()
+        openAIKeyCache = nil
         lock.unlock()
     }
 
