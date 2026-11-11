@@ -737,6 +737,6 @@ private struct DeskClassic: View {
         DesktopWidgetView(
             store: store,
             density: card.size == .small ? .compact : (card.size == .medium ? .standard : .detailed),
-            providers: store.deskProviders(card))
+            providers: store.deskProviders(card), vertical: card.vertical)
     }
 }

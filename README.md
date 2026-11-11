@@ -50,9 +50,18 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.6.1** (2026-10-31) · [full changelog](CHANGELOG.en.md)
+Latest release **0.6.1** (2026-10-31) · **1** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
+<summary><b>2026-11-10</b> · Unreleased · 1 added</summary>
+
+**Added**
+
+- Classic Small and Medium desktop widgets can use a compact vertical column. Orientation is saved per card; existing cards remain horizontal.
+
+</details>
+
+<details>
 <summary><b>2026-10-31</b> · 0.6.1 · 3 changed</summary>
 
 **Changed**
@@ -76,16 +85,6 @@ Latest release **0.6.1** (2026-10-31) · [full changelog](CHANGELOG.en.md)
 **Fixed**
 
 - A pasted MiniMax API key read no quota at all: the reply is now read by the fields MiniMax actually sends, and calls left are no longer shown as calls used.
-
-</details>
-
-<details>
-<summary><b>2026-10-29</b> · 0.6.0 · 2 fixed</summary>
-
-**Fixed**
-
-- With Antigravity closed, the card no longer lists a dozen internal models and repeated model names. It shows the app's own two groups, Gemini and Claude and GPT, each with its 5-hour and weekly limit, Gemini first, and the menu bar no longer leads with Claude.
-- With Antigravity closed, weekly limits are read too, so a half-spent Gemini week no longer shows as 0%. The plan chip shows the subscription, such as Google AI Pro, instead of ANTIGRAVITY.
 
 </details>
 
@@ -334,6 +333,14 @@ QuotaBar builds on these open-source projects and this typeface. Thank you.
 QuotaBar is an independent third-party app. It is not affiliated with, endorsed by, or
 sponsored by Anthropic, OpenAI, Cursor, Google, xAI, GitHub, X or any other company it
 mentions. Their names and logos belong to their respective owners.
+
+### Vertical Classic desktop widgets
+
+Right-click a Classic desktop card in Small or Medium size and choose
+**Orientation → Vertical**. The setting is saved per card; existing cards stay
+horizontal. Vertical cards center their rings in a compact column (62 points of
+content plus 28 points of padding), with the update time below the title.
+Horizontal and Large/detailed layouts retain their existing presentation.
 
 ## License
 

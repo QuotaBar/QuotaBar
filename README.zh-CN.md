@@ -49,9 +49,18 @@ Gatekeeper 可以直接打开。
 <!-- changelog:start -->
 <!-- 由 Scripts/sync_changelog.py 从 CHANGELOG.md 生成，请勿手改。 -->
 
-最新版本 **0.6.1**（2026-10-31） · [完整更新日志](CHANGELOG.md)
+最新版本 **0.6.1**（2026-10-31） · 开发中 **1** 项改动尚未发布 · [完整更新日志](CHANGELOG.md)
 
 <details open>
+<summary><b>2026-11-10</b> · 未发布 · 新增 1</summary>
+
+**新增**
+
+- 经典桌面小组件的小号和中号支持紧凑竖向排列。方向按卡片保存，已有卡片仍保持横向。
+
+</details>
+
+<details>
 <summary><b>2026-10-31</b> · 0.6.1 · 调整 3</summary>
 
 **调整**
@@ -75,16 +84,6 @@ Gatekeeper 可以直接打开。
 **修复**
 
 - MiniMax 粘贴 API Key 后读不出额度：改为按接口实际返回的字段解析，剩余次数不再被当成已用次数显示。
-
-</details>
-
-<details>
-<summary><b>2026-10-29</b> · 0.6.0 · 修复 2</summary>
-
-**修复**
-
-- Antigravity 关闭后，卡片不再列出十几行内部模型和重复的模型名，改为和应用内一致的 Gemini、Claude and GPT 两组，各显示 5 小时和每周额度，Gemini 在前；菜单栏不再先显示 Claude。
-- Antigravity 关闭时也能读到每周额度，用了一半的 Gemini 周额度不再显示为 0%；套餐标签显示订阅名（如 Google AI Pro），不再显示 ANTIGRAVITY。
 
 </details>
 
@@ -309,6 +308,10 @@ QuotaBar 参考或使用了以下开源项目和字体，在此致谢。
 
 QuotaBar 是独立的第三方应用，与 Anthropic、OpenAI、Cursor、Google、xAI、GitHub、X
 以及文中提及的其他公司均无隶属、认可或赞助关系。相关名称和标志归各自所有者所有。
+
+### 竖向经典桌面小组件
+
+右键单击小号或中号经典桌面卡片，选择 **方向 → 竖向**。设置按卡片保存，已有卡片仍保持横向。竖向卡片将圆环居中排列为紧凑的一列（内容宽 62 点，内边距共 28 点），更新时间显示在标题下方。横向和大号详细布局保持不变。
 
 ## 许可
 

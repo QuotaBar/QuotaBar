@@ -161,6 +161,16 @@ struct DeskCardMenu: View {
                     set: { if $0 { store.updateDeskCard(card.id) { $0.size = size } } }))
             }
         }
+        if card.style == .classic && card.size != .large {
+            Menu(L10n.t("Orientation", "方向")) {
+                Toggle(L10n.t("Horizontal", "横向"), isOn: Binding(
+                    get: { !card.vertical },
+                    set: { if $0 { store.updateDeskCard(card.id) { $0.vertical = false } } }))
+                Toggle(L10n.t("Vertical", "纵向"), isOn: Binding(
+                    get: { card.vertical },
+                    set: { if $0 { store.updateDeskCard(card.id) { $0.vertical = true } } }))
+            }
+        }
         if card.style.readsLogs {
             Menu(L10n.t("Counts", "统计来源")) {
                 Toggle(L10n.t("Every CLI", "全部"), isOn: Binding(
@@ -202,15 +212,19 @@ struct DesktopWidgetView: View {
     @ObservedObject var store: UsageStore
     var density: WidgetDensity
     var providerList: [ProviderID]
+    var vertical: Bool
 
-    init(store: UsageStore, density: WidgetDensity, providers: [ProviderID]) {
+    init(store: UsageStore, density: WidgetDensity, providers: [ProviderID], vertical: Bool = false) {
         self.store = store
         self.density = density
         self.providerList = providers
+        self.vertical = vertical
     }
 
+    private var narrowVertical: Bool { vertical && density != .detailed }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: Design.space3) {
+        VStack(alignment: narrowVertical ? .center : .leading, spacing: Design.space3) {
             header
             if providerList.isEmpty {
                 Text(L10n.t("No providers enabled.", "尚未启用任何服务商。"))
@@ -220,6 +234,7 @@ struct DesktopWidgetView: View {
                 content
             }
         }
+        .frame(width: narrowVertical ? 62 : nil)
         .padding(Design.space4 - 2)
         .background(
             RoundedRectangle(cornerRadius: Design.radiusPanel + 4, style: .continuous)
@@ -233,11 +248,11 @@ struct DesktopWidgetView: View {
     }
 
     private var header: some View {
-        HStack(spacing: Design.space2) {
+        (narrowVertical ? AnyLayout(VStackLayout(spacing: 4)) : AnyLayout(HStackLayout(spacing: Design.space2))) {
             Text("QuotaBar")
                 .font(Design.wordmark(size: 11))
                 .foregroundStyle(.white.opacity(0.65))
-            Spacer(minLength: Design.space3)
+            if !narrowVertical { Spacer(minLength: Design.space3) }
             if let updated = latestFetch {
                 Text(QuotaFormat.age(of: updated))
                     .font(.system(size: 10))
@@ -254,7 +269,7 @@ struct DesktopWidgetView: View {
     private var content: some View {
         switch density {
         case .compact:
-            HStack(spacing: Design.space3) {
+            (vertical ? AnyLayout(VStackLayout(spacing: Design.space3)) : AnyLayout(HStackLayout(spacing: Design.space3))) {
                 ForEach(providers) { id in
                     ProviderRing(
                         id: id,
@@ -265,7 +280,7 @@ struct DesktopWidgetView: View {
                 }
             }
         case .standard:
-            HStack(alignment: .top, spacing: Design.space4 - 2) {
+            (vertical ? AnyLayout(VStackLayout(alignment: .center, spacing: Design.space4 - 2)) : AnyLayout(HStackLayout(alignment: .top, spacing: Design.space4 - 2))) {
                 ForEach(providers) { id in
                     VStack(spacing: 3) {
                         ProviderRing(

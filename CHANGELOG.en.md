@@ -3,6 +3,14 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
+## Unreleased
+
+### 2026-11-10
+
+#### Added
+
+- Classic Small and Medium desktop widgets can use a compact vertical column. Orientation is saved per card; existing cards remain horizontal.
+
 ## 0.6.1 · 2026-10-31
 
 ### 2026-10-31
