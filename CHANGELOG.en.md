@@ -5,11 +5,38 @@ Server moves, the website, and build or release scripts don't change the app its
 
 ## Unreleased
 
-### 2026-10-29
+### 2026-11-10
 
 #### Added
 
 - Classic Small and Medium desktop widgets can use a compact vertical column. Orientation is saved per card; existing cards remain horizontal.
+
+## 0.6.1 · 2026-10-31
+
+### 2026-10-31
+
+#### Changed
+
+- Claude's plans are renamed: Max 5x shows as Max and Max 20x as Ultra, at the same price. Readings Quota Run kept under the old names count with the Max and Ultra boards, so no result is lost.
+- A verified Ultra account has no 5-hour limit, so its card shows the week and Fable only, with no empty 5-hour bar; a menu bar ring that followed the 5-hour limit follows the fullest limit instead. Max and accounts not yet verified still have the 5-hour limit and show it as before.
+- The MiniMax card shows an email address or no account at all: an account with no address bound, such as one made with a phone number, no longer shows its nickname.
+
+## 0.6.0 · 2026-10-30
+
+### 2026-10-30
+
+#### Added
+
+- z.ai is read automatically when ZCode is signed in on this Mac, with no API key to paste and no need to open ZCode. The card shows the plan, such as Lite, and usage to a fraction of a percent from the actual counts.
+- MiniMax is read automatically when MiniMax Code is signed in, Global or China edition, with the plan's name, such as Go, and the account — its name, for an account without an address. Its sign-in lasts an hour; while QuotaBar runs it renews and saves the sign-in the way MiniMax Code does, so readings stay current with MiniMax Code closed.
+- Antigravity is read with the app closed, for as long as its sign-in lasts: once the token it saved runs out after an hour, QuotaBar renews one of its own from the saved refresh token and keeps it in memory only, leaving Antigravity's sign-in untouched and signed in. The card still names the account signed in.
+- Qoder's plan and credits are read automatically when the Qoder app is signed in, with no Cookie to paste and no need to open Qoder. Its sign-in is encrypted with a key in the keychain, so macOS asks once on the first read — press “Allow keychain access” in Settings or on the card and choose Always Allow. A qoder.com Cookie can still be pasted in Settings for an account without the app.
+
+#### Fixed
+
+- A pasted MiniMax API key read no quota at all: the reply is now read by the fields MiniMax actually sends, and calls left are no longer shown as calls used.
+
+### 2026-10-29
 
 #### Fixed
 

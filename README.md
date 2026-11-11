@@ -16,7 +16,7 @@
 [![License](https://img.shields.io/badge/license-MIT-black)](LICENSE)
 
 QuotaBar is a macOS menu-bar app that shows how much of each AI coding service's quota
-you have used, when each window resets, and roughly what it has cost — for twenty-two
+you have used, when each window resets, and roughly what it has cost — for twenty-one
 providers, read and worked out on your own Mac. No account, no telemetry.
 
 [Download](https://github.com/QuotaBar/QuotaBar/releases/latest) ·
@@ -50,58 +50,41 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.5.31** (2026-10-13) · **3** changes in development · [full changelog](CHANGELOG.en.md)
+Latest release **0.6.1** (2026-10-31) · **1** changes in development · [full changelog](CHANGELOG.en.md)
 
 <details open>
-<summary><b>2026-10-29</b> · Unreleased · 1 added · 2 fixed</summary>
+<summary><b>2026-11-10</b> · Unreleased · 1 added</summary>
 
 **Added**
 
 - Classic Small and Medium desktop widgets can use a compact vertical column. Orientation is saved per card; existing cards remain horizontal.
 
-**Fixed**
-
-- With Antigravity closed, the card no longer lists a dozen internal models and repeated model names. It shows the app's own two groups, Gemini and Claude and GPT, each with its 5-hour and weekly limit, Gemini first, and the menu bar no longer leads with Claude.
-- With Antigravity closed, weekly limits are read too, so a half-spent Gemini week no longer shows as 0%. The plan chip shows the subscription, such as Google AI Pro, instead of ANTIGRAVITY.
-
 </details>
 
 <details>
-<summary><b>2026-10-13</b> · 0.5.31 · 2 added · 1 changed · 2 fixed</summary>
-
-**Added**
-
-- Mac, iOS and widgets support migrated X Subscription accounts, grouping Cursor and Grok only for the same verified workspace and seat and showing shared weekly usage and prepaid balance once. Existing plans keep their original presentation.
-- iOS DeepSeek uses a balance-only card: one large amount for a single currency, side-by-side CNY and USD balances, and no balance progress bars or repeated quota rows. Details and sharing use the same layout.
+<summary><b>2026-10-31</b> · 0.6.1 · 3 changed</summary>
 
 **Changed**
 
-- Codex uses one flat OpenAI mark in the existing island blue across Mac, iOS and widgets, replacing the old gradient icon.
-
-**Fixed**
-
-- Migrated plans no longer reuse stale Cursor monthly quotas or duplicate Grok Bot allowances. Unknown usage remains a dash; reported zero usage and zero balances remain valid.
-- Existing Cursor selections, widgets and links resolve to the shared card. Sync, cache restoration and multi-Mac merges preserve shared subscription identity.
+- Claude's plans are renamed: Max 5x shows as Max and Max 20x as Ultra, at the same price. Readings Quota Run kept under the old names count with the Max and Ultra boards, so no result is lost.
+- A verified Ultra account has no 5-hour limit, so its card shows the week and Fable only, with no empty 5-hour bar; a menu bar ring that followed the 5-hour limit follows the fullest limit instead. Max and accounts not yet verified still have the 5-hour limit and show it as before.
+- The MiniMax card shows an email address or no account at all: an account with no address bound, such as one made with a phone number, no longer shows its nickname.
 
 </details>
 
 <details>
-<summary><b>2026-10-13</b> · 0.5.30 · 3 added · 6 fixed</summary>
+<summary><b>2026-10-30</b> · 0.6.0 · 4 added · 1 fixed</summary>
 
 **Added**
 
-- iOS adds a Usage tab with today, yesterday and 30-day totals, trends, and provider and model breakdowns, with clear empty-data states.
-- iOS adds balance widgets for the Home Screen and Lock Screen, keeping currencies separate and showing data freshness.
-- Claude account management identifies the current sign-in before adding another account, updates account details and quotas after browser sign-in, and keeps the selected account across restarts.
+- z.ai is read automatically when ZCode is signed in on this Mac, with no API key to paste and no need to open ZCode. The card shows the plan, such as Lite, and usage to a fraction of a percent from the actual counts.
+- MiniMax is read automatically when MiniMax Code is signed in, Global or China edition, with the plan's name, such as Go, and the account — its name, for an account without an address. Its sign-in lasts an hour; while QuotaBar runs it renews and saves the sign-in the way MiniMax Code does, so readings stay current with MiniMax Code closed.
+- Antigravity is read with the app closed, for as long as its sign-in lasts: once the token it saved runs out after an hour, QuotaBar renews one of its own from the saved refresh token and keeps it in memory only, leaving Antigravity's sign-in untouched and signed in. The card still names the account signed in.
+- Qoder's plan and credits are read automatically when the Qoder app is signed in, with no Cookie to paste and no need to open Qoder. Its sign-in is encrypted with a key in the keychain, so macOS asks once on the first read — press “Allow keychain access” in Settings or on the card and choose Always Allow. A qoder.com Cookie can still be pasted in Settings for an account without the app.
 
 **Fixed**
 
-- Grok reads its own plan usage correctly. Grok Bot quotas billed through Cursor appear only in Cursor, without duplicate cached quotas or misleading refresh failures.
-- Missing usage fields in parts of Cursor, Alibaba Coding Plan, MiMo, Qoder, Windsurf, Kiro, Kimi and Claude responses no longer become 0%. Explicit zero usage remains visible.
-- Unconfigured, signed-out, unavailable and redirected providers discard inapplicable cached quotas. Late requests cannot overwrite results after an account or source change.
-- Missing Claude login directories and removed accounts prompt re-adding the account. Duplicate sign-ins are identified and expired sign-ins no longer misleadingly promise repeated renewal.
-- iOS quota pages and widgets show unknown usage as a dash and a gray meter, instead of 100% remaining. Expired cached windows wait for a new Mac reading instead of inferring zero usage.
-- An iPhone that retains its Quota Run account but lacks its device login key now prompts reconnection instead of reporting normal reception or only suggesting the Mac is asleep.
+- A pasted MiniMax API key read no quota at all: the reply is now read by the fields MiniMax actually sends, and calls left are no longer shown as calls used.
 
 </details>
 
@@ -122,43 +105,18 @@ Latest release **0.5.31** (2026-10-13) · **3** changes in development · [full 
   </a>
 </p>
 
-## Providers
+## Supported services
 
-| Provider | Source | Credential |
-|---|---|---|
-| Codex | `~/.codex/auth.json` OAuth → `chatgpt.com/backend-api/wham/usage` | automatic |
-| Claude | Claude Code keychain item, and one per `CLAUDE_CONFIG_DIR` → `api.anthropic.com/api/oauth/usage` | automatic |
-| Grok | `~/.grok/auth.json` → `cli-chat-proxy.grok.com/v1/billing` | automatic / manual |
-| Antigravity | the running app's language server, else `~/.gemini/jetski-standalone-oauth-token`, else the Gemini CLI's `~/.gemini/oauth_creds.json` → `cloudcode-pa.googleapis.com` | automatic |
-| Cursor | Cursor's own `state.vscdb` session → `cursor.com/api/usage-summary` | automatic / manual |
-| OpenCode Go | `~/.local/share/opencode/auth.json` → `opencode.ai/zen/go/v1/usage` | automatic / manual |
-| Kimi Code | Kimi Code app / CLI sign-in (`~/.kimi-code/credentials`) → `api.kimi.com` / `api.kimi.ai` `/coding/v1/usages`, or the `kimi.com` billing gateway with a `kimi-auth` JWT | automatic / manual |
-| z.ai | `api.z.ai/api/monitor/usage/quota/limit` | manual API key |
-| MiniMax | `api.minimax.io` coding-plan remains | manual token / cookie |
-| Manus | `api.manus.im` credits | manual session token |
-| DeepSeek | `api.deepseek.com/user/balance` | manual API key |
-| Qwen | `home.qwencloud.com` console → token plan usage | manual Cookie header |
-| GitHub Copilot | GitHub CLI sign-in (`gh auth token`) → `api.github.com/copilot_internal/user` | automatic / manual |
-| 阿里云百炼 Coding Plan *(experimental)* | Bailian console gateway → coding plan quota | Cookie header / in-app sign-in |
-| 火山方舟 *(experimental)* | `arkcli usage plan --format json` | automatic (arkcli login) |
-| 智谱 GLM *(experimental)* | `open.bigmodel.cn/api/monitor/usage/quota/limit` | manual API key |
-| OpenRouter *(experimental)* | `openrouter.ai/api/v1/credits` + `/key` | manual API key |
-| 小米 MiMo *(experimental)* | `platform.xiaomimimo.com/api/v1` balance + token plan | Cookie header / in-app sign-in |
-| Qoder *(experimental)* | `qoder.com/api/v2/me/usages/big_model_credits` | manual Cookie header |
-| Windsurf *(experimental)* | Windsurf's own `state.vscdb` cached plan | automatic |
-| Kiro *(experimental)* | `kiro-cli` session → AWS `GetUsageLimits` | automatic |
+<p align="center">
+  <img src="Assets/readme/providers-en.png" alt="The services QuotaBar reads" width="820">
+</p>
 
-*Experimental* providers are built from the services' own consoles and CLIs but have not
-yet been checked against a live account; they are labelled as such in Settings.
+QuotaBar reads each service from a sign-in you already have and shows what matters: the plan, how much of each window is used, when it resets, and the estimated spend — all read and worked out on your Mac.
 
-**No dialog, normally.** Claude is the only provider whose session lives in *another
-app's* keychain item. QuotaBar reads it the way Claude Code itself does — through
-`/usr/bin/security`, which every item that tool writes trusts — so macOS has nothing to
-ask, whatever the build is signed with. Only if that read is refused does the
-**Allow keychain access** button appear, and the dialog is never raised from a background
-refresh — only from that button. Sign-ins made with `CLAUDE_CONFIG_DIR=<dir> claude` —
-another organization of the same email, or another account — are found by their keychain
-items' names and read the same way, each listed under the Claude card's arrow.
+- **Signed-in CLIs and apps are read on their own**, with nothing to paste: Codex, Claude, Cursor, Grok, Antigravity, OpenCode Go, Kimi Code, z.ai (via ZCode), MiniMax (via MiniMax Code), Qoder, GitHub Copilot, Windsurf and Kiro. A few sign-ins — Qoder's and Grok Bot's — are encrypted with a key macOS asks about once; press **Allow keychain access** and choose Always Allow.
+- **Paste a key or cookie** for a service with no local sign-in: DeepSeek, OpenRouter, Manus, Qwen, Alibaba, Volcengine, Zhipu GLM and Xiaomi MiMo.
+
+Services marked *experimental* are built from the providers' own consoles and CLIs and not yet checked against a live account; Settings labels them.
 
 ## Where the numbers show
 

@@ -339,7 +339,7 @@ struct MenuPanelView: View {
         .honoursReducedMotion()
     }
 
-    private var cardSpacing: CGFloat { store.experience.panelDensity == .compact ? 8 : 10 }
+    private var cardSpacing: CGFloat { store.experience.panelDensity == .compact ? 6 : 8 }
 
     private var cards: some View {
                 VStack(spacing: cardSpacing) {

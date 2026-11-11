@@ -71,7 +71,7 @@ final class QuotaRunLiveTests: XCTestCase {
         for step in 0...16 {
             let used = min(100, Double(step) * 6.25)
             snapshots.append(RunSnapshotPayload(RunReading(
-                provider: "claude", plan: "Max 20x", accountDigest: digest,
+                provider: "claude", plan: "Ultra", accountDigest: digest,
                 windowKey: "18000:", windowTitle: "5-hour window", windowSeconds: 18_000,
                 usedPercent: used, resetsAt: resetsAt, observedAt: windowStart + 60 + step * 600, source: "api")))
         }
@@ -79,7 +79,7 @@ final class QuotaRunLiveTests: XCTestCase {
         let receipt = try await client.upload(RunUploadBody(snapshots: snapshots, activity: activity))
         XCTAssertEqual(receipt.accepted, snapshots.count, "rejected: \(receipt.rejected)")
 
-        let board = try await json(base, "leaderboard?provider=claude&plan=max20x&window=18000:&metric=speed&season=all")
+        let board = try await json(base, "leaderboard?provider=claude&plan=ultra&window=18000:&metric=speed&season=all")
         let entries = board["entries"] as? [[String: Any]] ?? []
         let mine = try XCTUnwrap(entries.first { $0["username"] as? String == username })
         XCTAssertEqual(mine["tier"] as? String, "verified")

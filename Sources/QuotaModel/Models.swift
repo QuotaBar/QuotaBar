@@ -445,15 +445,17 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
                 "1. Automatic if the Kimi Code app or CLI (`kimi`) is signed in, China or Global edition; QuotaBar renews the sign-in Kimi Code uses while QuotaBar runs. The older Python CLI's sign-in in ~/.kimi is only read.\n2. Or paste a Kimi Code API key, from the Kimi Code console of your edition (kimi.com or kimi.ai).\n3. Or paste a kimi-auth cookie from kimi.com or kimi.ai (DevTools → Application → Cookies); the edition is found by itself.\nSomething pasted is used before the sign-in on this Mac.",
                 "1. 已登录 Kimi Code 应用或 CLI（`kimi`）时自动读取，国内版、国际版均可；QuotaBar 运行时会续期 Kimi Code 正在使用的登录。旧版 Python CLI 在 ~/.kimi 的登录只读取。\n2. 或粘贴 Kimi Code API Key，在你所用版本的 Kimi Code 控制台（kimi.com 或 kimi.ai）获取。\n3. 或粘贴 kimi.com 或 kimi.ai 的 kimi-auth cookie（开发者工具 → 应用 → Cookie），版本自动识别。\n粘贴的凭据优先于本机登录使用。")
         case .zai:
-            return L10n.t("API key (z.ai → API Keys).", "API Key（z.ai → API Keys）。")
+            return L10n.t(
+                "1. Automatic if ZCode is signed in to z.ai; ZCode need not be open.\n2. Or paste an API key (z.ai → API Keys).\nSomething pasted is used before the sign-in on this Mac.",
+                "1. 已登录 ZCode（z.ai 账号）时自动读取，不需要打开 ZCode。\n2. 或粘贴 API Key（z.ai → API Keys）。\n粘贴的凭据优先于本机登录使用。")
         case .opencodeGo:
             return L10n.t(
                 "Automatic if the opencode CLI is signed in. Otherwise paste a session token or Cookie header from opencode.ai.",
                 "已登录 opencode CLI 时自动读取；否则粘贴 opencode.ai 的会话 token 或 Cookie 头。")
         case .minimax:
             return L10n.t(
-                "API token or full Cookie header from platform.minimax.io.",
-                "platform.minimax.io 的 API token 或完整 Cookie 头。")
+                "1. Automatic if MiniMax Code is signed in, Global or China edition; QuotaBar renews the sign-in while it runs, so MiniMax Code need not be open.\n2. Or paste an API token or full Cookie header from platform.minimax.io.\nSomething pasted is used before the sign-in on this Mac.",
+                "1. 已登录 MiniMax Code 时自动读取，国际版、国内版均可；QuotaBar 运行时会自动续期登录，不需要打开 MiniMax Code。\n2. 或粘贴 platform.minimax.io 的 API token 或完整 Cookie 头。\n粘贴的凭据优先于本机登录使用。")
         case .manus:
             return L10n.t("Session token (Bearer) from manus.im.", "manus.im 的会话 token（Bearer）。")
         case .deepseek:
@@ -479,7 +481,9 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
                 "Full Cookie header from platform.xiaomimimo.com, signed in (needs api-platform_serviceToken and userId).",
                 "platform.xiaomimimo.com 登录后的完整 Cookie 头（需含 api-platform_serviceToken 和 userId）。")
         case .qoder:
-            return L10n.t("Full Cookie header from qoder.com, signed in.", "qoder.com 登录后的完整 Cookie 头。")
+            return L10n.t(
+                "Automatic if the Qoder app is signed in; Qoder need not be open. Or paste a full Cookie header from qoder.com, signed in.",
+                "已登录 Qoder 应用时自动读取，不需要打开 Qoder。或粘贴 qoder.com 登录后的完整 Cookie 头。")
         case .volcengine, .windsurf, .kiro:
             return nil
         }
@@ -496,8 +500,8 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
             "Sign in with the grok CLI or paste a token in Settings. Grok Bot paid for with SuperGrok shows here once the Grok Bot app is signed in.",
             "用 grok CLI 登录，或在设置中粘贴 token。用 SuperGrok 开通的 Grok Bot，登录 Grok Bot 应用后显示在这里。")
         case .antigravity: return L10n.t(
-            "Open Antigravity and sign in, or run the Antigravity CLI (`agy`) once and sign in. While the app runs, the quota is read from the app itself; otherwise from `agy`, then from the sign-in token the app saved, which lasts an hour. A Gemini CLI sign-in (Code Assist Standard or Enterprise) is read too.",
-            "打开 Antigravity 并登录，或者运行一次 Antigravity CLI（`agy`）并登录。应用运行时直接向它读取额度；否则向 `agy` 读取，再不行读应用保存的登录令牌（只有一小时有效）。用 Gemini CLI 登录的企业版（Code Assist Standard / Enterprise）也会读取。")
+            "Open Antigravity and sign in, or run the Antigravity CLI (`agy`) once and sign in. While the app runs, the quota is read from the app itself; otherwise from `agy`, then with the sign-in the app saved — its token lasts an hour, after which QuotaBar renews one of its own and keeps it in memory, so Antigravity need not be open. A Gemini CLI sign-in (Code Assist Standard or Enterprise) is read too.",
+            "打开 Antigravity 并登录，或者运行一次 Antigravity CLI（`agy`）并登录。应用运行时直接向它读取额度；否则向 `agy` 读取，再不行用应用保存的登录读取——其中的令牌一小时后过期，之后由 QuotaBar 自己续期并只保存在内存里，所以不用开着 Antigravity。用 Gemini CLI 登录的企业版（Code Assist Standard / Enterprise）也会读取。")
         case .volcengine: return L10n.t(
             "Install arkcli and run `arkcli auth login`.",
             "安装 arkcli 并运行 `arkcli auth login` 登录。")
@@ -513,6 +517,9 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable, Identifiable {
         case .kimi: return L10n.t(
             "Sign in to the Kimi Code app or CLI (`kimi`), China or Global edition, or paste a Kimi Code API key or a kimi-auth cookie in Settings.",
             "登录 Kimi Code 应用或 CLI（`kimi`，国内版、国际版均可），或在设置里粘贴 Kimi Code API Key 或 kimi-auth cookie。")
+        case .qoder: return L10n.t(
+            "Open the Qoder app and sign in once; its sign-in is read, so Qoder need not stay open. Or paste a qoder.com Cookie in Settings.",
+            "打开 Qoder 应用并登录一次，会读取它保存的登录，不需要一直开着 Qoder。或在设置里粘贴 qoder.com 的 Cookie。")
         default: return credentialHint ?? ""
         }
     }

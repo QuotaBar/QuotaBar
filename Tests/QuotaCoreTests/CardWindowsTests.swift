@@ -65,7 +65,7 @@ final class CardWindowsTests: XCTestCase {
     }
 
     func testClaudeShowsTheFiveHourTheWeekAndFable() {
-        let snapshot = UsageSnapshot(planName: "Max 20x", account: nil, windows: [
+        let snapshot = UsageSnapshot(planName: "Ultra", account: nil, windows: [
             window("5h", 18_000),
             window("Week", 604_800),
             window("Week", 604_800, scope: "Fable"),

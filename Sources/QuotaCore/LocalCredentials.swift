@@ -92,7 +92,7 @@ public enum LocalCredentials {
     struct ClaudeLookup: Sendable, Equatable {
         let state: ClaudeCredentialState
         let token: String?
-        /// "Max 20x", "Pro" — from the same item, so no extra keychain read.
+        /// "Ultra", "Pro" — from the same item, so no extra keychain read.
         var plan: String? = nil
         var via: ClaudeLookupRoute = .keychainAPI
         /// When the access token runs out. Claude Code renews it only while
@@ -495,8 +495,12 @@ public enum LocalCredentials {
         }
     }
 
-    /// `rateLimitTier` is the precise one — "default_claude_max_20x" carries
-    /// the multiplier — with `subscriptionType` ("max", "pro") as the
+    /// Anthropic renamed Max 5x to Max and Max 20x to Ultra. The tier ids
+    /// still carry the old multipliers, so the new names are mapped here.
+    private static let claudeTierNames = ["max 5x": "Max", "max 20x": "Ultra"]
+
+    /// `rateLimitTier` is the precise one — "default_claude_max_20x" is the
+    /// Ultra plan — with `subscriptionType` ("max", "pro") as the
     /// fallback. Neither is documented; both are what the item holds today.
     static func claudePlan(_ root: [String: Any]) -> String? {
         let oauth = root["claudeAiOauth"] as? [String: Any] ?? root
@@ -505,7 +509,8 @@ public enum LocalCredentials {
             if words.first == "default" { words.removeFirst() }
             if words.first?.lowercased() == "claude" { words.removeFirst() }
             if !words.isEmpty {
-                return words.map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
+                let name = words.map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
+                return claudeTierNames[name.lowercased()] ?? name
             }
         }
         if let type = oauth["subscriptionType"] as? String, !type.isEmpty {
@@ -999,6 +1004,11 @@ public enum LocalCredentials {
     public struct AntigravityToken: Sendable {
         public let accessToken: String
         public let expiry: Date?
+        /// What `AntigravityRenewal` renews the access token with, for
+        /// QuotaBar's own use only.
+        public var refreshToken: String? = nil
+        /// The Google account signed in (`id_token_email`), for the card.
+        public var email: String? = nil
 
         public func isExpired(now: Date = Date()) -> Bool {
             guard let expiry else { return false }
@@ -1013,17 +1023,23 @@ public enum LocalCredentials {
     /// item, and `~/.gemini/jetski-standalone-oauth-token`. Antigravity 2.14
     /// writes the keychain at every sign-in and the file only sometimes, and
     /// refreshes neither while it runs (issue #4), so whichever runs out
-    /// later is the one. Only read: refreshing it would need the app's own
-    /// OAuth client, which is its to keep. While the app is open its
-    /// language server is asked instead; see `AntigravityLocal`.
+    /// later is the one. Never written: once the hour is up, QuotaBar renews
+    /// a token of its own from the refresh token (`AntigravityRenewal`) and
+    /// keeps it in memory. While the app is open its language server is
+    /// asked instead; see `AntigravityLocal`.
     public static func antigravityToken() -> AntigravityToken? {
+        antigravityTokens().first
+    }
+
+    /// Both saved copies, the one that runs out later first.
+    public static func antigravityTokens() -> [AntigravityToken] {
         let url = home.appendingPathComponent(".gemini/jetski-standalone-oauth-token")
         let fromFile = (try? Data(contentsOf: url))
             .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
             .flatMap(antigravityToken(in:))
         let fromKeychain = antigravityKeychainSecret().flatMap(antigravityToken(keychainSecret:))
         return [fromKeychain, fromFile].compactMap { $0 }
-            .max { ($0.expiry ?? .distantPast) < ($1.expiry ?? .distantPast) }
+            .sorted { ($0.expiry ?? .distantPast) > ($1.expiry ?? .distantPast) }
     }
 
     /// The keychain item is written by go-keyring, which goes through
@@ -1052,7 +1068,12 @@ public enum LocalCredentials {
     static func antigravityToken(in root: [String: Any]) -> AntigravityToken? {
         let token = root["token"] as? [String: Any] ?? root
         guard let access = token["access_token"] as? String, !access.isEmpty else { return nil }
-        return AntigravityToken(accessToken: access, expiry: parseFlexibleISO(token["expiry"] as? String))
+        let refresh = (token["refresh_token"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let email = ((root["id_token_email"] ?? token["id_token_email"]) as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return AntigravityToken(
+            accessToken: access, expiry: parseFlexibleISO(token["expiry"] as? String),
+            refreshToken: refresh?.isEmpty == false ? refresh : nil,
+            email: email?.isEmpty == false ? email : nil)
     }
 
     /// ISO 8601 with any number of fractional digits and a numeric offset —

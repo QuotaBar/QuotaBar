@@ -46,6 +46,9 @@ public final class KimiCodeLock: @unchecked Sendable {
 
     /// The lock directory, `<sentinel>.lock`.
     public let directory: URL
+    /// The `stale` of the program this lock is shared with: Kimi Code's 5
+    /// seconds, or MiniMax Code's 30 (`MiniMaxCodeRenewal`).
+    let staleLimit: TimeInterval
 
     private let guardLock = NSLock()
     private let queue = DispatchQueue(label: "bar.quota.kimi-code-lock")
@@ -60,8 +63,9 @@ public final class KimiCodeLock: @unchecked Sendable {
     private static let registryLock = NSLock()
     nonisolated(unsafe) private static var held: [ObjectIdentifier: KimiCodeLock] = [:]
 
-    private init(directory: URL, mtime: Int64, touchInterval: TimeInterval) {
+    private init(directory: URL, mtime: Int64, touchInterval: TimeInterval, staleLimit: TimeInterval) {
         self.directory = directory
+        self.staleLimit = staleLimit
         self.ownMtime = mtime
         self.lastTouch = Date()
         let timer = DispatchSource.makeTimerSource(queue: queue)
@@ -106,17 +110,20 @@ public final class KimiCodeLock: @unchecked Sendable {
         now: Date,
         uptime: TimeInterval = ProcessInfo.processInfo.systemUptime,
         sighting: inout StaleSighting?,
-        touchInterval: TimeInterval = KimiCodeLock.touchInterval) -> Attempt
+        touchInterval: TimeInterval = KimiCodeLock.touchInterval,
+        staleAfter: TimeInterval = KimiCodeLock.staleAfter,
+        secondLook: TimeInterval = KimiCodeLock.secondLook) -> Attempt
     {
         let path = directory.path
-        if mkdir(path, 0o777) == 0 { return took(directory, touchInterval: touchInterval) }
+        let take = { took(directory, touchInterval: touchInterval, staleLimit: staleAfter) }
+        if mkdir(path, 0o777) == 0 { return take() }
         guard errno == EEXIST else { return .failed(errno) }
 
         var info = stat()
         guard stat(path, &info) == 0 else {
             // Released between the two calls: one more mkdir, as proper-lockfile does.
             guard errno == ENOENT else { return .failed(errno) }
-            if mkdir(path, 0o777) == 0 { return took(directory, touchInterval: touchInterval) }
+            if mkdir(path, 0o777) == 0 { return take() }
             return errno == EEXIST ? .locked : .failed(errno)
         }
         let mtime = milliseconds(info.st_mtimespec)
@@ -131,20 +138,20 @@ public final class KimiCodeLock: @unchecked Sendable {
         // Stale and untouched through a touch a live holder would have made.
         sighting = nil
         guard rmdir(path) == 0 || errno == ENOENT else { return .failed(errno) }
-        if mkdir(path, 0o777) == 0 { return took(directory, touchInterval: touchInterval) }
+        if mkdir(path, 0o777) == 0 { return take() }
         return errno == EEXIST ? .locked : .failed(errno)
     }
 
     /// Just made the directory: stamp it, so the first touch has an mtime
     /// of its own to compare with. A directory that cannot be stamped is
     /// given back, as proper-lockfile does.
-    private static func took(_ directory: URL, touchInterval: TimeInterval) -> Attempt {
+    private static func took(_ directory: URL, touchInterval: TimeInterval, staleLimit: TimeInterval) -> Attempt {
         guard let mtime = stamp(directory.path) else {
             let failure = errno
             rmdir(directory.path)
             return .failed(failure)
         }
-        return .acquired(KimiCodeLock(directory: directory, mtime: mtime, touchInterval: touchInterval))
+        return .acquired(KimiCodeLock(directory: directory, mtime: mtime, touchInterval: touchInterval, staleLimit: staleLimit))
     }
 
     // MARK: Holding it
@@ -156,7 +163,7 @@ public final class KimiCodeLock: @unchecked Sendable {
     /// lock up the same way.
     public var isCompromised: Bool {
         guardLock.withLock {
-            if !released, !compromised, Date().timeIntervalSince(lastTouch) > Self.staleAfter { compromise() }
+            if !released, !compromised, Date().timeIntervalSince(lastTouch) > staleLimit { compromise() }
             return compromised
         }
     }
@@ -167,14 +174,14 @@ public final class KimiCodeLock: @unchecked Sendable {
         guard !released, !compromised else { return }
         // Too long since the last touch: the lock has looked stale to others
         // meanwhile, and may be theirs whatever its mtime says now.
-        guard Date().timeIntervalSince(lastTouch) <= Self.staleAfter else {
+        guard Date().timeIntervalSince(lastTouch) <= staleLimit else {
             compromise()
             return
         }
         let path = directory.path
         var info = stat()
         guard stat(path, &info) == 0 else {
-            if errno == ENOENT || Date().timeIntervalSince(lastTouch) > Self.staleAfter { compromise() }
+            if errno == ENOENT || Date().timeIntervalSince(lastTouch) > staleLimit { compromise() }
             return
         }
         guard Self.milliseconds(info.st_mtimespec) == ownMtime else {
@@ -182,7 +189,7 @@ public final class KimiCodeLock: @unchecked Sendable {
             return
         }
         guard let mtime = Self.stamp(path) else {
-            if errno == ENOENT || Date().timeIntervalSince(lastTouch) > Self.staleAfter { compromise() }
+            if errno == ENOENT || Date().timeIntervalSince(lastTouch) > staleLimit { compromise() }
             return
         }
         ownMtime = mtime

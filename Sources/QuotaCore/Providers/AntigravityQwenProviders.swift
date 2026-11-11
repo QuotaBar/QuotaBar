@@ -11,6 +11,10 @@ import Foundation
 /// shapes follow CodexBar's, which follow the app's.
 public struct AntigravityProvider: QuotaProvider {
     public let id = ProviderID.antigravity
+    /// Renews the saved sign-in once its hour is up; tests pass their own.
+    var renewal: AntigravityRenewalEnvironment = .live
+
+    public init() {}
 
     static let base = "https://cloudcode-pa.googleapis.com/v1internal"
 
@@ -25,22 +29,81 @@ public struct AntigravityProvider: QuotaProvider {
         let local = await AntigravityLocal.read()
         if case let .quota(snapshot) = local { return snapshot }
         // Closed, or never installed: the CLI reports the same quota.
-        if let snapshot = await AntigravityCLI.read() { return snapshot }
+        let saved = LocalCredentials.antigravityTokens()
+        if let snapshot = await AntigravityCLI.read() { return Self.withAccount(snapshot, saved) }
 
-        // Written at sign-in and never refreshed; refreshing it would take the
-        // app's own OAuth client.
-        guard let token = LocalCredentials.antigravityToken(), !token.isExpired() else {
+        // The sign-in the app saved: its token while the hour lasts, then one
+        // QuotaBar renews from its refresh token and keeps in memory.
+        let token: String
+        do {
+            guard !saved.isEmpty else { throw ProviderError.notConfigured(hint: ProviderID.antigravity.setupHint) }
+            token = try await Self.accessToken(saved: saved, env: renewal, local: local)
+        } catch {
             // Without Antigravity, a Gemini CLI sign-in still has a quota of
             // its own on an enterprise seat.
             if let gemini = LocalCredentials.geminiAccessToken() {
                 return try await GeminiCLIQuota.read(token: gemini)
             }
-            if LocalCredentials.antigravityToken() == nil {
-                throw ProviderError.notConfigured(hint: ProviderID.antigravity.setupHint)
-            }
-            throw ProviderError.sessionExpired(Self.expiredTokenHint(local))
+            throw error
         }
-        return try await Self.readCloud(accessToken: token.accessToken)
+        do {
+            return Self.withAccount(try await Self.readCloud(accessToken: token), saved)
+        } catch ProviderError.unauthorized {
+            // Turned down before its time: renewed once more, then asked again.
+            guard let refresh = saved.lazy.compactMap(\.refreshToken).first else { throw ProviderError.unauthorized }
+            renewal.renewal.discard(refreshToken: refresh)
+            let fresh = try await Self.accessToken(saved: [], refreshTokens: [refresh], env: renewal, local: local)
+            return Self.withAccount(try await Self.readCloud(accessToken: fresh), saved)
+        }
+    }
+
+    /// The account the app saved its sign-in for, under the card's name as
+    /// the running app's own reading has it — the readings without the app
+    /// carry none of their own.
+    static func withAccount(_ snapshot: UsageSnapshot, _ saved: [LocalCredentials.AntigravityToken]) -> UsageSnapshot {
+        guard snapshot.account?.isEmpty ?? true, let email = saved.lazy.compactMap(\.email).first else { return snapshot }
+        var snapshot = snapshot
+        snapshot.account = email
+        return snapshot
+    }
+
+    /// A token good for the Cloud Code API: a saved one with a minute left
+    /// at least, else one renewed from a saved refresh token — the copy that
+    /// runs out later first, then the other.
+    static func accessToken(
+        saved: [LocalCredentials.AntigravityToken],
+        refreshTokens given: [String]? = nil,
+        env: AntigravityRenewalEnvironment,
+        local: AntigravityLocal.Reading) async throws -> String
+    {
+        if let good = saved.first(where: { !$0.isExpired(now: env.now().addingTimeInterval(60)) }) {
+            return good.accessToken
+        }
+        var seen = Set<String>()
+        let refreshTokens = (given ?? saved.compactMap(\.refreshToken)).filter { seen.insert($0).inserted }
+        guard !refreshTokens.isEmpty else { throw ProviderError.sessionExpired(expiredTokenHint(local)) }
+        var failure: AntigravityRenewal.Failure = .noClient
+        for refresh in refreshTokens {
+            do {
+                return try await env.renewal.accessToken(refreshToken: refresh, env: env)
+            } catch let error as AntigravityRenewal.Failure {
+                failure = error
+            }
+        }
+        switch failure {
+        case .signInAgain:
+            throw ProviderError.sessionExpired(signInAgainHint)
+        case .noClient:
+            throw ProviderError.sessionExpired(expiredTokenHint(local))
+        case let .unavailable(detail):
+            throw ProviderError.unavailable(detail)
+        }
+    }
+
+    static var signInAgainHint: String {
+        L10n.t(
+            "Google no longer accepts the sign-in Antigravity saved. Open Antigravity and sign in again.",
+            "Google 不再接受 Antigravity 保存的登录，请打开 Antigravity 重新登录。")
     }
 
     /// The quota from Google's Cloud Code API, with the token the app saved.
@@ -95,10 +158,11 @@ public struct AntigravityProvider: QuotaProvider {
         return "antigravity/\(version) darwin/\(arch)"
     }
 
-    /// Said when the language server gave nothing and the saved token has
-    /// run out. Open, the app would have answered, so the fault is its
-    /// service, not the sign-in; closed, opening it is the whole fix. The
-    /// hint this replaced sent people to open an app already open.
+    /// Said when the language server gave nothing, the saved token has run
+    /// out, and QuotaBar could not renew one — no refresh token saved, or no
+    /// client of the installed app's accepted. Open, the app would have
+    /// answered, so the fault is its service, not the sign-in; closed,
+    /// opening it is the whole fix.
     static func expiredTokenHint(_ local: AntigravityLocal.Reading) -> String {
         if case .noAnswer = local {
             return L10n.t(
@@ -106,8 +170,8 @@ public struct AntigravityProvider: QuotaProvider {
                 "Antigravity 正在运行，但它的额度服务没有应答，保存的登录令牌也已过期。稍后再刷新，或重启 Antigravity。")
         }
         return L10n.t(
-            "Antigravity isn't running, and the sign-in token it saved has expired. Open Antigravity and the quota shows again; no need to sign in.",
-            "Antigravity 没有运行，保存的登录令牌也已过期。打开 Antigravity 就能重新读到额度，不用重新登录。")
+            "Antigravity isn't running, the sign-in token it saved has expired, and QuotaBar could not renew it. Open Antigravity and the quota shows again; no need to sign in.",
+            "Antigravity 没有运行，保存的登录令牌已过期，QuotaBar 也没能续期。打开 Antigravity 就能重新读到额度，不用重新登录。")
     }
 
     // MARK: Response shapes

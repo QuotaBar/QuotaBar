@@ -114,14 +114,14 @@ final class SnapshotCacheTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: url) }
         let reset = Date(timeIntervalSince1970: 1_800_000_000)
         let snapshot = UsageSnapshot(
-            planName: "Max 20x", account: "a@b.c",
+            planName: "Ultra", account: "a@b.c",
             windows: [UsageWindow(title: "5h", usedPercent: 23, resetsAt: reset, windowSeconds: 18_000),
                       UsageWindow(title: "5h", usedPercent: 40, scope: "Fable")],
             fetchedAt: Date(timeIntervalSince1970: 1_799_990_000),
             resetCredits: ResetCredits(available: 2, applicable: 1))
         SnapshotCache(fileURL: url).store(snapshot, for: .claude)
         let loaded = try XCTUnwrap(SnapshotCache(fileURL: url).snapshot(for: .claude))
-        XCTAssertEqual(loaded.planName, "Max 20x")
+        XCTAssertEqual(loaded.planName, "Ultra")
         XCTAssertEqual(loaded.windows.map(\.id), ["5h", "5h#2"])
         XCTAssertEqual(loaded.windows.first?.resetsAt, reset)
         XCTAssertEqual(loaded.resetCredits, ResetCredits(available: 2, applicable: 1))

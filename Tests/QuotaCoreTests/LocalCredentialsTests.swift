@@ -54,7 +54,7 @@ final class LocalCredentialsClaudeTests: XCTestCase {
         let lookup = LocalCredentials.classify(status: errSecSuccess, data: json(signedOutItem))
         XCTAssertEqual(lookup.state, .signedOut)
         XCTAssertNil(lookup.token)
-        XCTAssertEqual(lookup.plan, "Max 20x", "the plan is still read from the signed-out item")
+        XCTAssertEqual(lookup.plan, "Ultra", "the plan is still read from the signed-out item")
     }
 
     func testNoItemIsMissingNotSignedOut() {
@@ -97,7 +97,7 @@ final class LocalCredentialsClaudeTests: XCTestCase {
     func testTheToolReadingASignedOutItemIsSignedOut() {
         let lookup = LocalCredentials.SecurityTool.classifyToolResult(exitCode: 0, output: json(signedOutItem + "\n"))
         XCTAssertEqual(lookup?.state, .signedOut)
-        XCTAssertEqual(lookup?.plan, "Max 20x")
+        XCTAssertEqual(lookup?.plan, "Ultra")
         XCTAssertEqual(lookup?.via, .securityTool)
     }
 
@@ -140,7 +140,7 @@ final class LocalCredentialsClaudeTests: XCTestCase {
     func testThePlanComesFromTheRateLimitTierFirst() {
         let root: [String: Any] = ["claudeAiOauth": [
             "accessToken": "t", "subscriptionType": "max", "rateLimitTier": "default_claude_max_20x"]]
-        XCTAssertEqual(LocalCredentials.claudePlan(root), "Max 20x")
+        XCTAssertEqual(LocalCredentials.claudePlan(root), "Ultra")
         XCTAssertEqual(LocalCredentials.claudePlan(["claudeAiOauth": ["rateLimitTier": "default_claude_pro"]]), "Pro")
     }
 
@@ -153,7 +153,7 @@ final class LocalCredentialsClaudeTests: XCTestCase {
         let lookup = LocalCredentials.classify(
             status: errSecSuccess,
             data: json(#"{"claudeAiOauth":{"accessToken":"t","rateLimitTier":"default_claude_max_5x"}}"#))
-        XCTAssertEqual(lookup.plan, "Max 5x")
+        XCTAssertEqual(lookup.plan, "Max")
     }
 
     // MARK: The security tool
@@ -166,7 +166,7 @@ final class LocalCredentialsClaudeTests: XCTestCase {
             output: json(#"{"claudeAiOauth":{"accessToken":"sk-ant-abc","rateLimitTier":"default_claude_max_20x"}}"# + "\n"))
         XCTAssertEqual(lookup?.state, .available)
         XCTAssertEqual(lookup?.token, "sk-ant-abc")
-        XCTAssertEqual(lookup?.plan, "Max 20x")
+        XCTAssertEqual(lookup?.plan, "Ultra")
         XCTAssertEqual(lookup?.via, .securityTool)
     }
 

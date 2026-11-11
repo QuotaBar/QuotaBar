@@ -22,6 +22,9 @@ final class UsageStore: ObservableObject {
     /// encrypted with a key in Grok Bot's own keychain item — unless Cursor.app
     /// is signed in to the same account, whose session is used instead.
     @Published private(set) var grokBotCredential: GrokBot.SessionState?
+    /// What the last quiet look at Qoder's sign-in found. Its tokens are
+    /// sealed with a key in Qoder's own keychain item, which macOS asks about.
+    @Published private(set) var qoderCredential: QoderApp.SessionState?
     /// Another config dir's Claude Code sign-in (#8) the quiet reads could
     /// not open; the same button asks for it.
     @Published private(set) var claudeOthersNeedAuthorization = false
@@ -32,6 +35,7 @@ final class UsageStore: ObservableObject {
         switch id {
         case .claude: claudeNeedsAuthorization || claudeOthersNeedAuthorization
         case .grok: grokBotCredential == .needsAuthorization
+        case .qoder: qoderCredential == .needsAuthorization
         default: false
         }
     }
@@ -699,7 +703,7 @@ final class UsageStore: ObservableObject {
     /// Re-evaluates which providers have usable credentials.
     func refreshConfigured() {
         Task { [config] in
-            let (ready, local, sources, claude, claudeOthers, grokBot) = await Task.detached(priority: .utility) {
+            let (ready, local, sources, claude, claudeOthers, grokBot, qoder) = await Task.detached(priority: .utility) {
                 let ready = Set(ProviderID.allCases.filter {
                     ProviderRegistry.make($0).isConfigured(config: config)
                 })
@@ -714,7 +718,8 @@ final class UsageStore: ObservableObject {
                 let claude = LocalCredentials.claudeCredentialState()
                 let claudeOthers = LocalCredentials.claudeExtrasNeedAuthorization()
                 let grokBot = GrokBot.sessionState()
-                return (ready, local, sources, claude, claudeOthers, grokBot)
+                let qoder = QoderApp.sessionState()
+                return (ready, local, sources, claude, claudeOthers, grokBot, qoder)
             }.value
             self.configured = ready
             self.signedInLocally = local
@@ -722,6 +727,7 @@ final class UsageStore: ObservableObject {
             self.claudeCredential = claude
             self.claudeOthersNeedAuthorization = claudeOthers
             self.grokBotCredential = grokBot
+            self.qoderCredential = qoder
         }
     }
 
@@ -774,11 +780,21 @@ final class UsageStore: ObservableObject {
 
     /// The same, for whichever item `needsKeychainAuthorization(id)` is about.
     func authorizeKeychain(_ id: ProviderID) {
-        guard id == .grok else { return authorizeClaude() }
-        Task {
-            _ = await GrokBot.authorizeAsync()
-            refresh(.grok)
-            refreshConfigured()
+        switch id {
+        case .grok:
+            Task {
+                _ = await GrokBot.authorizeAsync()
+                refresh(.grok)
+                refreshConfigured()
+            }
+        case .qoder:
+            Task {
+                _ = await QoderApp.authorizeAsync()
+                refresh(.qoder)
+                refreshConfigured()
+            }
+        default:
+            authorizeClaude()
         }
     }
 

@@ -79,19 +79,102 @@ public struct OpenCodeGoProvider: QuotaProvider {
     }
 }
 
-// MARK: - MiniMax (API token → coding_plan/remains)
+// MARK: - MiniMax (MiniMax Code's sign-in, or an API token → coding_plan/remains)
 
 public struct MiniMaxProvider: QuotaProvider {
     public let id = ProviderID.minimax
+    var environment: MiniMaxCodeEnvironment
+
+    public init(environment: MiniMaxCodeEnvironment = .live) {
+        self.environment = environment
+    }
 
     public func isConfigured(config: ConfigStore) -> Bool {
-        config.credential(for: .minimax) != nil
+        config.credential(for: .minimax) != nil || MiniMaxCode.signIn(authHome: environment.authHome) != nil
     }
 
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
-        guard let raw = config.credential(for: .minimax) else {
+        // Something pasted is used before the sign-in on this Mac.
+        if let raw = config.credential(for: .minimax) {
+            return try await Self.fetchPasted(raw, send: environment.send)
+        }
+        guard let signIn = MiniMaxCode.signIn(authHome: environment.authHome) else {
             throw ProviderError.notConfigured(hint: ProviderID.minimax.setupHint)
         }
+        return try await fetchSignedIn(signIn)
+    }
+
+    /// With MiniMax Code's sign-in, and the account it is signed in to under
+    /// the card's name.
+    func fetchSignedIn(_ signIn: MiniMaxCodeSignIn) async throws -> UsageSnapshot {
+        var snapshot = try await readSignedIn(signIn)
+        if snapshot.account?.isEmpty ?? true {
+            // The token the reading went out with, renewed or not.
+            let token = MiniMaxCode.signIn(authHome: environment.authHome)?.accessToken ?? signIn.accessToken
+            snapshot.account = await MiniMaxCode.account(region: signIn.region, token: token, env: environment)
+        }
+        return snapshot
+    }
+
+    /// Renewed first when it has run out or is about to, and once more when
+    /// the quota endpoint turns it down.
+    private func readSignedIn(_ signIn: MiniMaxCodeSignIn) async throws -> UsageSnapshot {
+        let env = environment
+        var token = signIn.accessToken
+        if signIn.isDue(now: env.now()) {
+            if env.mayRenew, signIn.hasRefreshToken {
+                token = try await renewed(signIn, rejected: nil)
+            } else if signIn.isExpired(now: env.now()) {
+                throw ProviderError.sessionExpired(Self.expiredHint)
+            }
+        }
+        do {
+            return try await MiniMaxCode.fetchRemains(region: signIn.region, token: token, send: env.send)
+        } catch ProviderError.unauthorized where env.mayRenew && signIn.hasRefreshToken {
+            let fresh = try await renewed(signIn, rejected: token)
+            do {
+                return try await MiniMaxCode.fetchRemains(region: signIn.region, token: fresh, send: env.send)
+            } catch ProviderError.unauthorized {
+                throw ProviderError.sessionExpired(Self.signInAgainHint)
+            }
+        } catch ProviderError.unauthorized {
+            throw ProviderError.sessionExpired(Self.expiredHint)
+        }
+    }
+
+    private func renewed(_ signIn: MiniMaxCodeSignIn, rejected: String?) async throws -> String {
+        do {
+            return try await environment.renewal.token(region: signIn.region, rejected: rejected, env: environment)
+        } catch let failure as MiniMaxCodeRenewal.Failure {
+            switch failure {
+            case .signInAgain:
+                throw ProviderError.sessionExpired(Self.signInAgainHint)
+            case .busy:
+                // MiniMax Code is renewing it right now; its token will do
+                // at the next refresh.
+                throw ProviderError.unavailable(L10n.t(
+                    "MiniMax Code is renewing its sign-in; the next refresh will read it.",
+                    "MiniMax Code 正在续期登录，下次刷新就能读到。"))
+            case let .unavailable(detail):
+                throw ProviderError.unavailable(detail)
+            }
+        }
+    }
+
+    static var expiredHint: String {
+        L10n.t(
+            "MiniMax Code's sign-in has run out (it lasts an hour). Open MiniMax Code once, or keep QuotaBar running and it renews the sign-in itself.",
+            "MiniMax Code 的登录已过期（每次有效一小时）。打开一次 MiniMax Code 即可恢复；QuotaBar 保持运行时会自己续期。")
+    }
+
+    static var signInAgainHint: String {
+        L10n.t(
+            "MiniMax turned down MiniMax Code's sign-in. Open MiniMax Code and sign in again.",
+            "MiniMax 拒绝了 MiniMax Code 的登录，请打开 MiniMax Code 重新登录。")
+    }
+
+    /// A pasted API token or Cookie header, on the Global API host.
+    static func fetchPasted(_ raw: String, send: HTTPSend) async throws -> UsageSnapshot {
         var headers = [
             "Accept": "application/json",
             "MM-API-Source": "QuotaBar",
@@ -101,53 +184,33 @@ public struct MiniMaxProvider: QuotaProvider {
         } else {
             headers["Authorization"] = "Bearer \(raw)"
         }
+        let url = URL(string: "https://api.minimax.io" + MiniMaxCode.remainsPath)!
+        let response = try await send("GET", url, headers, nil, 20)
+        return try MiniMaxCode.parseRemains(response.requireOK().data)
+    }
 
-        struct Remains: Decodable {
-            let modelName: String?
-            let currentIntervalRemainingPercent: Double?
-            let currentIntervalTotalCount: Int?
-            let currentIntervalUsageCount: Int?
-            let endTime: Int?
-            let currentWeeklyRemainingPercent: Double?
-            let weeklyEndTime: Int?
+    /// For Settings: the pasted credential or the sign-in on this Mac, and
+    /// which edition.
+    public func sourceInfo(config: ConfigStore) -> ProviderSourceInfo? {
+        let signIn = MiniMaxCode.signIn(authHome: environment.authHome)
+        if config.credential(for: .minimax) != nil {
+            return ProviderSourceInfo(
+                summary: L10n.t("Pasted API token or Cookie header", "粘贴的 API token 或 Cookie 头"),
+                note: signIn.map {
+                    L10n.t(
+                        "Clear it to use the MiniMax Code sign-in on this Mac (\($0.region.label)).",
+                        "清除后改用本机 MiniMax Code 登录（\($0.region.label)）。")
+                })
         }
-        struct DataBody: Decodable {
-            let modelRemains: [Remains]?
-        }
-        struct Body: Decodable {
-            let data: DataBody?
-        }
-
-        let url = URL(string: "https://api.minimax.io/v1/api/openplatform/coding_plan/remains")!
-        let body = try await HTTP.get(url, headers: headers).requireOK().json(Body.self)
-        guard let remains = body.data?.modelRemains, !remains.isEmpty else {
-            throw ProviderError.badResponse
-        }
-
-        var windows: [UsageWindow] = []
-        for entry in remains.prefix(3) {
-            let name = entry.modelName ?? "Model"
-            if let remaining = entry.currentIntervalRemainingPercent {
-                windows.append(UsageWindow(
-                    title: L10n.t("\(name) · interval", "\(name) · 周期"),
-                    usedPercent: 100 - remaining,
-                    detail: entry.currentIntervalTotalCount.map { total in
-                        L10n.t(
-                            "\(entry.currentIntervalUsageCount ?? 0) / \(total) req",
-                            "\(entry.currentIntervalUsageCount ?? 0) / \(total) 次请求")
-                    },
-                    resetsAt: Dates.parseEpoch(entry.endTime.map(Double.init))))
-            }
-            if let weeklyRemaining = entry.currentWeeklyRemainingPercent {
-                windows.append(UsageWindow(
-                    title: L10n.t("\(name) · weekly", "\(name) · 每周"),
-                    usedPercent: 100 - weeklyRemaining,
-                    resetsAt: Dates.parseEpoch(entry.weeklyEndTime.map(Double.init)),
-                    windowSeconds: 604_800,
-                    scope: name))
-            }
-        }
-        return UsageSnapshot(windows: windows)
+        guard let signIn else { return nil }
+        return ProviderSourceInfo(
+            summary: L10n.t(
+                "MiniMax Code sign-in on this Mac · \(signIn.region.label)",
+                "MiniMax Code 本机登录 · \(signIn.region.label)"),
+            note: L10n.t(
+                "The sign-in lasts an hour; while QuotaBar runs it renews it the way MiniMax Code does, so readings go on with MiniMax Code closed.",
+                "登录每次有效一小时；QuotaBar 运行时会按 MiniMax Code 的方式自动续期，MiniMax Code 关着也能继续读取。"),
+            consoleURL: signIn.region.consoleURL)
     }
 }
 

@@ -268,6 +268,41 @@ final class ClaudeParsingTests: XCTestCase {
         XCTAssertEqual(snapshot.windows[0].detail, "$8.40 / $20.00")
     }
 
+    /// Verified Ultra accounts have no 5-hour limit (October 2026), so the
+    /// response carries no session window; the card is the week and Fable.
+    func testAnAccountWithoutAFiveHourLimitShowsTheWeekAndFable() throws {
+        let ultra = """
+        {"five_hour": null,
+         "seven_day": {"utilization": 12.0, "resets_at": "2026-08-30T20:59:59.565738+00:00"},
+         "limits": [
+           {"kind": "weekly_all", "group": "weekly", "percent": 12, "resets_at": "2026-08-30T20:59:59.565738+00:00",
+            "scope": null, "is_active": true},
+           {"kind": "weekly_scoped", "group": "weekly", "percent": 10, "resets_at": "2026-08-30T20:59:59.565928+00:00",
+            "scope": {"model": {"id": null, "display_name": "Fable"}, "surface": null}, "is_active": false}
+         ]}
+        """
+        let snapshot = try ClaudeProvider.parse(Data(ultra.utf8))
+
+        XCTAssertEqual(snapshot.windows.map(\.usedPercent), [12, 10])
+        XCTAssertFalse(snapshot.windows.contains { $0.windowSeconds == 18_000 })
+        XCTAssertEqual(snapshot.upFrontWindows(for: .claude).count, 2)
+        // A ring that followed the 5-hour window moves to the fullest one.
+        let fiveHour = WindowTitle.forSeconds(18_000)
+        XCTAssertEqual(snapshot.headlineWindow(preferring: fiveHour)?.usedPercent, 12)
+    }
+
+    func testAnEmptyLegacyFiveHourWindowIsNotDrawn() throws {
+        let legacy = """
+        {"five_hour": {"utilization": null, "resets_at": null},
+         "seven_day": {"utilization": 7.0, "resets_at": "2026-08-30T20:59:59Z"}}
+        """
+        let snapshot = try ClaudeProvider.parse(Data(legacy.utf8))
+
+        XCTAssertEqual(snapshot.windows.count, 1)
+        XCTAssertEqual(snapshot.windows[0].windowSeconds, 604_800)
+        XCTAssertEqual(snapshot.windows[0].usedPercent, 7)
+    }
+
     func testExtraUsageAppearsOnlyWhenEnabled() throws {
         let disabled = try ClaudeProvider.parse(Data(response.utf8))
         XCTAssertFalse(disabled.windows.contains { $0.title == L10n.t("Extra usage", "额外用量") })

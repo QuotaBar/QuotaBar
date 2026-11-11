@@ -428,6 +428,9 @@ private struct CredentialEditor: View {
                     if id == .grok, store.needsKeychainAuthorization(.grok) {
                         Text(GrokBot.authorizationHint)
                     }
+                    if id == .qoder, store.needsKeychainAuthorization(.qoder) {
+                        Text(QoderApp.authorizationHint)
+                    }
                 }
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
