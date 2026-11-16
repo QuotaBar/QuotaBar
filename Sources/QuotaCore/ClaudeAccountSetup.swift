@@ -17,6 +17,7 @@ public enum ClaudeAccountSetup {
         let directory = home.appendingPathComponent(".claude-quotabar-\(UUID().uuidString.lowercased())", isDirectory: true)
         let fm = FileManager.default
         try fm.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        try seedOnboarding(in: directory, home: home)
         let command = directory.appendingPathComponent("login.command")
         try Data(script(binary: binary, directory: directory).utf8).write(to: command, options: .atomic)
         try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: command.path)
@@ -42,6 +43,25 @@ public enum ClaudeAccountSetup {
         try Data(script(binary: binary, directory: directory).utf8).write(to: command, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: command.path)
         return command
+    }
+
+    /// `claude auth login` signs in without Claude Code's first-run
+    /// onboarding (theme, security notes), and every later start in the
+    /// folder — QuotaBar's renewals among them — would show it. Marked done
+    /// before the login, in a folder that has no config yet; Claude Code
+    /// keeps the mark when it writes its own. So is the trust of the one
+    /// folder renewals start in, QuotaBar's own empty one, which spares them
+    /// the trust dialog too.
+    static func seedOnboarding(in directory: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser) throws {
+        let config = directory.appendingPathComponent(".claude.json")
+        guard !FileManager.default.fileExists(atPath: config.path) else { return }
+        let renewalFolder = home.appendingPathComponent("Library/Application Support/QuotaBar/claude-renewal").path
+        let seed: [String: Any] = [
+            "hasCompletedOnboarding": true,
+            "projects": [renewalFolder: ["hasTrustDialogAccepted": true]],
+        ]
+        try JSONSerialization.data(withJSONObject: seed, options: [.sortedKeys]).write(to: config, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: config.path)
     }
 
     // MARK: What QuotaBar made

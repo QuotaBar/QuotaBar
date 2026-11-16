@@ -19,8 +19,62 @@ final class ClaudeCodeRenewalTests: XCTestCase {
         XCTAssertEqual(ClaudeCodeRenewal.trustKeys(screen: dialog), "\u{1b}[B")
         // Redrawn with the marker on Yes.
         XCTAssertEqual(ClaudeCodeRenewal.trustKeys(screen: dialog + "\n No, exit❯Yes, I trust this folder"), "\r")
+        // 2.1.325 redraws only the marker after an arrow: once one went down
+        // from "No, exit", that marker is on Yes.
+        let redrawn = dialog + "\n \n❯\n\n\n\n❯\n "
+        XCTAssertEqual(ClaudeCodeRenewal.trustKeys(screen: redrawn, movedDown: true), "\r")
+        XCTAssertEqual(ClaudeCodeRenewal.trustKeys(screen: redrawn, movedDown: false), "\u{1b}[B")
+        // Still drawn on No after the arrow: down again, never Enter.
+        XCTAssertEqual(ClaudeCodeRenewal.trustKeys(screen: dialog, movedDown: true), "\u{1b}[B")
         // The main screen's own prompt is not the dialog.
         XCTAssertNil(ClaudeCodeRenewal.trustKeys(screen: "❯ Try \"how does <filepath> work?\""))
+    }
+
+    /// Claude Code 2.1.325's first-run onboarding, as drawn in a config dir
+    /// signed in with `claude auth login`.
+    func testFirstRunOnboardingIsStepPastAndNothingElse() {
+        let theme = """
+        WelcometoClaudeCodev2.1.325
+        Let'sgetstarted.
+        Choosethetextstylethatlooksbestwithyourterminal
+        Tochangethislater,run/theme
+        Auto(matchterminal)
+        ❯✔Darkmode
+        Lightmode
+        """
+        XCTAssertEqual(ClaudeCodeRenewal.onboardingKeys(screen: theme), "\r")
+        XCTAssertTrue(ClaudeCodeRenewal.onboardingUp(screen: theme))
+        // Letters lost to cursor moves, as read off the terminal.
+        let notes = """
+        Scurity noes:
+        1. Claude can make misakes.
+        Learn more:https://code.claude.com/docs/en/security
+        Press Ener tocontinue…
+        """
+        XCTAssertEqual(ClaudeCodeRenewal.onboardingKeys(screen: notes), "\r")
+        XCTAssertTrue(ClaudeCodeRenewal.onboardingUp(screen: "Press Ener tocontinue…"))
+        // Still being drawn: nothing typed yet, nothing answered.
+        let drawing = "WelcometoClaudeCodev2.1.325\nLet'sgetstarted."
+        XCTAssertNil(ClaudeCodeRenewal.onboardingKeys(screen: drawing))
+        XCTAssertTrue(ClaudeCodeRenewal.onboardingUp(screen: drawing))
+        // A login method is never picked, and the main screen is left alone.
+        XCTAssertNil(ClaudeCodeRenewal.onboardingKeys(screen: "Select login method:\n❯ 1. Claude account with subscription"))
+        XCTAssertNil(ClaudeCodeRenewal.onboardingKeys(screen: dialog))
+        XCTAssertFalse(ClaudeCodeRenewal.onboardingUp(screen: "❯ Try \"fix typecheck errors\""))
+    }
+
+    /// `QUOTABAR_CLAUDE_RENEWAL_SERVICE=<keychain item> swift test --filter
+    /// testARealLaunchReachesStatus`: the whole launch against a real sign-in
+    /// on this Mac — onboarding and trust answered, `/status` reached.
+    func testARealLaunchReachesStatus() throws {
+        guard let service = ProcessInfo.processInfo.environment["QUOTABAR_CLAUDE_RENEWAL_SERVICE"] else {
+            throw XCTSkip("Set QUOTABAR_CLAUDE_RENEWAL_SERVICE to try a real launch.")
+        }
+        let binary = try XCTUnwrap(ClaudeCodeRenewal.claudeBinary())
+        let configDir = service == LocalCredentials.claudeService ? nil : try XCTUnwrap(LocalCredentials.claudeConfigDir(service: service))
+        let token = LocalCredentials.readClaudeNow(service: service).token
+        let outcome = ClaudeCodeRenewal.Session(binary: binary, service: service, configDir: configDir).run(replacing: token, force: true)
+        XCTAssertTrue(outcome == .renewed || outcome == .notNeeded, "\(outcome)")
     }
 
     func testEscapeSequencesAreReadThrough() {

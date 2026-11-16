@@ -20,6 +20,16 @@ final class ClaudeAccountSetupTests: XCTestCase {
         XCTAssertNotEqual(first.service, second.service)
         XCTAssertEqual(LocalCredentials.claudeConfigDir(service: first.service, home: home), first.directory)
         XCTAssertTrue(FileManager.default.isExecutableFile(atPath: first.command.path))
+        // `auth login` skips the first-run onboarding; the folder starts with it done.
+        let config = try Data(contentsOf: first.directory.appendingPathComponent(".claude.json"))
+        let seeded = try XCTUnwrap(JSONSerialization.jsonObject(with: config) as? [String: Any])
+        XCTAssertEqual(seeded["hasCompletedOnboarding"] as? Bool, true)
+        let projects = try XCTUnwrap(seeded["projects"] as? [String: [String: Bool]])
+        XCTAssertEqual(projects[home.appendingPathComponent("Library/Application Support/QuotaBar/claude-renewal").path], ["hasTrustDialogAccepted": true])
+        // A config already there is never overwritten.
+        try Data(#"{"oauthAccount":{}}"#.utf8).write(to: first.directory.appendingPathComponent(".claude.json"))
+        try ClaudeAccountSetup.seedOnboarding(in: first.directory)
+        XCTAssertEqual(try String(contentsOf: first.directory.appendingPathComponent(".claude.json"), encoding: .utf8), #"{"oauthAccount":{}}"#)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
         process.arguments = [first.command.path]

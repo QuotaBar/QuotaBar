@@ -121,14 +121,54 @@ public enum ClaudeCodeRenewal {
     /// What the screen asks of the trust dialog Claude Code shows in a folder
     /// it has not seen: `nil` when it is not up, Enter once the marker is on
     /// "Yes, I trust this folder", an arrow toward it before then. Pure.
-    static func trustKeys(screen: String) -> String? {
+    ///
+    /// After an arrow Claude Code 2.1.325 may redraw the marker alone, with
+    /// nothing readable beside it. The dialog has two options, "No, exit"
+    /// first, and once the screen has settled (`settleFor`) one arrow down
+    /// from it lands on Yes: so after an arrow (`movedDown`) such a marker
+    /// is on Yes.
+    static func trustKeys(screen: String, movedDown: Bool = false) -> String? {
         let flat = normalized(screen)
         guard flat.contains("yes,itrustthisfolder") else { return nil }
         // The last marker drawn is the one on screen.
         guard let marker = screen.range(of: "❯", options: .backwards) else { return nil }
         let after = normalized(String(screen[marker.upperBound...].prefix(80)))
         if after.hasPrefix("yes,itrust") { return "\r" }
-        return "\u{1b}[B"
+        if after.hasPrefix("no,exit") || !movedDown { return "\u{1b}[B" }
+        return "\r"
+    }
+
+    /// Claude Code asks the terminal what it is when it starts and redraws
+    /// once the answers time out, which puts a dialog's marker back on its
+    /// default; a key sent before then is lost, or worse. A prompt is
+    /// answered only once it has been up this long and the screen has been
+    /// still for `quietFor`. Measured on 2.1.325: settled within 1.5 s.
+    static let settleFor: TimeInterval = 1.5
+    static let quietFor: TimeInterval = 0.3
+
+    /// What the screen asks of Claude Code's first-run onboarding, which a
+    /// config dir signed in with `claude auth login` never went through (the
+    /// sign-ins QuotaBar adds are made that way): Enter on the theme picker
+    /// keeps the style already marked, Enter on the security notes goes on.
+    /// `nil` for anything else — a login method is never picked. Pure.
+    /// Drawn with cursor moves, letters go missing from the plain text
+    /// ("Scurity noes", "Press Ener tocontinue"), so each page is known by
+    /// parts that come through whole: the theme's `/theme` hint, the notes'
+    /// link and their "continue".
+    static func onboardingKeys(screen: String) -> String? {
+        let flat = normalized(screen)
+        if flat.contains("choosethetextstyle") || flat.contains("tochangethislater,run/theme") { return "\r" }
+        if flat.contains("docs/en/security"), flat.contains("continue") { return "\r" }
+        return nil
+    }
+
+    /// Onboarding drawn, or still being drawn: nothing is typed into it but
+    /// what `onboardingKeys` sends.
+    static func onboardingUp(screen: String) -> Bool {
+        let flat = normalized(screen)
+        // Not "Welcome to Claude Code": older builds greet with it on the main screen.
+        return ["let'sgetstarted", "/theme", "docs/en/security", "continue…"]
+            .contains { flat.contains($0) }
     }
 
     /// Escape sequences out, for reading what is drawn.
@@ -150,6 +190,7 @@ public enum ClaudeCodeRenewal {
         private var primary: Int32 = -1
         private var process: Process?
         private var screen = ""
+        private var lastOutputAt = Date()
 
         init(binary: URL, service: String = LocalCredentials.claudeService, configDir: URL? = nil) {
             self.binary = binary
@@ -165,7 +206,10 @@ public enum ClaudeCodeRenewal {
             let started = Date()
             let deadline = started.addingTimeInterval(25)
             var trustAnswers = 0
+            var onboardingAnswers = 0
             var trustedAt: Date?
+            var answeredAt: Date?
+            var promptSeenAt: Date?
             var statusSent = false
             var lastKeychainLook = Date.distantPast
             while Date() < deadline {
@@ -173,29 +217,54 @@ public enum ClaudeCodeRenewal {
                 guard process?.isRunning == true else {
                     return renewed(from: token) ? .renewed : .failed("Claude Code exited before renewing.")
                 }
-                if let keys = ClaudeCodeRenewal.trustKeys(screen: String(screen.suffix(1_500))) {
+                if !force, Date().timeIntervalSince(lastKeychainLook) >= 0.5 {
+                    lastKeychainLook = Date()
+                    if renewed(from: token) { return .renewed }
+                }
+                let tail = String(screen.suffix(1_500))
+                let trust = ClaudeCodeRenewal.trustKeys(screen: tail, movedDown: trustAnswers > 0)
+                let onboarding = trust == nil ? ClaudeCodeRenewal.onboardingKeys(screen: tail) : nil
+                if trust != nil || onboarding != nil {
+                    let seenAt = promptSeenAt ?? Date()
+                    promptSeenAt = seenAt
+                    guard Date().timeIntervalSince(seenAt) >= ClaudeCodeRenewal.settleFor,
+                          Date().timeIntervalSince(lastOutputAt) >= ClaudeCodeRenewal.quietFor
+                    else {
+                        Thread.sleep(forTimeInterval: 0.1)
+                        continue
+                    }
+                }
+                if let keys = trust {
                     // A few steps at most; Enter only once the marker is on Yes.
                     guard trustAnswers < 6 else { return .failed("Claude Code's folder trust dialog did not answer.") }
                     send(keys)
                     trustAnswers += 1
+                    promptSeenAt = nil
                     if keys == "\r" {
                         trustedAt = Date()
+                        answeredAt = trustedAt
                         screen = ""
                     }
                     Thread.sleep(forTimeInterval: 0.5)
                     continue
                 }
-                // Ready to type once the screen has settled after start-up or the dialog.
-                let readyAt = (trustedAt ?? started).addingTimeInterval(trustedAt == nil ? 4 : 3)
+                if let keys = onboarding {
+                    guard onboardingAnswers < 6 else { return .failed("Claude Code's first-run onboarding did not go on.") }
+                    send(keys)
+                    onboardingAnswers += 1
+                    promptSeenAt = nil
+                    answeredAt = Date()
+                    screen = ""
+                    Thread.sleep(forTimeInterval: 0.5)
+                    continue
+                }
+                // Ready to type once the screen has settled after start-up, the dialog or onboarding.
+                let readyAt = (answeredAt ?? started).addingTimeInterval(answeredAt == nil ? 4 : 3)
                 // Never typed into the trust dialog: Enter there would pick its default, "No, exit".
-                let dialogUp = trustedAt == nil && ClaudeCodeRenewal.normalized(String(screen.suffix(1_500))).contains("trustthisfolder")
-                if !statusSent, !dialogUp, Date() >= readyAt {
+                let dialogUp = trustedAt == nil && ClaudeCodeRenewal.normalized(tail).contains("trustthisfolder")
+                if !statusSent, !dialogUp, !ClaudeCodeRenewal.onboardingUp(screen: tail), Date() >= readyAt {
                     send("/status\r")
                     statusSent = true
-                }
-                if !force, Date().timeIntervalSince(lastKeychainLook) >= 0.5 {
-                    lastKeychainLook = Date()
-                    if renewed(from: token) { return .renewed }
                 }
                 if force, statusSent, Date().timeIntervalSince(readyAt) > 4 {
                     return renewed(from: token) ? .renewed : .notNeeded
@@ -258,6 +327,7 @@ public enum ClaudeCodeRenewal {
             while true {
                 let count = read(primary, &buffer, buffer.count)
                 guard count > 0 else { break }
+                lastOutputAt = Date()
                 debugLog(Data(buffer[0..<count]))
                 screen += ClaudeCodeRenewal.plainText(String(decoding: buffer[0..<count], as: UTF8.self))
             }
