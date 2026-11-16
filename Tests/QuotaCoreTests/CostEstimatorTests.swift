@@ -104,6 +104,24 @@ final class CostEstimatorTests: XCTestCase {
         XCTAssertEqual(summary.deduplicated, 1)
     }
 
+    /// `~/.claude/projects` and `~/.codex/sessions` kept elsewhere and linked
+    /// in: the link is followed, not read as an empty folder.
+    func testLinkedLogFoldersAreScanned() throws {
+        try writeClaude("a.jsonl", lines: [claudeLine(messageID: "msg_1", requestID: "req_1", output: 1_000_000)])
+        try writeCodex("rollout-1.jsonl", lines: [codexLine(input: 1_000_000, cached: 1_000_000, output: 0)])
+        let links = root.appendingPathComponent("links")
+        try FileManager.default.createDirectory(at: links, withIntermediateDirectories: true)
+        let claudeLink = links.appendingPathComponent("projects")
+        let codexLink = links.appendingPathComponent("sessions")
+        try FileManager.default.createSymbolicLink(at: claudeLink, withDestinationURL: claudeRoot)
+        try FileManager.default.createSymbolicLink(at: codexLink, withDestinationURL: codexRoot)
+
+        let summary = CostEstimator.summary(paths: CostPaths(claudeProjects: claudeLink, codexSessions: codexLink), now: now)
+
+        // $25.00 of Opus output plus $0.125 of gpt-5-codex cache reads.
+        XCTAssertEqual(summary.windowUSD, 25.125, accuracy: 0.0001)
+    }
+
     func testDistinctTurnsAreBothBilled() throws {
         try writeClaude("a.jsonl", lines: [
             claudeLine(messageID: "msg_1", requestID: "req_1", output: 1_000_000),

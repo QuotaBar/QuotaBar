@@ -867,6 +867,9 @@ public enum CostEstimator {
         filter: @escaping (URL) -> Bool,
         parse: @escaping @Sendable (URL, ISO8601DateFormatter) -> [TokenEvent]) -> [TokenEvent]
     {
+        // A root that is itself a link (`~/.claude/projects` kept in dotfiles
+        // or on another disk) enumerates as nothing; its target does not.
+        let root = root.resolvingSymlinksInPath()
         let fm = FileManager.default
         guard let enumerator = fm.enumerator(
             at: root,
