@@ -171,6 +171,9 @@ final class UsageStore: ObservableObject {
     /// Windows that reset a moment ago, by `ResetEvent.id`, and until when
     /// their rows say so.
     @Published var recentResets: [String: Date] = [:]
+    /// The period each window's last announced reset began, so a reset read
+    /// twice is told once (`ResetDetector.unannounced`).
+    var announcedResets: [String: Date] = [:]
     /// The read queued for just after the next window resets.
     var resetCheckTask: Task<Void, Never>?
     /// Extra reads spent on a reset the provider has not rolled over yet.

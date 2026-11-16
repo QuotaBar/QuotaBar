@@ -15,10 +15,17 @@ public struct ResetEvent: Sendable, Equatable, Identifiable {
     /// or when the reset was noticed if it promised none.
     public let resetAt: Date
     public let noticedAt: Date
+    /// The reset time the window moved on to — the period this reset began.
+    /// One reset, read again, names the same one.
+    public let nextResetAt: Date?
 
     public var id: String { "\(provider.rawValue)|\(windowID)" }
 
-    public init(provider: ProviderID, windowID: String, name: String, previousUsed: Double, usedNow: Double, resetAt: Date, noticedAt: Date) {
+    public init(
+        provider: ProviderID, windowID: String, name: String, previousUsed: Double, usedNow: Double,
+        resetAt: Date, noticedAt: Date, nextResetAt: Date? = nil)
+    {
+        self.nextResetAt = nextResetAt
         self.provider = provider
         self.windowID = windowID
         self.name = name
@@ -53,6 +60,19 @@ public enum ResetDetector {
     /// window (at least ten minutes). A drop alone is a top-up or a provider
     /// correcting itself; a moved reset time alone is a window that rolled
     /// with nothing used.
+    /// The events not already announced, and the announcement noted: a reset
+    /// read twice (a provider flipping between two readings) is told once.
+    /// Known by the window and the period it began; one without a reset time
+    /// to name it is always told.
+    public static func unannounced(_ events: [ResetEvent], announced: inout [String: Date]) -> [ResetEvent] {
+        events.filter { event in
+            guard let next = event.nextResetAt else { return true }
+            if let told = announced[event.id], abs(told.timeIntervalSince(next)) < 60 { return false }
+            announced[event.id] = next
+            return true
+        }
+    }
+
     public static func events(provider: ProviderID, previous: UsageSnapshot?, current: UsageSnapshot, now: Date = Date()) -> [ResetEvent] {
         guard let previous, !accountChanged(from: previous, to: current) else { return [] }
         let before = Dictionary(previous.windows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -67,7 +87,10 @@ public enum ResetDetector {
                 let span = Double(window.windowSeconds ?? old.windowSeconds ?? 0)
                 moved = newReset.timeIntervalSince(oldReset) >= max(600, span / 10)
             }
-            guard passed || moved else { continue }
+            // Grok can answer with the period before and the one after in
+            // turn (84% to the 5th, 0% to the 9th, 97% to the 5th again): a
+            // reset time moving on is no proof there. Its reset time passing is.
+            guard passed || (moved && provider != .grok) else { continue }
             let resetAt = min(old.resetsAt ?? now, now)
             events.append(ResetEvent(
                 provider: provider,
@@ -76,7 +99,8 @@ public enum ResetDetector {
                 previousUsed: was,
                 usedNow: used,
                 resetAt: resetAt,
-                noticedAt: now))
+                noticedAt: now,
+                nextResetAt: window.resetsAt))
         }
         return events
     }

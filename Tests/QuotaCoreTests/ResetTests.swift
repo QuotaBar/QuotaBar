@@ -28,6 +28,40 @@ final class ResetDetectorTests: XCTestCase {
         XCTAssertEqual(ResetDetector.events(provider: .codex, previous: before, current: after, now: now).count, 1)
     }
 
+    /// Grok answering with last week and this week in turn (CodexBar #4917):
+    /// a reset time moving on is no proof there, and the reset that did
+    /// happen is told once however often it is read again.
+    func testGrokFlippingBetweenPeriodsIsToldOnce() {
+        let week: TimeInterval = 604_800
+        let oldEnd = now.addingTimeInterval(2 * 86_400)
+        let newEnd = now.addingTimeInterval(6 * 86_400)
+        func reading(_ used: Double, _ end: Date) -> UsageSnapshot {
+            snapshot([UsageWindow(title: "Week", usedPercent: used, resetsAt: end, windowSeconds: Int(week))])
+        }
+        // Before the old period has ended: only moved, so nothing for Grok…
+        XCTAssertTrue(ResetDetector.events(provider: .grok, previous: reading(84, oldEnd), current: reading(0, newEnd), now: now).isEmpty)
+        // …while another provider still counts a reset time moving a week on.
+        XCTAssertEqual(ResetDetector.events(provider: .codex, previous: reading(84, oldEnd), current: reading(0, newEnd), now: now).count, 1)
+
+        // After it has ended: a reset, and the flips that follow repeat it.
+        let later = oldEnd.addingTimeInterval(120)
+        var announced: [String: Date] = [:]
+        var told = 0
+        for _ in 0..<3 {
+            let events = ResetDetector.events(provider: .grok, previous: reading(97, oldEnd), current: reading(0, newEnd), now: later)
+            XCTAssertEqual(events.first?.nextResetAt, newEnd)
+            told += ResetDetector.unannounced(events, announced: &announced).count
+        }
+        XCTAssertEqual(told, 1)
+        // The next week's reset is a new one.
+        let next = ResetDetector.events(provider: .grok, previous: reading(90, newEnd), current: reading(1, newEnd.addingTimeInterval(week)),
+                                        now: newEnd.addingTimeInterval(60))
+        XCTAssertEqual(ResetDetector.unannounced(next, announced: &announced).count, 1)
+        // One with no reset time to name it is always told.
+        let unnamed = ResetEvent(provider: .claude, windowID: "5h", name: "5h", previousUsed: 90, usedNow: 0, resetAt: now, noticedAt: now)
+        XCTAssertEqual(ResetDetector.unannounced([unnamed, unnamed], announced: &announced).count, 2)
+    }
+
     /// Signing the CLI in to another account is not a reset, however much
     /// lower the other account's figure is.
     func testSwitchingAccountsIsNotAReset() {

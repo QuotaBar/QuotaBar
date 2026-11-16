@@ -12,7 +12,7 @@ extension UsageStore {
     /// fresh ones count: a cached reading replaced hours after its reset is
     /// not news.
     func noteResets(_ events: [ResetEvent], before: MeterReading) {
-        let fresh = events.filter(\.isFresh)
+        let fresh = ResetDetector.unannounced(events.filter(\.isFresh), announced: &announcedResets)
         guard !fresh.isEmpty else { return }
         let until = Date().addingTimeInterval(Self.justResetSpan)
         for event in fresh { recentResets[event.id] = until }
