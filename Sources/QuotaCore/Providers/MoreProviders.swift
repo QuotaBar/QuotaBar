@@ -924,22 +924,37 @@ public struct KiroProvider: QuotaProvider {
 
     public func fetch(config: ConfigStore) async throws -> UsageSnapshot {
         guard let tokenJSON = SQLiteRead.rows(inFile: Self.database, query: "SELECT value FROM auth_kv WHERE key = 'kirocli:odic:token'").first?.first ?? nil,
-              let profileJSON = SQLiteRead.rows(inFile: Self.database, query: "SELECT value FROM state WHERE key = 'api.codewhisperer.profile'").first?.first ?? nil,
-              let token = (ProviderJSON.object(Data(tokenJSON.utf8)) as? [String: Any])?["access_token"] as? String,
-              let arn = (ProviderJSON.object(Data(profileJSON.utf8)) as? [String: Any])?["arn"] as? String
+              let token = (ProviderJSON.object(Data(tokenJSON.utf8)) as? [String: Any])?["access_token"] as? String
         else { throw ProviderError.notConfigured(hint: id.setupHint) }
-        let parts = arn.split(separator: ":", maxSplits: 5, omittingEmptySubsequences: false)
-        let endpoints = ["us-east-1": "https://codewhisperer.us-east-1.amazonaws.com/", "eu-central-1": "https://q.eu-central-1.amazonaws.com/"]
-        guard parts.count == 6, let endpoint = endpoints[String(parts[3])], let url = URL(string: endpoint) else {
-            throw ProviderError.badResponse
-        }
-        let body = String(decoding: try JSONSerialization.data(withJSONObject: ["profileArn": arn]), as: UTF8.self)
+        let profileJSON = SQLiteRead.rows(inFile: Self.database, query: "SELECT value FROM state WHERE key = 'api.codewhisperer.profile'").first?.first ?? nil
+        let (url, body) = try Self.request(profileJSON: profileJSON)
         let response = try await HTTP.post(url, headers: [
             "Content-Type": "application/x-amz-json-1.0",
             "X-Amz-Target": "AmazonCodeWhispererService.GetUsageLimits",
             "Authorization": "Bearer \(token)",
         ], jsonBody: body).requireOK()
         return try Self.parse(response.data)
+    }
+
+    static let endpoints = ["us-east-1": "https://codewhisperer.us-east-1.amazonaws.com/", "eu-central-1": "https://q.eu-central-1.amazonaws.com/"]
+
+    /// Where to ask, and what with. A Builder ID sign-in keeps a token and
+    /// no profile: asked without one, at us-east-1 (CodexBar 929c4fe). A
+    /// profile that is there but not readable fails, rather than send the
+    /// token to a region it may not belong to.
+    static func request(profileJSON: String?) throws -> (url: URL, body: String) {
+        guard let profileJSON else {
+            return (URL(string: endpoints["us-east-1"]!)!, "{}")
+        }
+        guard let arn = (ProviderJSON.object(Data(profileJSON.utf8)) as? [String: Any])?["arn"] as? String else {
+            throw ProviderError.notConfigured(hint: ProviderID.kiro.setupHint)
+        }
+        let parts = arn.split(separator: ":", maxSplits: 5, omittingEmptySubsequences: false)
+        guard parts.count == 6, parts[0] == "arn", parts[2] == "codewhisperer", parts[5].hasPrefix("profile/"),
+              let endpoint = endpoints[String(parts[3])], let url = URL(string: endpoint)
+        else { throw ProviderError.badResponse }
+        let body = String(decoding: try JSONSerialization.data(withJSONObject: ["profileArn": arn]), as: UTF8.self)
+        return (url, body)
     }
 
     public static func parse(_ data: Data) throws -> UsageSnapshot {

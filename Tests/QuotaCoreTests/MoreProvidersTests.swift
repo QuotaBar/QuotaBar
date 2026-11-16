@@ -163,4 +163,21 @@ final class MoreProvidersTests: XCTestCase {
         XCTAssertEqual(snapshot.windows.first?.usedPercent ?? 0, 25.05, accuracy: 0.001)
         XCTAssertEqual(snapshot.windows.first?.resetsAt, Date(timeIntervalSince1970: 1_800_000_000))
     }
+
+    /// A Builder ID sign-in: a token, no profile. Asked without one, at us-east-1.
+    func testKiroWithoutAProfileAsksUsEast1() throws {
+        let bare = try KiroProvider.request(profileJSON: nil)
+        XCTAssertEqual(bare.url.absoluteString, "https://codewhisperer.us-east-1.amazonaws.com/")
+        XCTAssertEqual(bare.body, "{}")
+        // A profile's own region and ARN, as before.
+        let arn = "arn:aws:codewhisperer:eu-central-1:123456789012:profile/ABC"
+        let profiled = try KiroProvider.request(profileJSON: #"{"arn":"\#(arn)"}"#)
+        XCTAssertEqual(profiled.url.absoluteString, "https://q.eu-central-1.amazonaws.com/")
+        let sent = try JSONSerialization.jsonObject(with: Data(profiled.body.utf8)) as? [String: String]
+        XCTAssertEqual(sent, ["profileArn": arn])
+        // A profile that is there but not readable never falls back to another region.
+        XCTAssertThrowsError(try KiroProvider.request(profileJSON: #"{"name":"x"}"#))
+        XCTAssertThrowsError(try KiroProvider.request(profileJSON: #"{"arn":"arn:aws:codewhisperer:ap-south-9:1:profile/A"}"#))
+        XCTAssertThrowsError(try KiroProvider.request(profileJSON: #"{"arn":"arn:aws:iam:us-east-1:1:profile/A"}"#))
+    }
 }
