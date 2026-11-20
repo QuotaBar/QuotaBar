@@ -50,50 +50,36 @@ English and Simplified Chinese and follows the system language unless you pick o
 <!-- changelog:start -->
 <!-- Generated from CHANGELOG.en.md by Scripts/sync_changelog.py. Do not edit by hand. -->
 
-Latest release **0.6.1** (2026-10-31) · **15** changes in development · [full changelog](CHANGELOG.en.md)
+Latest release **0.6.2** (2026-11-20) · [full changelog](CHANGELOG.en.md)
 
 <details open>
-<summary><b>2026-11-07</b> · Unreleased · 2 added</summary>
+<summary><b>2026-11-20</b> · 0.6.2 · 1 fixed</summary>
+
+**Fixed**
+
+- Google now ships Antigravity inside Gemini.app (`/Applications/Gemini.app`, with no Antigravity.app), and the Antigravity card stopped finding the quota. It now reads the local service from the address Gemini.app records for itself, and from the `agy` bundled in Gemini.app while the app is closed; Antigravity.app works as before.
+
+</details>
+
+<details>
+<summary><b>2026-11-16</b> · 0.6.2 · 4 fixed</summary>
+
+**Fixed**
+
+- A second Claude sign-in added in Settings kept failing to renew once its token ran out, leaving the card on old figures with “did not renew when QuotaBar asked”. Such sign-ins had never been through Claude Code's first-run onboarding, so the renewal stopped at the theme picker and security notes, and keys sent too early could land the folder trust dialog back on “No, exit”. Both are now stepped through, and sign-ins added from now on skip them.
+- With `~/.claude/projects` or `~/.codex/sessions` as a symlink (kept in dotfiles or on another disk), spend, projects and the archive were empty; the link is now followed.
+- Grok's weekly figures switching back and forth between two periods announced the same reset again and again. A Grok reset now needs the old reset time to have passed, and every reset, for any provider, is announced once.
+- Kiro signed in with a Builder ID (a token, no profile) always showed as not configured; it now reads the quota.
+
+</details>
+
+<details>
+<summary><b>2026-11-07</b> · 0.6.2 · 2 added</summary>
 
 **Added**
 
 - The Claude card shows the API credit your plan includes (Max's $200 a month, say): what is left, what is used and the day it runs out (UTC). The credit lives in the Claude Console, and QuotaBar reads it read-only, without a dialog, from a browser's platform.claude.com sign-in — Chrome, Edge, Brave, Arc, Firefox or Safari. Settings → Providers → Claude has a new “API credit” row saying where a sign-in was found; when one needs it, “Allow keychain access” asks macOS once.
 - The Codex card shows the OpenAI API credit a ChatGPT Pro plan includes ($500 a month on Pro 500): the allowance, the API organization it goes to and the day this period's runs out, or a reminder to claim it at platform.openai.com. Read with Codex's own sign-in, nothing to set up. For what is left, add an OpenAI API key under Settings → Providers → Codex → “API credit key” (kept in the keychain), or let QuotaBar use one already on the Mac (OPENAI_ADMIN_KEY / OPENAI_API_KEY, ~/.codex/auth.json, exports in shell start-up files): a key that reads billing shows the exact balance, an organization Admin key (sk-admin-…) estimates it from this period's API spend, marked “about”.
-
-</details>
-
-<details>
-<summary><b>2026-11-03</b> · Unreleased · 2 added · 3 fixed</summary>
-
-**Added**
-
-- Early resets and credits that Codex and Claude give you stand out as they near their deadline: within 24 hours an hourglass badge sits beside the card's name (“expires in 21h”), folded or not, and a click opens the card; opened, the row turns amber, red in its last hour, and an early reset says where to spend it. The dock card shows the badge too.
-- Given credits — Codex's credits, Claude's Cloud session credit and the like — now notify a day before they run out unspent, saying how much is left and when it goes, once per credit. In Settings → Alerts → Resets the switch is now “Early resets and credits given”, with a new “Remind” choice that adds a last-hour reminder; it is set ahead of time, so it comes on time even between readings.
-
-**Fixed**
-
-- Codex sessions archived as `.jsonl.zst` count toward spend again: QuotaBar reads the archives directly. Codex compresses a session about a week after it ends, so most Codex spend older than a week showed as $0.
-- Cursor 3.27 and later keep the sign-in encrypted, which left the Cursor card unable to read it; it is read again. macOS asks once: press “Allow keychain access” on the card or in Settings and choose Always Allow. Background refreshes never ask.
-- Reading the Antigravity CLI's (`agy`) quota no longer sets off its automatic update, which could download gigabytes in the background behind a quota read.
-
-</details>
-
-<details>
-<summary><b>2026-11-02</b> · Unreleased · 4 added · 4 fixed</summary>
-
-**Added**
-
-- The menus for switching Claude account — the arrow after a card's address and the dock card's switch bar — now mark how each sign-in stands: expired, signed out, needs access, folder gone, with the ones that read first. Several copies of the same account fold into one row, though the one in use and a better one beside it are never folded away. A sign-in that cannot read yet carries its own “Sign in” or “Allow access” in the menu, so it is not found out only after switching to it.
-- With Claude Code's default sign-in signed out, the card, the dock card and Settings all have a “Sign in” button that opens a Terminal window to finish the login, instead of running `claude` and typing /login yourself.
-- “Add account” no longer leaves a second copy when the login turns out to be an account already there, because the browser was still signed in to it: it says “same account, nothing added”, clears the folder and keychain item it just made, and explains that you switch to the other account in the browser first.
-- Removing a Claude sign-in QuotaBar made can also delete its folder and keychain item, and Settings offers to clear what earlier removals left behind in one press. QuotaBar only cleans up what it made; a config dir you set up yourself is never touched.
-
-**Fixed**
-
-- A Claude reading from the Claude app or a browser now names its source after the address (“· Claude app”), and the account list no longer marks the default sign-in as “on the card” while the card is reading something else.
-- When Claude Code's default sign-in is signed out and the card reads the Claude app's or a browser's sign-in instead, the “Allow keychain access” button the message tells you to press now shows, on the card and in Settings. Before, the message named a button that was not there.
-- A Claude reading that fails no longer strands you on the error: the dock card lists every Claude sign-in, so one press switches to the other account and back, and the menu-bar panel's Claude card lets you pick an account when it fails too.
-- “Copy as Image” copies the card as it stands: folded, just the card; opened, everything under the arrow too — the folded limits, early resets, given credits, the account list, the usage trend, the spend and when it was updated. Before, an opened card copied only its folded limits and kept the rest on the card, so the picture still looked like the small folded one. The picture has no buttons (status page, console, switch account), and addresses — in the account list and in errors that name one — stay hidden as “Hide the account in copied images” says, shown as “Account 1”, “Account 2”. With privacy masking on, an account's error in the panel loses its address the same way. A balance provider's opened card lists every model in the picture, not the top 3.
 
 </details>
 

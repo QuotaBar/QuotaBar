@@ -3,7 +3,22 @@
 New features, style changes and fixes in the QuotaBar app, newest first by version and day.
 Server moves, the website, and build or release scripts don't change the app itself and aren't recorded here.
 
-## Unreleased
+## 0.6.2 · 2026-11-20
+
+### 2026-11-20
+
+#### Fixed
+
+- Google now ships Antigravity inside Gemini.app (`/Applications/Gemini.app`, with no Antigravity.app), and the Antigravity card stopped finding the quota. It now reads the local service from the address Gemini.app records for itself, and from the `agy` bundled in Gemini.app while the app is closed; Antigravity.app works as before.
+
+### 2026-11-16
+
+#### Fixed
+
+- A second Claude sign-in added in Settings kept failing to renew once its token ran out, leaving the card on old figures with “did not renew when QuotaBar asked”. Such sign-ins had never been through Claude Code's first-run onboarding, so the renewal stopped at the theme picker and security notes, and keys sent too early could land the folder trust dialog back on “No, exit”. Both are now stepped through, and sign-ins added from now on skip them.
+- With `~/.claude/projects` or `~/.codex/sessions` as a symlink (kept in dotfiles or on another disk), spend, projects and the archive were empty; the link is now followed.
+- Grok's weekly figures switching back and forth between two periods announced the same reset again and again. A Grok reset now needs the old reset time to have passed, and every reset, for any provider, is announced once.
+- Kiro signed in with a Builder ID (a token, no profile) always showed as not configured; it now reads the quota.
 
 ### 2026-11-07
 
