@@ -12,7 +12,14 @@ enum AntigravityCLI {
     static let maxAge: TimeInterval = 300
 
     static func executable() -> String? {
-        ToolRunner.locate("agy")
+        ToolRunner.locate("agy") ?? geminiBundled()
+    }
+
+    /// The `agy` Gemini.app ships (issue #11, CodexBar #5113): the same
+    /// CLI, `-p /usage` and all, for when none is on the PATH.
+    static func geminiBundled(paths: [String] = AntigravityLocal.geminiAppPaths) -> String? {
+        paths.lazy.map { URL(fileURLWithPath: $0).appendingPathComponent("Contents/Helpers/agy").path }
+            .first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
     /// agy checks for a new version whenever it starts and installs one if

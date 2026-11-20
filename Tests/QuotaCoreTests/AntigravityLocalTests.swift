@@ -21,6 +21,54 @@ final class AntigravityLocalTests: XCTestCase {
         XCTAssertEqual(AntigravityLocal.flag("--csrf_token", in: "x --csrf_token=abc --y"), "abc")
     }
 
+    /// Antigravity inside Gemini.app (issue #11, Gemini 1.147.5, hub 2.31.0):
+    /// an `agy --hub` with no token on its command line, found by the record
+    /// it writes instead.
+    func testGeminiAppsHubIsFoundByItsRecord() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("qb-hub-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        func write(_ name: String, _ json: String, age: TimeInterval) throws {
+            let url = folder.appendingPathComponent(name)
+            try Data(json.utf8).write(to: url)
+            try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-age)], ofItemAtPath: url.path)
+        }
+        try write("hub_50000.json", #"{"pid": 3884, "httpsPort": 50003, "httpPort": 50000, "lsVersion": "2.31.0", "csrfToken": "tok-new"}"#, age: 10)
+        try write("hub_49000.json", #"{"pid": 3001, "httpsPort": 49003, "httpPort": 49000, "csrfToken": "tok-old"}"#, age: 600)
+        try write("hub_48000.json", #"{"pid": 2002, "httpPort": 48000, "csrfToken": "tok-gone"}"#, age: 5)
+        try write("hub_bad.json", #"{"pid": 4000, "httpsPort": 1}"#, age: 1)
+        try write("other.json", #"{"pid": 3884, "httpPort": 1, "csrfToken": "x"}"#, age: 1)
+
+        let hubs = AntigravityLocal.hubs(in: folder, isAlive: { $0 != 2002 })
+        // Newest first; the one whose process is gone, and the one with no token, left out.
+        XCTAssertEqual(hubs.map(\.server), [
+            AntigravityLocal.Server(pid: 3884, csrfToken: "tok-new"),
+            AntigravityLocal.Server(pid: 3001, csrfToken: "tok-old"),
+        ])
+        XCTAssertEqual(hubs.first?.endpoints.map(\.scheme), ["https", "http"])
+        XCTAssertEqual(hubs.first?.endpoints.map(\.port), [50003, 50000])
+        XCTAssertTrue(AntigravityLocal.hubs(in: folder.appendingPathComponent("missing")).isEmpty)
+
+        // The app itself, and that the old process probe finds no server in it.
+        let list = """
+          3880 /Applications/Gemini.app/Contents/MacOS/Gemini
+          3884 /Applications/Gemini.app/Contents/Helpers/agy --hub --hub-port=50000 --read_host_bridge_token_from_stdin
+        """
+        XCTAssertTrue(AntigravityLocal.isAppRunning(inProcessList: list))
+        XCTAssertTrue(AntigravityLocal.servers(inProcessList: list).isEmpty)
+    }
+
+    func testGeminiAppsBundledAgyIsTheCLIWhenNoneIsOnThePath() throws {
+        let app = FileManager.default.temporaryDirectory.appendingPathComponent("qb-gemini-\(UUID().uuidString)/Gemini.app")
+        let helpers = app.appendingPathComponent("Contents/Helpers")
+        try FileManager.default.createDirectory(at: helpers, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: app.deletingLastPathComponent()) }
+        XCTAssertNil(AntigravityCLI.geminiBundled(paths: [app.path]))
+        let agy = helpers.appendingPathComponent("agy")
+        FileManager.default.createFile(atPath: agy.path, contents: Data(), attributes: [.posixPermissions: 0o755])
+        XCTAssertEqual(AntigravityCLI.geminiBundled(paths: ["/nowhere/Gemini.app", app.path]), agy.path)
+    }
+
     func testItsPortsComeFromLsof() {
         let listing = """
         COMMAND    PID  USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME

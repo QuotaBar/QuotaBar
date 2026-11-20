@@ -21,6 +21,11 @@ import Foundation
 /// same. The IDE ships the same binary but answers the quota summary with
 /// 404, so only the app's servers are asked. Measured against Antigravity
 /// 2.14.0, 2026-09-16.
+///
+/// Since late 2026 Google ships it inside `Gemini.app` (issue #11): an
+/// `agy --hub` helper with no `--csrf_token` on its command line, which
+/// writes its ports and token to `~/.gemini/antigravity/daemon/hub_<port>.json`
+/// at every launch instead. Same service, same answers.
 enum AntigravityLocal {
     struct Server: Equatable {
         let pid: Int32
@@ -41,9 +46,20 @@ enum AntigravityLocal {
         ["/Applications/Antigravity.app", FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications/Antigravity.app").path]
     }
 
+    /// Where Antigravity lives now: inside the Gemini app. Its version is
+    /// Gemini's, not Antigravity's, so `installedVersion` does not read it.
+    static var geminiAppPaths: [String] {
+        ["/Applications/Gemini.app", FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications/Gemini.app").path]
+    }
+
     /// The app is on this Mac, signed in or not.
     static var isInstalled: Bool {
-        appPaths.contains { FileManager.default.fileExists(atPath: $0) }
+        (appPaths + geminiAppPaths).contains { FileManager.default.fileExists(atPath: $0) }
+    }
+
+    /// The hubs' own records of themselves.
+    static var daemonDirectory: URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".gemini/antigravity/daemon", isDirectory: true)
     }
 
     /// The installed app's version, `2.28.0`.
@@ -57,27 +73,83 @@ enum AntigravityLocal {
     }
 
     static func read() async -> Reading {
+        // Gemini.app's hub says where it is; no process list needed.
+        let hubs = hubs(in: daemonDirectory)
+        for hub in hubs {
+            for (scheme, port) in hub.endpoints {
+                if let snapshot = await quota(scheme: scheme, port: port, server: hub.server) { return .quota(snapshot) }
+            }
+        }
         let list = await Task.detached { ToolRunner.run("/bin/ps", ["-ax", "-o", "pid=,command="], timeout: 5) }.value
         let text = list.map { String(decoding: $0.output, as: UTF8.self) } ?? ""
         let servers = servers(inProcessList: text)
-        guard !servers.isEmpty || isAppRunning(inProcessList: text) else { return .notRunning }
+        guard !servers.isEmpty || !hubs.isEmpty || isAppRunning(inProcessList: text) else { return .notRunning }
         for server in servers {
             let lsof = await Task.detached {
                 ToolRunner.run("/usr/sbin/lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-a", "-p", String(server.pid)], timeout: 5)
             }.value
             for port in ports(inListing: lsof.map { String(decoding: $0.output, as: UTF8.self) } ?? "") {
                 for scheme in ["https", "http"] {
-                    guard let summary = await call("RetrieveUserQuotaSummary", scheme: scheme, port: port, server: server),
-                          var snapshot = try? parseSummary(summary)
-                    else { continue }
-                    if let status = await call("GetUserStatus", scheme: scheme, port: port, server: server) {
-                        (snapshot.planName, snapshot.account) = userStatus(status)
-                    }
-                    return .quota(snapshot)
+                    if let snapshot = await quota(scheme: scheme, port: port, server: server) { return .quota(snapshot) }
                 }
             }
         }
         return .noAnswer
+    }
+
+    /// The quota one server gives, with the plan and address when it says.
+    private static func quota(scheme: String, port: Int, server: Server) async -> UsageSnapshot? {
+        guard let summary = await call("RetrieveUserQuotaSummary", scheme: scheme, port: port, server: server),
+              var snapshot = try? parseSummary(summary)
+        else { return nil }
+        if let status = await call("GetUserStatus", scheme: scheme, port: port, server: server) {
+            (snapshot.planName, snapshot.account) = userStatus(status)
+        }
+        return snapshot
+    }
+
+    // MARK: Gemini.app's hub
+
+    struct Hub: Equatable {
+        let server: Server
+        let httpsPort: Int?
+        let httpPort: Int?
+
+        /// HTTPS first, as the language server is asked.
+        var endpoints: [(scheme: String, port: Int)] {
+            [httpsPort.map { ("https", $0) }, httpPort.map { ("http", $0) }].compactMap { $0 }
+        }
+    }
+
+    /// The running hubs `hub_*.json` names, newest first. A file whose
+    /// process is gone is left alone: the app removes its last one when it
+    /// starts again, but not when it quits.
+    static func hubs(in directory: URL, isAlive: (Int32) -> Bool = processIsAlive) -> [Hub] {
+        let fm = FileManager.default
+        let files = ((try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [])
+            .filter { $0.lastPathComponent.hasPrefix("hub_") && $0.pathExtension == "json" }
+            .map { url in (url, (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast) }
+            .sorted { $0.1 > $1.1 }
+        return files.compactMap { url, _ -> Hub? in
+            guard let data = try? Data(contentsOf: url), let hub = hub(data), isAlive(hub.server.pid) else { return nil }
+            return hub
+        }
+    }
+
+    /// `{"pid": 3884, "httpsPort": 50003, "httpPort": 50000, "lsVersion": "2.31.0", "csrfToken": "…"}`
+    static func hub(_ data: Data) -> Hub? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let pid = (object["pid"] as? NSNumber)?.int32Value, pid > 0,
+              let token = object["csrfToken"] as? String, !token.isEmpty
+        else { return nil }
+        let https = (object["httpsPort"] as? NSNumber)?.intValue
+        let http = (object["httpPort"] as? NSNumber)?.intValue
+        guard https != nil || http != nil else { return nil }
+        return Hub(server: Server(pid: pid, csrfToken: token), httpsPort: https, httpPort: http)
+    }
+
+    static func processIsAlive(_ pid: Int32) -> Bool {
+        kill(pid, 0) == 0 || errno == EPERM
     }
 
     // MARK: Finding it
@@ -97,7 +169,7 @@ enum AntigravityLocal {
     /// The app itself, so a server that is still starting is told apart
     /// from an app that is not open.
     static func isAppRunning(inProcessList text: String) -> Bool {
-        text.contains("/Antigravity.app/Contents/MacOS/Antigravity")
+        text.contains("/Antigravity.app/Contents/MacOS/Antigravity") || text.contains("/Gemini.app/Contents/MacOS/Gemini")
     }
 
     static func flag(_ name: String, in line: String) -> String? {
